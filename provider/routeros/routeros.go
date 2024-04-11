@@ -37,6 +37,17 @@ type rosAddress struct {
 	Network         string `json:"network"`
 }
 
+func init() {
+	provider.Register("RouterOS", func(v *viper.Viper) (provider.Provider, error) {
+		cfg := Config{}
+		err := v.UnmarshalKey("providers.routeros", &cfg)
+		if err != nil {
+			return nil, err
+		}
+		return New(&cfg)
+	})
+}
+
 func New(config *Config) (provider.Provider, error) {
 	if config.Insecure == nil {
 		insecure := true
@@ -89,15 +100,4 @@ func (r ros) Ip() (string, error) {
 	ip = ip[:len(ip)-3]
 
 	return ip, nil
-}
-
-func init() {
-	provider.Register("RouterOS", func(v *viper.Viper) (provider.Provider, error) {
-		cfg := Config{}
-		err := v.UnmarshalKey("providers.routeros", &cfg)
-		if err != nil {
-			return nil, err
-		}
-		return New(&cfg)
-	})
 }

@@ -19,6 +19,8 @@ providers:
     endpoint: https://192.168.88.1 # RouterOS API endpoint
     username: admin # RouterOS user with API access
     password: "" # RouterOS user password
+  ip_service:
+    - ifconfig.me # External service to get IP address
 
 updaters:
   cloudflare:
@@ -28,7 +30,16 @@ updaters:
 ```
 
 Where:
-- `providers` is a list of providers that UDDNS can use to obtain the current public IP address. Currently, `routeros` is supported.
+- `providers` is a list of providers that UDDNS can use to obtain the current public IP address. Currently supported providers are:
+  - `routeros`: Get IP address from a Mikrotik RouterOS device
+    - `endpoint`: The RouterOS API endpoint
+    - `username`: The RouterOS user with API access
+    - `password`: The RouterOS user password
+  - `ip_service`: Get IP address from an external service
+    - `ifconifig.me`
+    - `ip.sb`
+    - `3322.org`
+
 - `updaters` is a list of updaters that UDDNS can use to update the DNS records. Currently, `cloudflare` is supported.
 
 
