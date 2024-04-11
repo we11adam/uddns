@@ -40,7 +40,14 @@ Where:
     - `ip.sb`
     - `3322.org`
 
-- `updaters` is a list of updaters that UDDNS can use to update the DNS records. Currently, `cloudflare` is supported.
+- `updaters` is a list of updaters that UDDNS can use to update the DNS records. Currently supported updaters are:
+  - `cloudflare`:
+    - `email`: Cloudflare account email
+    - `apikey`: Cloudflare API key
+    - `domain`: Domain to update, e.g. `ddns.yourdomain.com`
+  - `duckdns`:
+    - `token`: DuckDNS token
+    - `domain`: Domain to update, excluding the `duckdns.org` part.
 
 
 ### Running

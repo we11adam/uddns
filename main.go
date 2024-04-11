@@ -9,6 +9,7 @@ import (
 	_ "github.com/we11adam/uddns/provider/routeros"
 	"github.com/we11adam/uddns/updater"
 	_ "github.com/we11adam/uddns/updater/cloudflare"
+	_ "github.com/we11adam/uddns/updater/duckdns"
 	"os"
 	"time"
 )
@@ -89,6 +90,8 @@ func schedule(p provider.Provider, u updater.Updater) {
 			if err != nil {
 				fmt.Printf("Error updating IP: %v\n", err)
 				return
+			} else {
+				fmt.Printf("IP updated to: %s\n", ip)
 			}
 
 			lastIp = ip
