@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"github.com/cloudflare/cloudflare-go"
 	"github.com/spf13/viper"
+	"github.com/we11adam/uddns/updater"
 	"os"
 	"strings"
-	"uddns/updater"
 )
 
 type Config struct {

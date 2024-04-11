@@ -4,11 +4,12 @@ import (
 	"fmt"
 	_ "github.com/joho/godotenv/autoload"
 	"github.com/spf13/viper"
+	"github.com/we11adam/uddns/provider"
+	_ "github.com/we11adam/uddns/provider/routeros"
+	"github.com/we11adam/uddns/updater"
+	_ "github.com/we11adam/uddns/updater/cloudflare"
+	"os"
 	"time"
-	"uddns/provider"
-	_ "uddns/provider/routeros"
-	"uddns/updater"
-	_ "uddns/updater/cloudflare"
 )
 
 func main() {
@@ -51,9 +52,19 @@ func main() {
 
 func schedule(p provider.Provider, u updater.Updater) {
 	lastIp := ""
+	interval := os.Getenv("UDDNS_INTERVAL")
+	if interval == "" {
+		interval = "30s"
+	}
+
+	duration, err := time.ParseDuration(interval)
+	if err != nil {
+		panic("Error parsing duration from env: \n")
+	}
+
 	for {
 		func() {
-			defer time.Sleep(5 * time.Second)
+			defer time.Sleep(duration)
 			ip, err := p.Ip()
 			if err != nil {
 				fmt.Printf("Error getting IP: %v\n", err)

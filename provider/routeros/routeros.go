@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"github.com/go-resty/resty/v2"
 	"github.com/spf13/viper"
-	"uddns/provider"
+	"github.com/we11adam/uddns/provider"
 )
 
 type ros struct {
