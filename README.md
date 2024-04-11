@@ -36,7 +36,7 @@ Where:
     - `username`: The RouterOS user with API access
     - `password`: The RouterOS user password
   - `ip_service`: Get IP address from an external service
-    - `ifconifig.me`
+    - `ifconfig.me`
     - `ip.sb`
     - `3322.org`
 
