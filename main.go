@@ -15,10 +15,13 @@ import (
 )
 
 func main() {
+
+	config, err := getConfigFile()
+	if err != nil {
+		panic(fmt.Errorf("fatal error config file: %w", err))
+	}
 	v := viper.New()
-	v.AddConfigPath(".")
-	v.SetConfigName("uddns")
-	v.SetConfigType("yaml")
+	v.SetConfigFile(config)
 	if err := v.ReadInConfig(); err != nil {
 		panic(fmt.Errorf("fatal error config file: %w", err))
 	}
@@ -97,4 +100,31 @@ func schedule(p provider.Provider, u updater.Updater) {
 			lastIp = ip
 		}()
 	}
+}
+
+func getConfigFile() (string, error) {
+	pEnv := os.Getenv("UDDNS_CONFIG")
+	pHome := os.Getenv("HOME") + "/.config/uddns/uddns.yaml"
+	pEtc := "/etc/uddns.yaml"
+	pCwd := "./uddns.yaml"
+
+	switch true {
+	case isReadable(pEnv):
+		return pEnv, nil
+	case isReadable(pCwd):
+		return pCwd, nil
+	case isReadable(pHome):
+		return pHome, nil
+	case isReadable(pEtc):
+		return pEtc, nil
+	default:
+		return "", fmt.Errorf("no config file found")
+	}
+}
+
+func isReadable(p string) bool {
+	if _, err := os.Stat(p); err == nil {
+		return true
+	}
+	return false
 }

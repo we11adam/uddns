@@ -11,7 +11,9 @@ or download the binary for you platform directly from the [releases page](https:
 
 
 ### Configuration file
-Ceate a `uddns.yaml` file in the same directory as the binary. The file should look like this:
+Ceate a `uddns.yaml` file as one the following: `./uddns.yaml`, `~/.config/uddns.yaml`, 
+`/etc/uddns.yaml`. UDDNS will try to read them in order. Additionally, you can specify the configuration file path with the `UDDNS_CONFIG` environment variable.
+The file should look like this:
 
 ```yaml
 providers:
