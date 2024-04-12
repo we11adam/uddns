@@ -44,6 +44,10 @@ func init() {
 		if err != nil {
 			return nil, err
 		}
+
+		if cfg.Username == "" || cfg.Endpoint == "" {
+			return nil, fmt.Errorf("missing required fields")
+		}
 		return New(&cfg)
 	})
 }
