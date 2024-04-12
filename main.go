@@ -6,6 +6,7 @@ import (
 	"github.com/spf13/viper"
 	"github.com/we11adam/uddns/provider"
 	_ "github.com/we11adam/uddns/provider/ip_service"
+	_ "github.com/we11adam/uddns/provider/netif"
 	_ "github.com/we11adam/uddns/provider/routeros"
 	"github.com/we11adam/uddns/updater"
 	_ "github.com/we11adam/uddns/updater/cloudflare"
@@ -21,6 +22,7 @@ func main() {
 		panic(fmt.Errorf("fatal error config file: %w", err))
 	}
 	v := viper.New()
+	fmt.Print("Using config file: ", config, "\n")
 	v.SetConfigFile(config)
 	if err := v.ReadInConfig(); err != nil {
 		panic(fmt.Errorf("fatal error config file: %w", err))
@@ -87,6 +89,8 @@ func schedule(p provider.Provider, u updater.Updater) {
 			if ip == lastIp {
 				fmt.Printf("IP has not changed: %s\n", ip)
 				return
+			} else {
+				fmt.Printf("New IP obtained: %s\n", ip)
 			}
 
 			err = u.Update(ip)

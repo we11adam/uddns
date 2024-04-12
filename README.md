@@ -41,7 +41,8 @@ Where:
     - `ifconfig.me`
     - `ip.sb`
     - `3322.org`
-
+  - `netif`: Get IP address from a network interface (not implemented for Windows yet)
+    - `name`: The network interface name to get the IP address from
 - `updaters` is a list of updaters that UDDNS can use to update the DNS records. Currently supported updaters are:
   - `cloudflare`:
     - `email`: Cloudflare account email
