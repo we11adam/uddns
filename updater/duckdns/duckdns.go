@@ -25,6 +25,9 @@ func init() {
 		if err != nil {
 			return nil, err
 		}
+		if cfg.Domain == "" || cfg.Token == "" {
+			return nil, fmt.Errorf("missing required fields")
+		}
 		return New(&cfg), nil
 	})
 }
