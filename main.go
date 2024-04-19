@@ -4,6 +4,8 @@ import (
 	"fmt"
 	_ "github.com/joho/godotenv/autoload"
 	"github.com/spf13/viper"
+	"github.com/we11adam/uddns/notifier"
+	_ "github.com/we11adam/uddns/notifier/telegram"
 	"github.com/we11adam/uddns/provider"
 	_ "github.com/we11adam/uddns/provider/ip_service"
 	_ "github.com/we11adam/uddns/provider/netif"
@@ -16,7 +18,6 @@ import (
 )
 
 func main() {
-
 	config, err := getConfigFile()
 	if err != nil {
 		panic(fmt.Errorf("fatal error config file: %w", err))
@@ -62,10 +63,29 @@ func main() {
 		fmt.Printf("Updater selected: %s\n", un)
 	}
 
-	schedule(p, u)
+	var n notifier.Notifier
+	var nn string
+	for name, constructor := range notifier.Notifiers {
+		_n, err := constructor(v)
+		if err == nil {
+			fmt.Println("Provider registered: ", name)
+			nn = name
+			n = _n
+			break
+		}
+	}
+
+	if n != nil {
+		fmt.Printf("Notifier selected: %s\n", nn)
+	} else {
+		n = &notifier.Noop{}
+		fmt.Printf("No notifier selected. Using Noop notifier.\n")
+	}
+
+	schedule(p, u, n)
 }
 
-func schedule(p provider.Provider, u updater.Updater) {
+func schedule(p provider.Provider, u updater.Updater, n notifier.Notifier) {
 	lastIp := ""
 	interval := os.Getenv("UDDNS_INTERVAL")
 	if interval == "" {
@@ -90,7 +110,9 @@ func schedule(p provider.Provider, u updater.Updater) {
 				fmt.Printf("IP has not changed: %s\n", ip)
 				return
 			} else {
-				fmt.Printf("New IP obtained: %s\n", ip)
+				msg := fmt.Sprintf("New IP obtained: %s\n", ip)
+				fmt.Printf(msg)
+				n.Notify(notifier.Notification{Message: msg})
 			}
 
 			err = u.Update(ip)
@@ -98,7 +120,9 @@ func schedule(p provider.Provider, u updater.Updater) {
 				fmt.Printf("Error updating IP: %v\n", err)
 				return
 			} else {
-				fmt.Printf("IP updated to: %s\n", ip)
+				message := fmt.Sprintf("IP updated to: %s\n", ip)
+				fmt.Printf(message)
+				n.Notify(notifier.Notification{Message: message})
 			}
 
 			lastIp = ip

@@ -15,3 +15,10 @@ var Notifiers = make(map[string]func(v *viper.Viper) (Notifier, error))
 func Register(name string, constructor func(v *viper.Viper) (Notifier, error)) {
 	Notifiers[name] = constructor
 }
+
+type Noop struct {
+}
+
+func (n *Noop) Notify(notification Notification) error {
+	return nil
+}
