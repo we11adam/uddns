@@ -29,6 +29,12 @@ updaters:
     email: "user@exmaple.com" # Cloudflare account email
     apikey: fd25bdc03a4c17450aa4327aa37de4573270f # Cloudflare API key
     domain: ddns.yourdomain.com # Domain to update
+
+notifiers:
+  telegram:
+    chat_id: -1001234567890 # Telegram chat ID
+    token: 1234567890:E2AvwaQsEvkACAF9pVPZAICmbXuzzHFTyyv # Telegram bot token
+    proxy: http://127.0.0.1:2080
 ```
 
 Where:
@@ -51,7 +57,11 @@ Where:
   - `duckdns`:
     - `token`: DuckDNS token
     - `domain`: Domain to update, excluding the `duckdns.org` part.
-
+- `notifiers` is a list of notifiers that UDDNS can use to notify the user of the IP address change. Currently supported notifiers are:
+  - `telegram`:
+    - `token`: Telegram bot token
+    - `chat_id`: Telegram chat ID
+    - `proxy`: Proxy URL to use for Telegram API requests if you are behind a (great) firewall. Optional.
 
 ### Running
 Run the binary as the following. It will update the DNS record with the current public IP address with a default interval of 30 seconds, which can be overriden with the `UDDNS_INTERVAL` environment variable. The format for specifying the interval is flexible, allowing values such as `60s`, `5m`, `1h`, etc.
