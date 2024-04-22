@@ -38,7 +38,7 @@ func init() {
 func New(names *ServiceNames) (provider.Provider, error) {
 	httpClient := resty.New()
 	// 1. Remove proxy so that the request is sent directly to the service
-	// 2. Set user agent to curl so that the service does not return a html page
+	// 2. Set user agent to curl so that the service does not return an HTML page
 	httpClient.RemoveProxy().SetHeaders(map[string]string{"User-Agent": "curl/8.6.0"})
 	return &IpService{
 		client: httpClient,
