@@ -8,8 +8,10 @@ type Updater interface {
 	Update(ip string) error
 }
 
-var Updaters = make(map[string]func(v *viper.Viper) (Updater, error))
+type constructor func(v *viper.Viper) (Updater, error)
 
-func Register(name string, constructor func(v *viper.Viper) (Updater, error)) {
+var Updaters = make(map[string]constructor)
+
+func Register(name string, constructor constructor) {
 	Updaters[name] = constructor
 }

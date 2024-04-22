@@ -8,8 +8,10 @@ type Provider interface {
 	Ip() (string, error)
 }
 
-var Providers = make(map[string]func(v *viper.Viper) (Provider, error))
+type constructor func(v *viper.Viper) (Provider, error)
 
-func Register(name string, constructor func(v *viper.Viper) (Provider, error)) {
+var Providers = make(map[string]constructor)
+
+func Register(name string, constructor constructor) {
 	Providers[name] = constructor
 }

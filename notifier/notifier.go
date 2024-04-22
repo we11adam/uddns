@@ -3,6 +3,7 @@ package notifier
 import "github.com/spf13/viper"
 
 type Notification struct {
+	Title   string
 	Message string
 }
 
@@ -10,15 +11,16 @@ type Notifier interface {
 	Notify(notification Notification) error
 }
 
-var Notifiers = make(map[string]func(v *viper.Viper) (Notifier, error))
+type constructor func(v *viper.Viper) (Notifier, error)
 
-func Register(name string, constructor func(v *viper.Viper) (Notifier, error)) {
+var Notifiers = make(map[string]constructor)
+
+func Register(name string, constructor constructor) {
 	Notifiers[name] = constructor
 }
 
-type Noop struct {
-}
+type Noop struct{}
 
-func (n *Noop) Notify(notification Notification) error {
+func (n *Noop) Notify(_ Notification) error {
 	return nil
 }
