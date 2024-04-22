@@ -132,7 +132,7 @@ func schedule(p provider.Provider, u updater.Updater, n notifier.Notifier) {
 
 func getConfigFile() (string, error) {
 	pEnv := os.Getenv("UDDNS_CONFIG")
-	pHome := os.Getenv("HOME") + "/.config/uddns/uddns.yaml"
+	pHome := os.Getenv("HOME") + "/.config/uddns.yaml"
 	pEtc := "/etc/uddns.yaml"
 	pCwd := "./uddns.yaml"
 
