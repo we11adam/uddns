@@ -26,6 +26,7 @@ type Noop struct{}
 func (n *Noop) Notify(_ Notification) error {
 	return nil
 }
+
 func GetNotifier(v *viper.Viper) (string, Notifier) {
 	for name, c := range Notifiers {
 		notifier, err := c(v)

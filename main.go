@@ -50,23 +50,20 @@ func main() {
 }
 
 func getConfigFile() (string, error) {
-	pEnv := os.Getenv("UDDNS_CONFIG")
-	pHome := os.Getenv("HOME") + "/.config/uddns.yaml"
-	pEtc := "/etc/uddns.yaml"
-	pCwd := "./uddns.yaml"
-
-	switch {
-	case isReadable(pEnv):
-		return pEnv, nil
-	case isReadable(pCwd):
-		return pCwd, nil
-	case isReadable(pHome):
-		return pHome, nil
-	case isReadable(pEtc):
-		return pEtc, nil
-	default:
-		return "", fmt.Errorf("no config file found")
+	locations := []string{
+		os.Getenv("UDDNS_CONFIG"),
+		"./uddns.yaml",
+		os.Getenv("HOME") + "/.config/uddns.yaml",
+		"/etc/uddns.yaml",
 	}
+
+	for _, p := range locations {
+		if isReadable(p) {
+			return p, nil
+		}
+	}
+
+	return "", fmt.Errorf("no readable config file found in %v", locations)
 }
 
 func isReadable(p string) bool {
