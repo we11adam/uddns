@@ -1,10 +1,11 @@
 package ip_service
 
 import (
-	"fmt"
+	"errors"
 	"github.com/go-resty/resty/v2"
 	"github.com/spf13/viper"
 	"github.com/we11adam/uddns/provider"
+	"log/slog"
 	"strings"
 )
 
@@ -29,7 +30,7 @@ func init() {
 			return nil, err
 		}
 		if len(cfg) == 0 {
-			return nil, fmt.Errorf("No service names provided")
+			return nil, errors.New("[IpService] no service names provided")
 		}
 		return New(&cfg)
 	})
@@ -49,14 +50,14 @@ func New(names *ServiceNames) (provider.Provider, error) {
 func (i *IpService) Ip() (string, error) {
 	for _, name := range *i.names {
 		resp, err := i.client.R().Get(SERVICES[name])
-		fmt.Println("Requesting IP address from: ", SERVICES[name])
+		slog.Debug("[IpService] requesting IP address from:", "service", SERVICES[name])
 		if err != nil || resp.StatusCode() != 200 {
 			continue
 		}
 		ip := string(resp.Body())
 		ip = strings.Trim(ip, "\n")
-		fmt.Print("IP address: ", ip, "\n")
+		slog.Debug("[IpService] got IP address:", "ip", ip)
 		return ip, nil
 	}
-	return "", fmt.Errorf("Failed to get IP address")
+	return "", errors.New("[IpService] failed to get IP address")
 }

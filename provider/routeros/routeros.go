@@ -2,7 +2,7 @@ package routeros
 
 import (
 	"crypto/tls"
-	"fmt"
+	"errors"
 	"github.com/go-resty/resty/v2"
 	"github.com/spf13/viper"
 	"github.com/we11adam/uddns/provider"
@@ -46,7 +46,7 @@ func init() {
 		}
 
 		if cfg.Username == "" || cfg.Endpoint == "" {
-			return nil, fmt.Errorf("missing required fields")
+			return nil, errors.New("[RouterOS] missing required fields")
 		}
 		return New(&cfg)
 	})
@@ -98,7 +98,7 @@ func (r ros) Ip() (string, error) {
 	}
 
 	if ip == "" {
-		return "", fmt.Errorf("No IP address found")
+		return "", errors.New("[RouterOS] no IP address found")
 	}
 
 	ip = ip[:len(ip)-3]

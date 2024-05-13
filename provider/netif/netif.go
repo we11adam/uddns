@@ -3,6 +3,7 @@
 package netif
 
 import (
+	"errors"
 	"fmt"
 	"github.com/spf13/viper"
 	"github.com/we11adam/uddns/provider"
@@ -25,7 +26,7 @@ func init() {
 			return nil, err
 		}
 		if cfg.Name == "" {
-			return nil, fmt.Errorf("missing required fields")
+			return nil, errors.New("[NetworkIneterface] missing required fields")
 		}
 		return New(&cfg)
 	})
@@ -55,5 +56,5 @@ func (n *Netif) Ip() (string, error) {
 		}
 	}
 
-	return "", fmt.Errorf("no IP address found on network interface %s", n.iface.Name)
+	return "", fmt.Errorf("[NetworkIneterface] no IP address found on network interface %s", n.iface.Name)
 }

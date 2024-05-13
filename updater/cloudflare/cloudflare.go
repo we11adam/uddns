@@ -2,11 +2,10 @@ package cloudflare
 
 import (
 	"context"
-	"fmt"
 	"github.com/cloudflare/cloudflare-go"
 	"github.com/spf13/viper"
 	"github.com/we11adam/uddns/updater"
-	"os"
+	"log/slog"
 	"strings"
 )
 
@@ -35,7 +34,7 @@ func init() {
 func New(config *Config) (updater.Updater, error) {
 	api, err := cloudflare.New(config.APIKey, config.Email)
 	if err != nil {
-		fmt.Println("Error creating Cloudflare API client: ", err)
+		slog.Debug("[CloudFlare] failed to create API client:", "error", err)
 		return nil, err
 	}
 
@@ -59,7 +58,7 @@ func (c *Cloudflare) Update(newAddr string) error {
 	params := cloudflare.ListDNSRecordsParams{Name: domain}
 	dnsRecords, _, err := c.client.ListDNSRecords(context.Background(), cloudflare.ZoneIdentifier(zoneID), params)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "Error fetching DNS records: ", err)
+		slog.Error("[CloudFlare] failed to list DNS records:", err)
 		return err
 	}
 
@@ -79,11 +78,8 @@ func (c *Cloudflare) Update(newAddr string) error {
 
 		_, err := c.client.UpdateDNSRecord(context.Background(), cloudflare.ZoneIdentifier(zoneID), rr)
 		if err != nil {
-			fmt.Println("Error updating DNS record:", err)
 			return err
 		}
-
-		fmt.Println("DNS updated successfully with new IP address: ", newAddr)
 	} else {
 		proxied := false
 		priority := uint16(10)
@@ -98,11 +94,11 @@ func (c *Cloudflare) Update(newAddr string) error {
 
 		_, err := c.client.CreateDNSRecord(context.Background(), cloudflare.ZoneIdentifier(zoneID), rr)
 		if err != nil {
-			fmt.Println("Error creating DNS record:", err)
+			slog.Debug("[CloudFlare] failed to create DNS record:", "error", err)
 			return err
 		}
 
-		fmt.Println("DNS created successfully with new IP address: ", newAddr)
+		slog.Debug("[CloudFlare] DNS created successfully with new IP address:", "ip", newAddr)
 	}
 	return nil
 }

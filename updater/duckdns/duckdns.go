@@ -1,6 +1,7 @@
 package duckdns
 
 import (
+	"errors"
 	"fmt"
 	"github.com/go-resty/resty/v2"
 	"github.com/spf13/viper"
@@ -19,14 +20,14 @@ type DuckDNS struct {
 }
 
 func init() {
-	updater.Register("Duck DNS", func(v *viper.Viper) (updater.Updater, error) {
+	updater.Register("DuckDNS", func(v *viper.Viper) (updater.Updater, error) {
 		cfg := Config{}
 		err := v.UnmarshalKey("updaters.duckdns", &cfg)
 		if err != nil {
 			return nil, err
 		}
 		if cfg.Domain == "" || cfg.Token == "" {
-			return nil, fmt.Errorf("missing required fields")
+			return nil, errors.New("[DuckDNS] missing required fields")
 		}
 		return New(&cfg), nil
 	})
@@ -56,7 +57,7 @@ func (c *DuckDNS) Update(newAddr string) error {
 	body := string(resp.Body())
 
 	if body != "OK" {
-		return fmt.Errorf("failed to updated Duck DNS record: %s", body)
+		return fmt.Errorf("[DuckDNS] failed to updated DNS record: %s", body)
 	}
 
 	return nil

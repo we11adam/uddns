@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	_ "github.com/joho/godotenv/autoload"
+	"github.com/lmittmann/tint"
 	"github.com/spf13/viper"
 	"github.com/we11adam/uddns/app"
 	"github.com/we11adam/uddns/notifier"
@@ -14,37 +15,54 @@ import (
 	"github.com/we11adam/uddns/updater"
 	_ "github.com/we11adam/uddns/updater/cloudflare"
 	_ "github.com/we11adam/uddns/updater/duckdns"
+	"log/slog"
 	"os"
+	"time"
 )
 
+func init() {
+	slog.SetDefault(slog.New(
+		tint.NewHandler(os.Stderr, &tint.Options{
+			Level:      slog.LevelDebug,
+			TimeFormat: time.DateTime,
+		}),
+	))
+}
+
 func main() {
+
 	config, err := getConfigFile()
 	if err != nil {
-		panic(fmt.Errorf("fatal error config file: %w", err))
+		slog.Error("fatal error config file", "error", err)
+		os.Exit(1)
 	}
+
 	v := viper.New()
-	fmt.Print("Using config file: ", config, "\n")
+	slog.Info("[UDDNS] using config:" + config)
 	v.SetConfigFile(config)
 	if err = v.ReadInConfig(); err != nil {
-		panic(fmt.Errorf("fatal error config file: %w", err))
+		slog.Error("[UDDNS] failed to read config file:", err)
+		os.Exit(1)
 	}
 
 	name, p, err := provider.GetProvider(v)
 	if err != nil {
-		panic("No provider found")
+		slog.Error("[UDDNS] no provider found.")
+		os.Exit(1)
 	} else {
-		fmt.Printf("Provider selected: %s\n", name)
+		slog.Info("[UDDNS] provider selected:", "name", name)
 	}
 
 	name, u, err := updater.GetUpdater(v)
 	if err != nil {
-		panic("No Updater found")
+		slog.Error("[UDDNS] no updater found.")
+		os.Exit(1)
 	} else {
-		fmt.Printf("Updater selected: %s\n", name)
+		slog.Info("[UDDNS] updater selected:", "updater", name)
 	}
 
 	name, n := notifier.GetNotifier(v)
-	fmt.Println("Notifier selected: ", name)
+	slog.Info("[UDDNS] notifier selected:", "notifier", name)
 
 	app.NewApp(&p, &u, &n).Run()
 }
@@ -63,7 +81,7 @@ func getConfigFile() (string, error) {
 		}
 	}
 
-	return "", fmt.Errorf("no readable config file found in %v", locations)
+	return "", fmt.Errorf("[UDDNS] no readable config file found in %v", locations)
 }
 
 func isReadable(p string) bool {
