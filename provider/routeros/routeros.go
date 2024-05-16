@@ -8,7 +8,7 @@ import (
 	"github.com/we11adam/uddns/provider"
 )
 
-type ros struct {
+type RouterOS struct {
 	config     Config
 	httpClient *resty.Client
 }
@@ -60,14 +60,13 @@ func New(config *Config) (provider.Provider, error) {
 	httpClient := resty.New().SetBasicAuth(config.Username, config.Password).
 		SetTLSClientConfig(&tls.Config{InsecureSkipVerify: *config.Insecure}).
 		SetBaseURL(config.Endpoint + "/rest")
-	return &ros{
+	return &RouterOS{
 		config:     *config,
 		httpClient: httpClient,
 	}, nil
 }
 
-func (r ros) Ip() (string, error) {
-
+func (r *RouterOS) Ip() (string, error) {
 	var rfaces []rosInterface
 	_, err := r.httpClient.R().SetResult(&rfaces).Get("/interface")
 	if err != nil {

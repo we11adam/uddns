@@ -1,6 +1,6 @@
 module github.com/we11adam/uddns
 
-go 1.22
+go 1.21
 
 require (
 	github.com/cloudflare/cloudflare-go v0.93.0
