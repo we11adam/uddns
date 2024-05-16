@@ -38,10 +38,10 @@ func main() {
 	}
 
 	v := viper.New()
-	slog.Info("[UDDNS] using config:" + config)
+	slog.Info("[UDDNS] using config:", "config", config)
 	v.SetConfigFile(config)
 	if err = v.ReadInConfig(); err != nil {
-		slog.Error("[UDDNS] failed to read config file:", err)
+		slog.Error("[UDDNS] failed to read config file:", "error", err)
 		os.Exit(1)
 	}
 
