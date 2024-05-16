@@ -66,7 +66,7 @@ Where:
 ### Running
 Run the binary as the following. It will update the DNS record with the current public IP address with a default interval of 30 seconds, which can be overriden with the `UDDNS_INTERVAL` environment variable. The format for specifying the interval is flexible, allowing values such as `60s`, `5m`, `1h`, etc.
 ```shell
-nohup ./uddns &
+nohup ./uddns > uddns.log 2>&1 &
 ```
 
 
