@@ -7,7 +7,7 @@ You can either:
 
 `go install github.com/we11adam/uddns@latest`
 
-or download the binary for you platform directly from the [releases page](https://github.com/we11adam.com/uddns/releases/)
+or download the binary for you platform directly from the [releases page](https://github.com/we11adam/uddns/releases/)
 
 
 ### Configuration file
