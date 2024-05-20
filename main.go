@@ -4,6 +4,7 @@ import (
 	"fmt"
 	_ "github.com/joho/godotenv/autoload"
 	"github.com/lmittmann/tint"
+	"github.com/mattn/go-isatty"
 	"github.com/spf13/viper"
 	"github.com/we11adam/uddns/app"
 	"github.com/we11adam/uddns/notifier"
@@ -22,7 +23,8 @@ import (
 
 func init() {
 	slog.SetDefault(slog.New(
-		tint.NewHandler(os.Stderr, &tint.Options{
+		tint.NewHandler(os.Stdout, &tint.Options{
+			NoColor:    !isatty.IsTerminal(os.Stdout.Fd()),
 			Level:      slog.LevelDebug,
 			TimeFormat: time.DateTime,
 		}),
