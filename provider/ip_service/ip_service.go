@@ -1,12 +1,16 @@
 package ip_service
 
 import (
+	"context"
 	"errors"
+	"log/slog"
+	"net"
+	"net/http"
+	"strings"
+
 	"github.com/go-resty/resty/v2"
 	"github.com/spf13/viper"
 	"github.com/we11adam/uddns/provider"
-	"log/slog"
-	"strings"
 )
 
 var SERVICES = map[string]string{
@@ -38,6 +42,18 @@ func init() {
 
 func New(names *ServiceNames) (provider.Provider, error) {
 	httpClient := resty.New()
+
+	// Set transport to use tcp4
+	// ip_service use your access ip to get your public ip
+	transport := &http.Transport{
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			// just use tcp4
+			dialer := &net.Dialer{}
+			return dialer.DialContext(ctx, "tcp4", addr)
+		},
+	}
+	httpClient.SetTransport(transport)
+
 	// 1. Remove proxy so that the request is sent directly to the service
 	// 2. Set user agent to curl so that the service does not return an HTML page
 	httpClient.RemoveProxy().SetHeaders(map[string]string{"User-Agent": "curl/8.6.0"})
