@@ -2,23 +2,25 @@ package main
 
 import (
 	"fmt"
-	_ "github.com/joho/godotenv/autoload"
 	"github.com/lmittmann/tint"
 	"github.com/mattn/go-isatty"
 	"github.com/spf13/viper"
 	"github.com/we11adam/uddns/app"
 	"github.com/we11adam/uddns/notifier"
-	_ "github.com/we11adam/uddns/notifier/telegram"
 	"github.com/we11adam/uddns/provider"
-	_ "github.com/we11adam/uddns/provider/ip_service"
-	_ "github.com/we11adam/uddns/provider/netif"
-	_ "github.com/we11adam/uddns/provider/routeros"
 	"github.com/we11adam/uddns/updater"
-	_ "github.com/we11adam/uddns/updater/cloudflare"
-	_ "github.com/we11adam/uddns/updater/duckdns"
 	"log/slog"
 	"os"
 	"time"
+
+	_ "github.com/joho/godotenv/autoload"
+
+	_ "github.com/we11adam/uddns/notifier/telegram"
+	_ "github.com/we11adam/uddns/provider/ip_service"
+	_ "github.com/we11adam/uddns/provider/netif"
+	_ "github.com/we11adam/uddns/provider/routeros"
+	_ "github.com/we11adam/uddns/updater/cloudflare"
+	_ "github.com/we11adam/uddns/updater/duckdns"
 )
 
 func init() {
