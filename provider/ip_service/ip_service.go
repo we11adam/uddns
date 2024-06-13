@@ -17,6 +17,7 @@ var SERVICES = map[string]string{
 	"ifconfig.me": "http://ifconfig.me",
 	"ip.sb":       "http://ip.sb",
 	"3322.org":    "http://members.3322.org/dyndns/getip",
+	"ip.fm":       "https://ip.fm/myip",
 }
 
 type ServiceNames []string
