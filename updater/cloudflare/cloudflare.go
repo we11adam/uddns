@@ -2,17 +2,19 @@ package cloudflare
 
 import (
 	"context"
+	"log/slog"
+	"strings"
+
 	"github.com/cloudflare/cloudflare-go"
 	"github.com/spf13/viper"
 	"github.com/we11adam/uddns/updater"
-	"log/slog"
-	"strings"
 )
 
 type Config struct {
-	Email  string `mapstructure:"email"`
-	APIKey string `mapstructure:"apikey"`
-	Domain string `mapstructure:"domain"`
+	Email    string `mapstructure:"email"`
+	APIKey   string `mapstructure:"apikey"`
+	APIToken string `mapstructure:"apitoken"`
+	Domain   string `mapstructure:"domain"`
 }
 
 type Cloudflare struct {
@@ -32,7 +34,20 @@ func init() {
 }
 
 func New(config *Config) (updater.Updater, error) {
-	api, err := cloudflare.New(config.APIKey, config.Email)
+	var (
+		api *cloudflare.API
+		err error
+	)
+
+	// If APIToken is provided, use it to create the API client
+	if config.APIToken != "" {
+		api, err = cloudflare.NewWithAPIToken(config.APIToken)
+	} else {
+		// Otherwise, use APIKey and Email to create the API client
+		api, err = cloudflare.New(config.APIKey, config.Email)
+	}
+
+	// Check if there was an error creating the API client
 	if err != nil {
 		slog.Debug("[CloudFlare] failed to create API client:", "error", err)
 		return nil, err
