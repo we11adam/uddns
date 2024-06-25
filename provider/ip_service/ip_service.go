@@ -14,10 +14,10 @@ import (
 )
 
 var SERVICES = map[string]string{
-	"ifconfig.me": "http://ifconfig.me",
-	"ip.sb":       "http://ip.sb",
-	"3322.org":    "http://members.3322.org/dyndns/getip",
 	"ip.fm":       "https://ip.fm/myip",
+	"ip.sb":       "http://ip.sb",
+	"ifconfig.me": "http://ifconfig.me",
+	"3322.org":    "http://members.3322.org/dyndns/getip",
 }
 
 type ServiceNames []string
@@ -41,7 +41,7 @@ func init() {
 	})
 }
 
-func New(names *ServiceNames) (provider.Provider, error) {
+func New(names *ServiceNames) (*IpService, error) {
 	httpClient := resty.New()
 
 	// Set transport to use tcp4

@@ -30,7 +30,7 @@ func init() {
 	})
 }
 
-func New(cfg *Config) (provider.Provider, error) {
+func New(cfg *Config) (*Netif, error) {
 	iface, err := net.InterfaceByName(cfg.Name)
 	if err != nil {
 		return nil, err

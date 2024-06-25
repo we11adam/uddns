@@ -33,7 +33,7 @@ func init() {
 	})
 }
 
-func New(cfg *Config) updater.Updater {
+func New(cfg *Config) *DuckDNS {
 	httpclient := resty.New().SetTimeout(10 * time.Second).
 		SetBaseURL("https://www.duckdns.org")
 	return &DuckDNS{

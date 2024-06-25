@@ -33,7 +33,7 @@ func init() {
 	})
 }
 
-func New(config *Config) (updater.Updater, error) {
+func New(config *Config) (*Cloudflare, error) {
 	var (
 		api *cloudflare.API
 		err error

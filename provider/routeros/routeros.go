@@ -52,7 +52,7 @@ func init() {
 	})
 }
 
-func New(config *Config) (provider.Provider, error) {
+func New(config *Config) (*RouterOS, error) {
 	if config.Insecure == nil {
 		insecure := true
 		config.Insecure = &insecure
