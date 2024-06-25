@@ -57,7 +57,7 @@ func (c *DuckDNS) Update(newAddr string) error {
 	body := string(resp.Body())
 
 	if body != "OK" {
-		return fmt.Errorf("[DuckDNS] failed to updated DNS record: %s", body)
+		return fmt.Errorf("[DuckDNS] failed to update DNS record: %s", body)
 	}
 
 	return nil
