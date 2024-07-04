@@ -57,6 +57,9 @@ Where:
   - `duckdns`:
     - `token`: DuckDNS token
     - `domain`: Domain to update, excluding the `duckdns.org` part.
+  - `ddnsfm`:
+    - `key`: DDNS.FM DDNS key
+    - `domain`: Domain to update, e.g. `your-domain.dyn.la`
 - `notifiers` is a list of notifiers that UDDNS can use to notify the user of the IP address change. Currently supported notifiers are:
   - `telegram`:
     - `token`: Telegram bot token
