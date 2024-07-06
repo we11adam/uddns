@@ -123,6 +123,7 @@ func (c *Cloudflare) updateDNSRecord(ctx context.Context, recordType, ip string)
 		_, err := c.client.UpdateDNSRecord(ctx, cloudflare.ZoneIdentifier(c.zoneID), updateParams)
 		if err != nil {
 			slog.Error("[CloudFlare] failed to update DNS record:", "error", err, "type", recordType)
+			delete(c.recordIDs, recordType)
 			return err
 		}
 		slog.Info("[CloudFlare] DNS record updated successfully", "type", recordType, "ip", ip)
@@ -133,6 +134,7 @@ func (c *Cloudflare) updateDNSRecord(ctx context.Context, recordType, ip string)
 	dnsRecords, _, err := c.client.ListDNSRecords(ctx, cloudflare.ZoneIdentifier(c.zoneID), params)
 	if err != nil {
 		slog.Error("[CloudFlare] failed to list DNS records:", "error", err, "type", recordType)
+		c.zoneID = ""
 		return err
 	}
 
@@ -151,6 +153,7 @@ func (c *Cloudflare) updateDNSRecord(ctx context.Context, recordType, ip string)
 		_, err := c.client.UpdateDNSRecord(ctx, cloudflare.ZoneIdentifier(c.zoneID), updateParams)
 		if err != nil {
 			slog.Error("[CloudFlare] failed to update DNS record:", "error", err, "type", recordType)
+			delete(c.recordIDs, recordType)
 			return err
 		}
 		slog.Info("[CloudFlare] DNS record updated successfully", "type", recordType, "ip", ip)
