@@ -3,6 +3,8 @@ package routeros
 import (
 	"crypto/tls"
 	"errors"
+	"strings"
+
 	"github.com/go-resty/resty/v2"
 	"github.com/spf13/viper"
 	"github.com/we11adam/uddns/provider"
@@ -66,15 +68,14 @@ func New(config *Config) (*RouterOS, error) {
 	}, nil
 }
 
-func (r *RouterOS) Ip() (string, error) {
+func (r *RouterOS) GetIPs() (*provider.IpResult, error) {
 	var rfaces []rosInterface
 	_, err := r.httpClient.R().SetResult(&rfaces).Get("/interface")
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	var pppoeIfName string
-	var ip string
 	for _, rface := range rfaces {
 		if rface.Type == "pppoe-out" {
 			pppoeIfName = rface.Name
@@ -82,25 +83,39 @@ func (r *RouterOS) Ip() (string, error) {
 		}
 	}
 
+	result := &provider.IpResult{}
+
+	// Get IPv4 address
 	var raddrs []rosAddress
 	_, err = r.httpClient.R().SetResult(&raddrs).Get("/ip/address")
-
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	for _, raddr := range raddrs {
 		if raddr.Interface == pppoeIfName {
-			ip = raddr.Address
+			result.IPv4 = strings.Split(raddr.Address, "/")[0]
 			break
 		}
 	}
 
-	if ip == "" {
-		return "", errors.New("[RouterOS] no IP address found")
+	// Get IPv6 address
+	var raddrs6 []rosAddress
+	_, err = r.httpClient.R().SetResult(&raddrs6).Get("/ipv6/address")
+	if err != nil {
+		return nil, err
 	}
 
-	ip = ip[:len(ip)-3]
+	for _, raddr := range raddrs6 {
+		if raddr.Interface == pppoeIfName {
+			result.IPv6 = strings.Split(raddr.Address, "/")[0]
+			break
+		}
+	}
 
-	return ip, nil
+	if result.IPv4 == "" && result.IPv6 == "" {
+		return nil, errors.New("[RouterOS] no IP address found")
+	}
+
+	return result, nil
 }
