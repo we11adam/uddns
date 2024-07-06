@@ -2,6 +2,7 @@ package telegram
 
 import (
 	"errors"
+
 	"github.com/go-resty/resty/v2"
 	"github.com/spf13/viper"
 	"github.com/we11adam/uddns/notifier"

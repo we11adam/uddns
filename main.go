@@ -1,7 +1,12 @@
 package main
 
 import (
+	"flag"
 	"fmt"
+	"log/slog"
+	"os"
+	"time"
+
 	"github.com/lmittmann/tint"
 	"github.com/mattn/go-isatty"
 	"github.com/spf13/viper"
@@ -9,9 +14,6 @@ import (
 	"github.com/we11adam/uddns/notifier"
 	"github.com/we11adam/uddns/provider"
 	"github.com/we11adam/uddns/updater"
-	"log/slog"
-	"os"
-	"time"
 
 	_ "github.com/joho/godotenv/autoload"
 
@@ -20,6 +22,7 @@ import (
 	_ "github.com/we11adam/uddns/provider/netif"
 	_ "github.com/we11adam/uddns/provider/routeros"
 	_ "github.com/we11adam/uddns/updater/cloudflare"
+	_ "github.com/we11adam/uddns/updater/ddnsfm"
 	_ "github.com/we11adam/uddns/updater/duckdns"
 )
 
@@ -34,8 +37,11 @@ func init() {
 }
 
 func main() {
+	var configPath string
+	flag.StringVar(&configPath, "c", "", "Path to the configuration file")
+	flag.Parse()
 
-	config, err := getConfigFile()
+	config, err := getConfigFile(configPath)
 	if err != nil {
 		slog.Error("fatal error config file", "error", err)
 		os.Exit(1)
@@ -71,7 +77,11 @@ func main() {
 	app.NewApp(&p, &u, &n).Run()
 }
 
-func getConfigFile() (string, error) {
+func getConfigFile(providedPath string) (string, error) {
+	if providedPath != "" && isReadable(providedPath) {
+		return providedPath, nil
+	}
+
 	locations := []string{
 		os.Getenv("UDDNS_CONFIG"),
 		"./uddns.yaml",

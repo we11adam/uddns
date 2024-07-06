@@ -2,23 +2,21 @@ package app
 
 import (
 	"fmt"
-	"github.com/we11adam/uddns/notifier"
-	"github.com/we11adam/uddns/provider"
-	"github.com/we11adam/uddns/updater"
 	"log/slog"
 	"os"
 	"time"
-)
 
-type Config struct {
-}
+	"github.com/we11adam/uddns/notifier"
+	"github.com/we11adam/uddns/provider"
+	"github.com/we11adam/uddns/updater"
+)
 
 type App struct {
 	provider provider.Provider
 	updater  updater.Updater
 	notifier notifier.Notifier
-	config   *Config
-	last     string
+	lastIPv4 string
+	lastIPv6 string
 }
 
 func NewApp(p *provider.Provider, u *updater.Updater, n *notifier.Notifier) *App {
@@ -37,45 +35,60 @@ func (a *App) schedule() {
 
 	duration, err := time.ParseDuration(interval)
 	if err != nil {
-		slog.Warn("[UDDNS] error parsing duration from env: \n. Using default `30s`\n")
+		slog.Warn("[UDDNS] error parsing duration from env. Using default `30s`")
 		duration = 30 * time.Second
 	}
 
 	for {
 		func() {
 			defer time.Sleep(duration)
-			ip, err := a.provider.Ip()
+			ipResult, err := a.provider.GetIPs()
 			if err != nil {
-				slog.Error("[UDDNS] failed to get IP:", "error", err)
+				slog.Error("[UDDNS] failed to get IPs:", "error", err)
 				return
 			}
 
-			if ip == a.last {
-				slog.Info("[UDDNS] IP has not changed:", "ip", ip)
-				return
-			} else {
-				slog.Info("[UDDNS] new IP obtained:", "ip", ip)
-				err = a.notifier.Notify(notifier.Notification{Message: fmt.Sprintf("New IP obtained: %s", ip)})
+			changed := false
+			updateNeeded := false
+
+			if ipResult.IPv4 != "" && ipResult.IPv4 != a.lastIPv4 {
+				slog.Info("[UDDNS] new IPv4 obtained:", "ip", ipResult.IPv4)
+				err = a.notifier.Notify(notifier.Notification{Message: fmt.Sprintf("New IPv4 obtained: %s", ipResult.IPv4)})
 				if err != nil {
 					slog.Error("failed to send notification:", "error", err)
 				}
+				changed = true
+				updateNeeded = true
 			}
 
-			err = a.updater.Update(ip)
-			if err != nil {
-				slog.Error("[UDDNS] failed to update DNS record:", "error", err)
-				return
-			} else {
-				slog.Info("IP updated to:", "ip", ip)
-				err = a.notifier.Notify(notifier.Notification{Message: fmt.Sprintf("IP updated to: %s\n", ip)})
+			if ipResult.IPv6 != "" && ipResult.IPv6 != a.lastIPv6 {
+				slog.Info("[UDDNS] new IPv6 obtained:", "ip", ipResult.IPv6)
+				err = a.notifier.Notify(notifier.Notification{Message: fmt.Sprintf("New IPv6 obtained: %s", ipResult.IPv6)})
 				if err != nil {
+					slog.Error("failed to send notification:", "error", err)
+				}
+				changed = true
+				updateNeeded = true
+			}
+
+			if updateNeeded {
+				err = a.updater.Update(ipResult)
+				if err != nil {
+					slog.Error("[UDDNS] failed to update DNS records:", "error", err)
+				} else {
+					slog.Info("DNS records updated:", "ipv4", ipResult.IPv4, "ipv6", ipResult.IPv6)
+					err = a.notifier.Notify(notifier.Notification{Message: fmt.Sprintf("DNS records updated: IPv4=%s, IPv6=%s", ipResult.IPv4, ipResult.IPv6)})
 					if err != nil {
 						slog.Error("failed to send notification:", "error", err)
 					}
+					a.lastIPv4 = ipResult.IPv4
+					a.lastIPv6 = ipResult.IPv6
 				}
 			}
 
-			a.last = ip
+			if !changed {
+				slog.Info("[UDDNS] IPs have not changed:", "ipv4", ipResult.IPv4, "ipv6", ipResult.IPv6)
+			}
 		}()
 	}
 }

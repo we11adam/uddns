@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/go-resty/resty/v2"
 	"github.com/spf13/viper"
@@ -23,8 +24,9 @@ var SERVICES = map[string]string{
 type ServiceNames []string
 
 type IpService struct {
-	client *resty.Client
-	names  *ServiceNames
+	client4 *resty.Client
+	client6 *resty.Client
+	names   *ServiceNames
 }
 
 func init() {
@@ -42,37 +44,61 @@ func init() {
 }
 
 func New(names *ServiceNames) (*IpService, error) {
-	httpClient := resty.New()
+	client4 := createClient("tcp4")
+	client6 := createClient("tcp6")
 
-	// Set transport to use tcp4
-	// ip_service use your access ip to get your public ip
-	transport := &http.Transport{
-		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			// just use tcp4
-			dialer := &net.Dialer{}
-			return dialer.DialContext(ctx, "tcp4", addr)
-		},
-	}
-	httpClient.SetTransport(transport)
-
-	// 1. Remove proxy so that the request is sent directly to the service
-	// 2. Set user agent to curl so that the service does not return an HTML page
-	httpClient.RemoveProxy().SetHeaders(map[string]string{"User-Agent": "curl/8.6.0"})
 	return &IpService{
-		client: httpClient,
-		names:  names,
+		client4: client4,
+		client6: client6,
+		names:   names,
 	}, nil
 }
 
-func (i *IpService) Ip() (string, error) {
+func createClient(network string) *resty.Client {
+	httpClient := resty.New()
+	transport := &http.Transport{
+		DialContext: func(ctx context.Context, _, addr string) (net.Conn, error) {
+			dialer := &net.Dialer{
+				Timeout: 1 * time.Second,
+			}
+			return dialer.DialContext(ctx, network, addr)
+		},
+	}
+	httpClient.SetTransport(transport)
+	httpClient.SetTimeout(5 * time.Second)
+	httpClient.RemoveProxy().SetHeaders(map[string]string{"User-Agent": "curl/8.6.0"})
+	return httpClient
+}
+
+func (i *IpService) GetIPs() (*provider.IpResult, error) {
+	result := &provider.IpResult{}
+
+	ipv4, err := i.getIP(i.client4)
+	if err == nil {
+		result.IPv4 = ipv4
+	}
+
+	ipv6, err := i.getIP(i.client6)
+	if err == nil {
+		result.IPv6 = ipv6
+	}
+
+	if result.IPv4 == "" && result.IPv6 == "" {
+		return nil, errors.New("[IpService] failed to get both IPv4 and IPv6 addresses")
+	}
+
+	return result, nil
+}
+
+func (i *IpService) getIP(client *resty.Client) (string, error) {
 	for _, name := range *i.names {
-		resp, err := i.client.R().Get(SERVICES[name])
+		resp, err := client.R().Get(SERVICES[name])
 		slog.Debug("[IpService] requesting IP address from:", "service", SERVICES[name])
 		if err != nil || resp.StatusCode() != 200 {
 			continue
 		}
 		ip := string(resp.Body())
-		ip = strings.Trim(ip, "\n")
+		ip = strings.TrimSpace(ip)
 		slog.Debug("[IpService] got IP address:", "ip", ip)
 		return ip, nil
 	}

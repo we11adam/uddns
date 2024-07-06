@@ -2,11 +2,13 @@ package updater
 
 import (
 	"errors"
+
 	"github.com/spf13/viper"
+	"github.com/we11adam/uddns/provider"
 )
 
 type Updater interface {
-	Update(ip string) error
+	Update(ips *provider.IpResult) error
 }
 
 type constructor func(v *viper.Viper) (Updater, error)

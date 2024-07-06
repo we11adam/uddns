@@ -1,4 +1,4 @@
-package duckdns
+package ddnsfm
 
 import (
 	"errors"
@@ -13,38 +13,38 @@ import (
 
 type Config struct {
 	Domain string `mapstructure:"domain"`
-	Token  string `mapstructure:"token"`
+	Key    string `mapstructure:"key"`
 }
 
-type DuckDNS struct {
+type DDNSFM struct {
 	httpclient *resty.Client
 	config     *Config
 }
 
 func init() {
-	updater.Register("DuckDNS", func(v *viper.Viper) (updater.Updater, error) {
+	updater.Register("ddnsfm", func(v *viper.Viper) (updater.Updater, error) {
 		cfg := Config{}
-		err := v.UnmarshalKey("updaters.duckdns", &cfg)
+		err := v.UnmarshalKey("updaters.ddnsfm", &cfg)
 		if err != nil {
 			return nil, err
 		}
-		if cfg.Domain == "" || cfg.Token == "" {
-			return nil, errors.New("[DuckDNS] missing required fields")
+		if cfg.Domain == "" || cfg.Key == "" {
+			return nil, errors.New("[DDNSFM] missing required fields")
 		}
 		return New(&cfg), nil
 	})
 }
 
-func New(cfg *Config) *DuckDNS {
+func New(cfg *Config) *DDNSFM {
 	httpclient := resty.New().SetTimeout(10 * time.Second).
-		SetBaseURL("https://www.duckdns.org")
-	return &DuckDNS{
+		SetBaseURL("https://api.ddns.fm")
+	return &DDNSFM{
 		httpclient: httpclient,
 		config:     cfg,
 	}
 }
 
-func (c *DuckDNS) Update(ips *provider.IpResult) error {
+func (c *DDNSFM) Update(ips *provider.IpResult) error {
 	if ips.IPv4 != "" {
 		err := c.updateIP(ips.IPv4)
 		if err != nil {
@@ -62,12 +62,12 @@ func (c *DuckDNS) Update(ips *provider.IpResult) error {
 	return nil
 }
 
-func (c *DuckDNS) updateIP(ip string) error {
+func (c *DDNSFM) updateIP(ip string) error {
 	resp, err := c.httpclient.R().
 		SetQueryParams(map[string]string{
-			"domains": c.config.Domain,
-			"token":   c.config.Token,
-			"ip":      ip,
+			"domain": c.config.Domain,
+			"key":    c.config.Key,
+			"myip":   ip,
 		}).Get("/update")
 
 	if err != nil {
@@ -76,9 +76,8 @@ func (c *DuckDNS) updateIP(ip string) error {
 
 	body := string(resp.Body())
 
-	if body != "OK" {
-		return fmt.Errorf("[DuckDNS] failed to update DNS record: %s", body)
+	if resp.StatusCode() != 200 {
+		return fmt.Errorf("[DDNSFM] failed to update DNS record: %s", body)
 	}
-
 	return nil
 }

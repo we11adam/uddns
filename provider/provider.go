@@ -2,11 +2,17 @@ package provider
 
 import (
 	"errors"
+
 	"github.com/spf13/viper"
 )
 
+type IpResult struct {
+	IPv4 string
+	IPv6 string
+}
+
 type Provider interface {
-	Ip() (string, error)
+	GetIPs() (*IpResult, error)
 }
 
 type constructor func(v *viper.Viper) (Provider, error)
