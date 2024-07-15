@@ -2,7 +2,9 @@ package cloudflare
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
+	"net"
 	"strings"
 	"sync"
 
@@ -69,7 +71,7 @@ func (c *Cloudflare) Update(ips *provider.IpResult) error {
 		zone := parts[l-2] + "." + parts[l-1]
 		zoneID, err := c.client.ZoneIDByName(zone)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to get zone ID: %w", err)
 		}
 		c.zoneID = zoneID
 	}
@@ -79,21 +81,27 @@ func (c *Cloudflare) Update(ips *provider.IpResult) error {
 	errCh := make(chan error, 2)
 
 	if ips.IPv4 != "" {
+		if !isValidIPv4(ips.IPv4) {
+			return fmt.Errorf("invalid IPv4 address: %s", ips.IPv4)
+		}
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			if err := c.updateDNSRecord(ctx, "A", ips.IPv4); err != nil {
-				errCh <- err
+				errCh <- fmt.Errorf("failed to update IPv4 record: %w", err)
 			}
 		}()
 	}
 
 	if ips.IPv6 != "" {
+		if !isValidIPv6(ips.IPv6) {
+			return fmt.Errorf("invalid IPv6 address: %s", ips.IPv6)
+		}
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			if err := c.updateDNSRecord(ctx, "AAAA", ips.IPv6); err != nil {
-				errCh <- err
+				errCh <- fmt.Errorf("failed to update IPv6 record: %w", err)
 			}
 		}()
 	}
@@ -108,6 +116,14 @@ func (c *Cloudflare) Update(ips *provider.IpResult) error {
 	}
 
 	return nil
+}
+
+func isValidIPv4(ip string) bool {
+	return net.ParseIP(ip) != nil && strings.Contains(ip, ".")
+}
+
+func isValidIPv6(ip string) bool {
+	return net.ParseIP(ip) != nil && strings.Contains(ip, ":")
 }
 
 func (c *Cloudflare) updateDNSRecord(ctx context.Context, recordType, ip string) error {

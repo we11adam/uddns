@@ -33,6 +33,11 @@ updaters:
     email: "user@exmaple.com" # Cloudflare account email
     apikey: fd25bdc03a4c17450aa4327aa37de4573270f # Cloudflare API key
     domain: ddns.yourdomain.com # Domain to update
+  aliyun:
+    accessKeyId: 6sPgr7b0bjvTzrar
+    accessKeySecret: 4tq6IhaWSt84fPrir0ZXgIJXwUxERkwe
+    domain: uddns.domain.com
+    regionId: cn-beijing
   # ddnsfm: # Use ddns.fm as the updater
   #   key: bgw99xiio5ewbphb
   #   domain: uddns.dyn.la
