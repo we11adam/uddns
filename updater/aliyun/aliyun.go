@@ -12,6 +12,12 @@ import (
 	"github.com/we11adam/uddns/updater"
 )
 
+const (
+	defaultRegionID = "cn-hangzhou"
+	recordTypeA     = "A"
+	recordTypeAAAA  = "AAAA"
+)
+
 type Config struct {
 	AccessKeyID     string `mapstructure:"accessKeyId"`
 	AccessKeySecret string `mapstructure:"accessKeySecret"`
@@ -20,9 +26,8 @@ type Config struct {
 }
 
 type Aliyun struct {
-	config    *Config
-	client    *alidns.Client
-	recordIDs map[string]string
+	config *Config
+	client *alidns.Client
 }
 
 func init() {
@@ -30,30 +35,36 @@ func init() {
 		cfg := Config{}
 		err := v.UnmarshalKey("updaters.aliyun", &cfg)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to unmarshal Aliyun config: %w", err)
 		}
 		return New(&cfg)
 	})
 }
 
 func New(config *Config) (*Aliyun, error) {
+	if config.AccessKeyID == "" {
+		return nil, fmt.Errorf("Aliyun AccessKeyID is not set in the configuration")
+	}
+	if config.AccessKeySecret == "" {
+		return nil, fmt.Errorf("Aliyun AccessKeySecret is not set in the configuration")
+	}
+	if config.Domain == "" {
+		return nil, fmt.Errorf("Aliyun Domain is not set in the configuration")
+	}
+
 	if config.RegionID == "" {
 		config.RegionID = "cn-hangzhou"
 		slog.Debug("[Aliyun] RegionID not set, using default value", "regionId", config.RegionID)
-	} else {
-		slog.Debug("[Aliyun] Using provided RegionID", "regionId", config.RegionID)
 	}
 
 	client, err := alidns.NewClientWithAccessKey(config.RegionID, config.AccessKeyID, config.AccessKeySecret)
 	if err != nil {
-		slog.Debug("[Aliyun] failed to create API client:", "error", err)
-		return nil, err
+		return nil, fmt.Errorf("failed to create Aliyun API client: %w", err)
 	}
 
 	return &Aliyun{
-		config:    config,
-		client:    client,
-		recordIDs: make(map[string]string),
+		config: config,
+		client: client,
 	}, nil
 }
 
@@ -62,9 +73,8 @@ func (a *Aliyun) Update(ips *provider.IpResult) error {
 		if !isValidIPv4(ips.IPv4) {
 			return fmt.Errorf("invalid IPv4 address: %s", ips.IPv4)
 		}
-		if err := a.updateDNSRecord("A", ips.IPv4); err != nil {
-			slog.Error("[Aliyun] Failed to update IPv4 record", "error", err)
-			return err
+		if err := a.updateDNSRecord(recordTypeA, ips.IPv4); err != nil {
+			return fmt.Errorf("failed to update IPv4 record: %w", err)
 		}
 	}
 
@@ -72,9 +82,8 @@ func (a *Aliyun) Update(ips *provider.IpResult) error {
 		if !isValidIPv6(ips.IPv6) {
 			return fmt.Errorf("invalid IPv6 address: %s", ips.IPv6)
 		}
-		if err := a.updateDNSRecord("AAAA", ips.IPv6); err != nil {
-			slog.Error("[Aliyun] Failed to update IPv6 record", "error", err)
-			return err
+		if err := a.updateDNSRecord(recordTypeAAAA, ips.IPv6); err != nil {
+			return fmt.Errorf("failed to update IPv6 record: %w", err)
 		}
 	}
 
@@ -92,8 +101,8 @@ func isValidIPv6(ip string) bool {
 func (a *Aliyun) updateDNSRecord(recordType, ip string) error {
 	domain := a.config.Domain
 	parts := strings.Split(domain, ".")
-	rr := strings.Join(parts[:len(parts)-2], ".")
 	domainName := strings.Join(parts[len(parts)-2:], ".")
+	rr := strings.TrimSuffix(domain, "."+domainName)
 
 	request := alidns.CreateDescribeSubDomainRecordsRequest()
 	request.SubDomain = domain
@@ -101,15 +110,14 @@ func (a *Aliyun) updateDNSRecord(recordType, ip string) error {
 
 	response, err := a.client.DescribeSubDomainRecords(request)
 	if err != nil {
-		slog.Error("[Aliyun] failed to get DNS records:", "error", err, "type", recordType)
-		return err
+		return fmt.Errorf("failed to get DNS records: %w", err)
 	}
 
 	if response.TotalCount > 0 && len(response.DomainRecords.Record) > 0 {
 		existingRecord := response.DomainRecords.Record[0]
 
 		if existingRecord.Value == ip {
-			slog.Info("[Aliyun] DNS record is already up to date", "type", recordType, "ip", ip)
+			slog.Debug("[Aliyun] DNS record is already up to date", "type", recordType, "ip", ip)
 			return nil
 		}
 
@@ -121,8 +129,7 @@ func (a *Aliyun) updateDNSRecord(recordType, ip string) error {
 
 		_, err := a.client.UpdateDomainRecord(updateRequest)
 		if err != nil {
-			slog.Error("[Aliyun] failed to update DNS record", "error", err, "type", recordType)
-			return err
+			return fmt.Errorf("failed to update DNS record: %w", err)
 		}
 
 		slog.Info("[Aliyun] DNS record updated successfully", "type", recordType, "ip", ip, "recordId", existingRecord.RecordId)
@@ -135,8 +142,7 @@ func (a *Aliyun) updateDNSRecord(recordType, ip string) error {
 
 		response, err := a.client.AddDomainRecord(addRequest)
 		if err != nil {
-			slog.Error("[Aliyun] failed to add DNS record", "error", err, "type", recordType)
-			return err
+			return fmt.Errorf("failed to add DNS record: %w", err)
 		}
 
 		slog.Info("[Aliyun] DNS record added successfully", "type", recordType, "ip", ip, "recordId", response.RecordId)
