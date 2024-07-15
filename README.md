@@ -51,6 +51,7 @@ Where:
     - `username`: The RouterOS user with API access
     - `password`: The RouterOS user password
   - `ip_service`: Get IP address from an external service
+    - `ip.fm`
     - `ifconfig.me`
     - `ip.sb`
     - `3322.org`
@@ -61,6 +62,11 @@ Where:
     - `email`: Cloudflare account email
     - `apikey`: Cloudflare API key
     - `domain`: Domain to update, e.g. `ddns.yourdomain.com`
+  - `aliyun`:
+    - `accessKeyId`: Aliyun access key ID
+    - `accessKeySecret`: Aliyun access key secret
+    - `domain`: Domain to update, e.g. `ddns.yourdomain.com`
+    - `regionId`: cn-hangzhou # Optional
   - `duckdns`:
     - `token`: DuckDNS token
     - `domain`: Domain to update, excluding the `duckdns.org` part.
