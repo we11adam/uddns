@@ -63,10 +63,10 @@ Where:
     - `apikey`: Cloudflare API key
     - `domain`: Domain to update, e.g. `ddns.yourdomain.com`
   - `aliyun`:
-    - `accessKeyId`: Aliyun access key ID
-    - `accessKeySecret`: Aliyun access key secret
+    - `accesskeyid`: Aliyun access key ID
+    - `accesskeysecret`: Aliyun access key secret
     - `domain`: Domain to update, e.g. `ddns.yourdomain.com`
-    - `regionId`: cn-hangzhou # Optional
+    - `regionid`: cn-hangzhou # Optional
   - `duckdns`:
     - `token`: DuckDNS token
     - `domain`: Domain to update, excluding the `duckdns.org` part.

@@ -19,9 +19,9 @@ const (
 )
 
 type Config struct {
-	AccessKeyID     string `mapstructure:"accessKeyId"`
-	AccessKeySecret string `mapstructure:"accessKeySecret"`
-	RegionID        string `mapstructure:"regionId"`
+	AccessKeyID     string `mapstructure:"accesskeyid"`
+	AccessKeySecret string `mapstructure:"accesskeysecret"`
+	RegionID        string `mapstructure:"regionid"`
 	Domain          string `mapstructure:"domain"`
 }
 
