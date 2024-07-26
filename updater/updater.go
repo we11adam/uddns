@@ -1,7 +1,7 @@
 package updater
 
 import (
-	"errors"
+	"fmt"
 
 	"github.com/spf13/viper"
 	"github.com/we11adam/uddns/provider"
@@ -27,5 +27,5 @@ func GetUpdater(v *viper.Viper) (string, Updater, error) {
 		}
 	}
 
-	return "", nil, errors.New("no updater can be initialized")
+	return "", nil, fmt.Errorf("no updater can be initialized")
 }

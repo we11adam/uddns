@@ -1,7 +1,6 @@
 package netif
 
 import (
-	"errors"
 	"fmt"
 	"net"
 
@@ -25,7 +24,7 @@ func init() {
 			return nil, err
 		}
 		if cfg.Name == "" {
-			return nil, errors.New("[NetworkInterface] missing required fields")
+			return nil, fmt.Errorf("[NetworkInterface] missing required fields")
 		}
 		return New(&cfg)
 	})

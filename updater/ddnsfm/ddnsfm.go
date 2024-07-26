@@ -1,7 +1,6 @@
 package ddnsfm
 
 import (
-	"errors"
 	"fmt"
 	"time"
 
@@ -29,7 +28,7 @@ func init() {
 			return nil, err
 		}
 		if cfg.Domain == "" || cfg.Key == "" {
-			return nil, errors.New("[DDNSFM] missing required fields")
+			return nil, fmt.Errorf("[DDNSFM] missing required fields")
 		}
 		return New(&cfg), nil
 	})

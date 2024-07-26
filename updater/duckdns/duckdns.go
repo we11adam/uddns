@@ -1,7 +1,6 @@
 package duckdns
 
 import (
-	"errors"
 	"fmt"
 	"time"
 
@@ -29,7 +28,7 @@ func init() {
 			return nil, err
 		}
 		if cfg.Domain == "" || cfg.Token == "" {
-			return nil, errors.New("[DuckDNS] missing required fields")
+			return nil, fmt.Errorf("[DuckDNS] missing required fields")
 		}
 		return New(&cfg), nil
 	})
