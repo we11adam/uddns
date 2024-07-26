@@ -2,6 +2,7 @@ package duckdns
 
 import (
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/go-resty/resty/v2"
@@ -78,6 +79,8 @@ func (c *DuckDNS) updateIP(ip string) error {
 	if body != "OK" {
 		return fmt.Errorf("[DuckDNS] failed to update DNS record: %s", body)
 	}
+
+	slog.Info("[DuckDNS] DNS record updated successfully", "ip", ip)
 
 	return nil
 }

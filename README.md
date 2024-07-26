@@ -33,7 +33,7 @@ updaters:
     email: "user@exmaple.com" # Cloudflare account email
     apikey: fd25bdc03a4c17450aa4327aa37de4573270f # Cloudflare API key
     domain: ddns.yourdomain.com # Domain to update
-  # ddnsfm: # Use ddns.fm as the updater
+  # lightdns: # Use LightDNS as the updater
   #   key: bgw99xiio5ewbphb
   #   domain: uddns.dyn.la
 notifiers:
@@ -70,8 +70,8 @@ Where:
   - `duckdns`:
     - `token`: DuckDNS token
     - `domain`: Domain to update, excluding the `duckdns.org` part.
-  - `ddnsfm`:
-    - `key`: ddns.fm DDNS key
+  - `ligthdns`:
+    - `key`: LightDNS DDNS key
     - `domain`: Domain to update.
 - `notifiers` is a list of notifiers that UDDNS can use to notify the user of the IP address change. Currently supported notifiers are:
   - `telegram`:
