@@ -2,7 +2,7 @@ package ip_service
 
 import (
 	"context"
-	"errors"
+	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
@@ -37,7 +37,7 @@ func init() {
 			return nil, err
 		}
 		if len(cfg) == 0 {
-			return nil, errors.New("[IpService] no service names provided")
+			return nil, fmt.Errorf("[IpService] no service names provided")
 		}
 		return New(&cfg)
 	})
@@ -84,7 +84,7 @@ func (i *IpService) GetIPs() (*provider.IpResult, error) {
 	}
 
 	if result.IPv4 == "" && result.IPv6 == "" {
-		return nil, errors.New("[IpService] failed to get both IPv4 and IPv6 addresses")
+		return nil, fmt.Errorf("[IpService] failed to get both IPv4 and IPv6 addresses")
 	}
 
 	return result, nil
@@ -102,5 +102,5 @@ func (i *IpService) getIP(client *resty.Client) (string, error) {
 		slog.Debug("[IpService] got IP address:", "ip", ip)
 		return ip, nil
 	}
-	return "", errors.New("[IpService] failed to get IP address")
+	return "", fmt.Errorf("[IpService] failed to get IP address from all services")
 }

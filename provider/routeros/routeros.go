@@ -2,7 +2,7 @@ package routeros
 
 import (
 	"crypto/tls"
-	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/go-resty/resty/v2"
@@ -48,7 +48,7 @@ func init() {
 		}
 
 		if cfg.Username == "" || cfg.Endpoint == "" {
-			return nil, errors.New("[RouterOS] missing required fields")
+			return nil, fmt.Errorf("[RouterOS] missing required fields")
 		}
 		return New(&cfg)
 	})
@@ -114,7 +114,7 @@ func (r *RouterOS) GetIPs() (*provider.IpResult, error) {
 	}
 
 	if result.IPv4 == "" && result.IPv6 == "" {
-		return nil, errors.New("[RouterOS] no IP address found")
+		return nil, fmt.Errorf("[RouterOS] no IP address found")
 	}
 
 	return result, nil

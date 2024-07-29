@@ -1,7 +1,7 @@
 package provider
 
 import (
-	"errors"
+	"fmt"
 
 	"github.com/spf13/viper"
 )
@@ -31,5 +31,5 @@ func GetProvider(v *viper.Viper) (string, Provider, error) {
 		}
 	}
 
-	return "", nil, errors.New("no provider can be initialized")
+	return "", nil, fmt.Errorf("no provider can be initialized")
 }

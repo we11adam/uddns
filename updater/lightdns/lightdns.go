@@ -1,8 +1,8 @@
-package ddnsfm
+package lightdns
 
 import (
-	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/go-resty/resty/v2"
@@ -16,35 +16,35 @@ type Config struct {
 	Key    string `mapstructure:"key"`
 }
 
-type DDNSFM struct {
+type LigthDNS struct {
 	httpclient *resty.Client
 	config     *Config
 }
 
 func init() {
-	updater.Register("ddnsfm", func(v *viper.Viper) (updater.Updater, error) {
+	updater.Register("lightdns", func(v *viper.Viper) (updater.Updater, error) {
 		cfg := Config{}
-		err := v.UnmarshalKey("updaters.ddnsfm", &cfg)
+		err := v.UnmarshalKey("updaters.lightdns", &cfg)
 		if err != nil {
 			return nil, err
 		}
 		if cfg.Domain == "" || cfg.Key == "" {
-			return nil, errors.New("[DDNSFM] missing required fields")
+			return nil, fmt.Errorf("[LigthDNS] missing required fields")
 		}
 		return New(&cfg), nil
 	})
 }
 
-func New(cfg *Config) *DDNSFM {
+func New(cfg *Config) *LigthDNS {
 	httpclient := resty.New().SetTimeout(10 * time.Second).
-		SetBaseURL("https://api.ddns.fm")
-	return &DDNSFM{
+		SetBaseURL("https://api.lightdns.io")
+	return &LigthDNS{
 		httpclient: httpclient,
 		config:     cfg,
 	}
 }
 
-func (c *DDNSFM) Update(ips *provider.IpResult) error {
+func (c *LigthDNS) Update(ips *provider.IpResult) error {
 	if ips.IPv4 != "" {
 		err := c.updateIP(ips.IPv4)
 		if err != nil {
@@ -62,7 +62,7 @@ func (c *DDNSFM) Update(ips *provider.IpResult) error {
 	return nil
 }
 
-func (c *DDNSFM) updateIP(ip string) error {
+func (c *LigthDNS) updateIP(ip string) error {
 	resp, err := c.httpclient.R().
 		SetQueryParams(map[string]string{
 			"domain": c.config.Domain,
@@ -77,7 +77,10 @@ func (c *DDNSFM) updateIP(ip string) error {
 	body := string(resp.Body())
 
 	if resp.StatusCode() != 200 {
-		return fmt.Errorf("[DDNSFM] failed to update DNS record: %s", body)
+		return fmt.Errorf("[LigthDNS] failed to update DNS record: %s", body)
 	}
+
+	slog.Info("[LigthDNS] DNS record updated successfully", "ip", ip)
+
 	return nil
 }

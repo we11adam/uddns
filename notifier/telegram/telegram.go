@@ -1,7 +1,7 @@
 package telegram
 
 import (
-	"errors"
+	"fmt"
 
 	"github.com/go-resty/resty/v2"
 	"github.com/spf13/viper"
@@ -24,7 +24,7 @@ func init() {
 		}
 
 		if telegram.Token == "" || telegram.ChatID == "" {
-			return nil, errors.New("missing required fields")
+			return nil, fmt.Errorf("missing required fields")
 		}
 
 		telegram.hc = resty.New()

@@ -1,8 +1,8 @@
 package duckdns
 
 import (
-	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/go-resty/resty/v2"
@@ -29,7 +29,7 @@ func init() {
 			return nil, err
 		}
 		if cfg.Domain == "" || cfg.Token == "" {
-			return nil, errors.New("[DuckDNS] missing required fields")
+			return nil, fmt.Errorf("[DuckDNS] missing required fields")
 		}
 		return New(&cfg), nil
 	})
@@ -79,6 +79,8 @@ func (c *DuckDNS) updateIP(ip string) error {
 	if body != "OK" {
 		return fmt.Errorf("[DuckDNS] failed to update DNS record: %s", body)
 	}
+
+	slog.Info("[DuckDNS] DNS record updated successfully", "ip", ip)
 
 	return nil
 }

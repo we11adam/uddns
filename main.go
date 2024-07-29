@@ -21,9 +21,10 @@ import (
 	_ "github.com/we11adam/uddns/provider/ip_service"
 	_ "github.com/we11adam/uddns/provider/netif"
 	_ "github.com/we11adam/uddns/provider/routeros"
+	_ "github.com/we11adam/uddns/updater/aliyun"
 	_ "github.com/we11adam/uddns/updater/cloudflare"
-	_ "github.com/we11adam/uddns/updater/ddnsfm"
 	_ "github.com/we11adam/uddns/updater/duckdns"
+	_ "github.com/we11adam/uddns/updater/lightdns"
 )
 
 func init() {
