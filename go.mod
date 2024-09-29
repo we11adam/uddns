@@ -3,6 +3,7 @@ module github.com/we11adam/uddns
 go 1.21
 
 require (
+	github.com/aliyun/alibaba-cloud-sdk-go v1.62.789
 	github.com/cloudflare/cloudflare-go v0.93.0
 	github.com/go-resty/resty/v2 v2.12.0
 	github.com/joho/godotenv v1.5.1
@@ -12,7 +13,6 @@ require (
 )
 
 require (
-	github.com/aliyun/alibaba-cloud-sdk-go v1.62.789 // indirect
 	github.com/fsnotify/fsnotify v1.7.0 // indirect
 	github.com/goccy/go-json v0.10.2 // indirect
 	github.com/google/go-querystring v1.1.0 // indirect

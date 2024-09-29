@@ -75,6 +75,7 @@ func (a *App) schedule() {
 				err = a.updater.Update(ipResult)
 				if err != nil {
 					slog.Error("[UDDNS] failed to update DNS records:", "error", err)
+					a.notifier.Notify(notifier.Notification{Message: fmt.Sprintf("Failed to update DNS records: %s", err)})
 				} else {
 					slog.Info("[UDDNS] DNS records updated:", "ipv4", ipResult.IPv4, "ipv6", ipResult.IPv6)
 					err = a.notifier.Notify(notifier.Notification{Message: fmt.Sprintf("DNS records updated: IPv4=%s, IPv6=%s", ipResult.IPv4, ipResult.IPv6)})
