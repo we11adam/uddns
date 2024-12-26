@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/cloudflare/cloudflare-go"
@@ -24,6 +26,7 @@ type Config struct {
 	APIKey   string `mapstructure:"apikey"`
 	APIToken string `mapstructure:"apitoken"`
 	Domain   string `mapstructure:"domain"`
+	Proxy    string `mapstructure:"proxy"`
 }
 
 type Cloudflare struct {
@@ -49,16 +52,32 @@ func New(config *Config) (*Cloudflare, error) {
 	}
 
 	var (
-		api *cloudflare.API
-		err error
+		api        *cloudflare.API
+		httpClient *http.Client
+		err        error
 	)
+
+	if config.Proxy == "" {
+		httpClient = &http.Client{}
+	} else {
+		proxy, err := url.Parse(config.Proxy)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse Cloudflare proxy URL: %w", err)
+		}
+		slog.Info("[Cloudflare] Using proxy", "proxy", config.Proxy)
+		httpClient = &http.Client{
+			Transport: &http.Transport{
+				Proxy: http.ProxyURL(proxy),
+			},
+		}
+	}
 
 	if config.APIToken != "" {
 		slog.Debug("[Cloudflare] Using API Token for authentication")
-		api, err = cloudflare.NewWithAPIToken(config.APIToken)
+		api, err = cloudflare.NewWithAPIToken(config.APIToken, cloudflare.HTTPClient(httpClient))
 	} else if config.APIKey != "" && config.Email != "" {
 		slog.Debug("[Cloudflare] Using API Key and Email for authentication")
-		api, err = cloudflare.New(config.APIKey, config.Email)
+		api, err = cloudflare.New(config.APIKey, config.Email, cloudflare.HTTPClient(httpClient))
 	} else {
 		return nil, fmt.Errorf("Cloudflare configuration error: either APIToken or both APIKey and Email must be provided")
 	}
