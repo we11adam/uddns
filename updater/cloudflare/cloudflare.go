@@ -57,9 +57,7 @@ func New(config *Config) (*Cloudflare, error) {
 		err        error
 	)
 
-	if config.Proxy == "" {
-		httpClient = &http.Client{}
-	} else {
+	if config.Proxy != "" {
 		proxy, err := url.Parse(config.Proxy)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse Cloudflare proxy URL: %w", err)
