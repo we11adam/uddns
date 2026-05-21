@@ -5,10 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"time"
 
-	"github.com/lmittmann/tint"
-	"github.com/mattn/go-isatty"
 	"github.com/spf13/viper"
 	"github.com/we11adam/uddns/app"
 	"github.com/we11adam/uddns/notifier"
@@ -28,13 +25,7 @@ import (
 )
 
 func init() {
-	slog.SetDefault(slog.New(
-		tint.NewHandler(os.Stdout, &tint.Options{
-			NoColor:    !isatty.IsTerminal(os.Stdout.Fd()),
-			Level:      slog.LevelDebug,
-			TimeFormat: time.DateTime,
-		}),
-	))
+	configureLogger()
 }
 
 func main() {
@@ -44,38 +35,39 @@ func main() {
 
 	config, err := getConfigFile(configPath)
 	if err != nil {
-		slog.Error("fatal error config file", "error", err)
+		slog.Error("failed to find config file", "error", err)
 		os.Exit(1)
 	}
 
 	v := viper.New()
-	slog.Info("[UDDNS] using config:", "config", config)
 	v.SetConfigFile(config)
 	if err = v.ReadInConfig(); err != nil {
-		slog.Error("[UDDNS] failed to read config file:", "error", err)
+		slog.Error("failed to read config file", "config", config, "error", err)
 		os.Exit(1)
 	}
+	configureLoggerFromConfig(v)
+	slog.Info("using config file", "config", config)
 
-	name, p, err := provider.GetProvider(v)
+	providerName, p, err := provider.GetProvider(v)
 	if err != nil {
-		slog.Error("[UDDNS] no provider found.")
+		slog.Error("no provider found", "error", err)
 		os.Exit(1)
 	} else {
-		slog.Info("[UDDNS] provider selected:", "name", name)
+		slog.Info("provider selected", "provider", providerName)
 	}
 
-	name, u, err := updater.GetUpdater(v)
+	updaterName, u, err := updater.GetUpdater(v)
 	if err != nil {
-		slog.Error("[UDDNS] no updater found.")
+		slog.Error("no updater found", "error", err)
 		os.Exit(1)
 	} else {
-		slog.Info("[UDDNS] updater selected:", "updater", name)
+		slog.Info("updater selected", "updater", updaterName)
 	}
 
-	name, n := notifier.GetNotifier(v)
-	slog.Info("[UDDNS] notifier selected:", "notifier", name)
+	notifierName, n := notifier.GetNotifier(v)
+	slog.Info("notifier selected", "notifier", notifierName)
 
-	app.NewApp(&p, &u, &n).Run()
+	app.NewApp(providerName, p, updaterName, u, notifierName, n).Run()
 }
 
 func getConfigFile(providedPath string) (string, error) {

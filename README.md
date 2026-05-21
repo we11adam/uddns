@@ -57,6 +57,11 @@ notifiers:
     chat_id: -1001234567890 # Telegram chat ID
     token: 1234567890:E2AvwaQsEvkACAF9pVPZAICmbXuzzHFTyyv # Telegram bot token
     proxy: http://127.0.0.1:2080
+
+logging:
+  level: info # debug, info, warn, or error
+  dir: /var/log/uddns # Optional. Enables daily rotated file logging.
+  retention_days: 7 # Number of calendar days to keep, including today.
 ```
 
 Where:
@@ -94,10 +99,18 @@ Where:
     - `token`: Telegram bot token
     - `chat_id`: Telegram chat ID
     - `proxy`: Proxy URL to use for Telegram API requests if you are behind a (great) firewall. Optional.
+- `logging` controls log output:
+  - `level`: Log verbosity. One of `debug`, `info`, `warn`, or `error`. Optional, defaults to `info`.
+  - `dir`: Directory for daily rotated log files. Optional. If omitted, logs are only written to stdout.
+  - `retention_days`: Number of calendar days to keep, including today. Optional, defaults to `7`.
 
 ### Running
 
 Run the binary as the following. It will update the DNS record with the current public IP address with a default interval of 30 seconds, which can be overriden with the `UDDNS_INTERVAL` environment variable. The format for specifying the interval is flexible, allowing values such as `60s`, `5m`, `1h`, etc.
+
+Log settings can be configured under the `logging` section in `uddns.yaml`. The corresponding environment variables are `UDDNS_LOG_LEVEL`, `UDDNS_LOG_DIR`, and `UDDNS_LOG_RETENTION_DAYS`; when set, environment variables override the config file.
+
+Set `logging.dir` or `UDDNS_LOG_DIR` to enable file logging with daily calendar rotation. Log files are named `uddns-YYYY-MM-DD.log`. `logging.retention_days` or `UDDNS_LOG_RETENTION_DAYS` controls how many calendar days are kept, including today; the default is `7`.
 
 ```shell
 nohup ./uddns > uddns.log 2>&1 &
@@ -108,7 +121,7 @@ nohup ./uddns > uddns.log 2>&1 &
 - [ ] Add more providers
 - [ ] Add more updaters
 - [ ] Add granular configuration options
-- [ ] Add sensible logging
+- [x] Add sensible logging
 - [ ] Add tests
 - [ ] Add CI/CD
 - [ ] Add Dockerfile

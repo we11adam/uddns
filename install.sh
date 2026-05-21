@@ -8,6 +8,8 @@ INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
 SERVICE_NAME="${SERVICE_NAME:-uddns}"
 CONFIG_FILE="${UDDNS_CONFIG:-/etc/uddns.yaml}"
 SERVICE_INTERVAL="${UDDNS_INTERVAL:-30s}"
+LOG_DIR="${UDDNS_LOG_DIR:-}"
+LOG_RETENTION_DAYS="${UDDNS_LOG_RETENTION_DAYS:-}"
 INSTALL_SYSTEMD="${UDDNS_INSTALL_SYSTEMD:-}"
 
 usage() {
@@ -25,10 +27,14 @@ Options:
   --no-systemd          Skip systemd service installation
   --config <path>       Config file path used by the systemd service
   --interval <duration> UDDNS_INTERVAL used by the systemd service
+  --log-dir <dir>       Enable rotated file logging in the systemd service
+  --log-retention-days <n>
+                        Calendar days of logs to keep (application default: 7)
   -h, --help            Show this help
 
 Environment:
-  UDDNS_VERSION, INSTALL_DIR, UDDNS_INSTALL_SYSTEMD, UDDNS_CONFIG, UDDNS_INTERVAL
+  UDDNS_VERSION, INSTALL_DIR, UDDNS_INSTALL_SYSTEMD, UDDNS_CONFIG, UDDNS_INTERVAL,
+  UDDNS_LOG_DIR, UDDNS_LOG_RETENTION_DAYS
 EOF
 }
 
@@ -170,6 +176,16 @@ parse_args() {
 			--interval)
 				[ "$#" -ge 2 ] || fail "--interval requires a value"
 				SERVICE_INTERVAL="$2"
+				shift 2
+				;;
+			--log-dir)
+				[ "$#" -ge 2 ] || fail "--log-dir requires a value"
+				LOG_DIR="$2"
+				shift 2
+				;;
+			--log-retention-days)
+				[ "$#" -ge 2 ] || fail "--log-retention-days requires a value"
+				LOG_RETENTION_DAYS="$2"
 				shift 2
 				;;
 			-h | --help)
@@ -342,6 +358,16 @@ After=network-online.target
 Type=simple
 Environment=UDDNS_CONFIG=${CONFIG_FILE}
 Environment=UDDNS_INTERVAL=${SERVICE_INTERVAL}
+EOF
+
+	if [ -n "$LOG_DIR" ]; then
+		printf 'Environment=UDDNS_LOG_DIR=%s\n' "$LOG_DIR" >>"$unit_file"
+	fi
+	if [ -n "$LOG_RETENTION_DAYS" ]; then
+		printf 'Environment=UDDNS_LOG_RETENTION_DAYS=%s\n' "$LOG_RETENTION_DAYS" >>"$unit_file"
+	fi
+
+	cat >>"$unit_file" <<EOF
 ExecStart=${binary_path}
 Restart=on-failure
 RestartSec=10s
