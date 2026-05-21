@@ -1,9 +1,7 @@
 package updater
 
 import (
-	"fmt"
-
-	"github.com/spf13/viper"
+	"github.com/we11adam/uddns/internal/registry"
 	"github.com/we11adam/uddns/provider"
 )
 
@@ -11,21 +9,18 @@ type Updater interface {
 	Update(ips *provider.IpResult) error
 }
 
-type constructor func(v *viper.Viper) (Updater, error)
+type ConfigReader = registry.ConfigReader
 
-var Updaters = make(map[string]constructor)
+type constructor = registry.Constructor[Updater]
 
-func Register(name string, constructor constructor) {
-	Updaters[name] = constructor
+var ErrNotConfigured = registry.ErrNotConfigured
+
+var updaters = registry.New[Updater]("updater", "updaters.use")
+
+func Register(name, configKey string, constructor constructor) {
+	updaters.Register(name, configKey, constructor)
 }
 
-func GetUpdater(v *viper.Viper) (string, Updater, error) {
-	for n, c := range Updaters {
-		u, err := c(v)
-		if err == nil {
-			return n, u, nil
-		}
-	}
-
-	return "", nil, fmt.Errorf("no updater can be initialized")
+func GetUpdater(config ConfigReader) (string, Updater, error) {
+	return updaters.Get(config)
 }

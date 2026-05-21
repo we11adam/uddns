@@ -6,6 +6,24 @@ All notable changes to UDDNS are documented here, based on the Git commit histor
 
 No changes yet.
 
+## v1.5.0 - 2026-05-22
+
+### Added
+
+- Added `providers.use` and `updaters.use` for explicit provider/updater selection.
+- Added Chinese changelog in `CHANGELOG.zh-CN.md`.
+
+### Changed
+
+- Replaced provider/updater map registries with a deterministic generic registry.
+- Decoupled provider/updater constructors from direct Viper dependencies.
+- Improved provider/updater configuration errors so missing configuration can be skipped while invalid configuration stops startup with context.
+- Updated README links to point to both English and Chinese changelogs.
+
+### Fixed
+
+- Fixed LightDNS updater spelling and display-name casing while keeping the `updaters.lightdns` config key compatible.
+
 ## v1.4.0 - 2026-05-21
 
 ### Added

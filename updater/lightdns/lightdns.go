@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/go-resty/resty/v2"
-	"github.com/spf13/viper"
 	"github.com/we11adam/uddns/provider"
 	"github.com/we11adam/uddns/updater"
 )
@@ -16,35 +15,39 @@ type Config struct {
 	Key    string `mapstructure:"key"`
 }
 
-type LigthDNS struct {
+type LightDNS struct {
 	httpclient *resty.Client
 	config     *Config
 }
 
 func init() {
-	updater.Register("lightdns", func(v *viper.Viper) (updater.Updater, error) {
+	updater.Register("LightDNS", "updaters.lightdns", func(v updater.ConfigReader) (updater.Updater, error) {
+		if !v.IsSet("updaters.lightdns") {
+			return nil, updater.ErrNotConfigured
+		}
+
 		cfg := Config{}
 		err := v.UnmarshalKey("updaters.lightdns", &cfg)
 		if err != nil {
 			return nil, err
 		}
 		if cfg.Domain == "" || cfg.Key == "" {
-			return nil, fmt.Errorf("[LigthDNS] missing required fields")
+			return nil, fmt.Errorf("[LightDNS] missing required fields")
 		}
 		return New(&cfg), nil
 	})
 }
 
-func New(cfg *Config) *LigthDNS {
+func New(cfg *Config) *LightDNS {
 	httpclient := resty.New().SetTimeout(10 * time.Second).
 		SetBaseURL("https://api.lightdns.io")
-	return &LigthDNS{
+	return &LightDNS{
 		httpclient: httpclient,
 		config:     cfg,
 	}
 }
 
-func (c *LigthDNS) Update(ips *provider.IpResult) error {
+func (c *LightDNS) Update(ips *provider.IpResult) error {
 	if ips.IPv4 != "" {
 		err := c.updateIP(ips.IPv4)
 		if err != nil {
@@ -62,7 +65,7 @@ func (c *LigthDNS) Update(ips *provider.IpResult) error {
 	return nil
 }
 
-func (c *LigthDNS) updateIP(ip string) error {
+func (c *LightDNS) updateIP(ip string) error {
 	resp, err := c.httpclient.R().
 		SetQueryParams(map[string]string{
 			"domain": c.config.Domain,
@@ -77,10 +80,10 @@ func (c *LigthDNS) updateIP(ip string) error {
 	body := string(resp.Body())
 
 	if resp.StatusCode() != 200 {
-		return fmt.Errorf("[LigthDNS] failed to update DNS record: %s", body)
+		return fmt.Errorf("[LightDNS] failed to update DNS record: %s", body)
 	}
 
-	slog.Info("[LigthDNS] DNS record updated successfully", "ip", ip)
+	slog.Info("[LightDNS] DNS record updated successfully", "ip", ip)
 
 	return nil
 }

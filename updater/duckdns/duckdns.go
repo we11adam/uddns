@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/go-resty/resty/v2"
-	"github.com/spf13/viper"
 	"github.com/we11adam/uddns/provider"
 	"github.com/we11adam/uddns/updater"
 )
@@ -22,7 +21,11 @@ type DuckDNS struct {
 }
 
 func init() {
-	updater.Register("DuckDNS", func(v *viper.Viper) (updater.Updater, error) {
+	updater.Register("DuckDNS", "updaters.duckdns", func(v updater.ConfigReader) (updater.Updater, error) {
+		if !v.IsSet("updaters.duckdns") {
+			return nil, updater.ErrNotConfigured
+		}
+
 		cfg := Config{}
 		err := v.UnmarshalKey("updaters.duckdns", &cfg)
 		if err != nil {

@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/aliyun/alibaba-cloud-sdk-go/services/alidns"
-	"github.com/spf13/viper"
 	"github.com/we11adam/uddns/provider"
 	"github.com/we11adam/uddns/updater"
 )
@@ -31,7 +30,11 @@ type Aliyun struct {
 }
 
 func init() {
-	updater.Register("Aliyun", func(v *viper.Viper) (updater.Updater, error) {
+	updater.Register("Aliyun", "updaters.aliyun", func(v updater.ConfigReader) (updater.Updater, error) {
+		if !v.IsSet("updaters.aliyun") {
+			return nil, updater.ErrNotConfigured
+		}
+
 		cfg := Config{}
 		err := v.UnmarshalKey("updaters.aliyun", &cfg)
 		if err != nil {

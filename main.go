@@ -48,7 +48,9 @@ func main() {
 	configureLoggerFromConfig(v)
 	slog.Info("using config file", "config", config)
 
-	providerName, p, err := provider.GetProvider(v)
+	configReader := viperConfigReader{v: v}
+
+	providerName, p, err := provider.GetProvider(configReader)
 	if err != nil {
 		slog.Error("no provider found", "error", err)
 		os.Exit(1)
@@ -56,7 +58,7 @@ func main() {
 		slog.Info("provider selected", "provider", providerName)
 	}
 
-	updaterName, u, err := updater.GetUpdater(v)
+	updaterName, u, err := updater.GetUpdater(configReader)
 	if err != nil {
 		slog.Error("no updater found", "error", err)
 		os.Exit(1)
@@ -68,6 +70,22 @@ func main() {
 	slog.Info("notifier selected", "notifier", notifierName)
 
 	app.NewApp(providerName, p, updaterName, u, notifierName, n).Run()
+}
+
+type viperConfigReader struct {
+	v *viper.Viper
+}
+
+func (r viperConfigReader) GetString(key string) string {
+	return r.v.GetString(key)
+}
+
+func (r viperConfigReader) IsSet(key string) bool {
+	return r.v.IsSet(key)
+}
+
+func (r viperConfigReader) UnmarshalKey(key string, rawVal any) error {
+	return r.v.UnmarshalKey(key, rawVal)
 }
 
 func getConfigFile(providedPath string) (string, error) {

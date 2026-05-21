@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net"
 
-	"github.com/spf13/viper"
 	"github.com/we11adam/uddns/provider"
 )
 
@@ -17,7 +16,11 @@ type Config struct {
 }
 
 func init() {
-	provider.Register("NetworkInterface", func(v *viper.Viper) (provider.Provider, error) {
+	provider.Register("NetworkInterface", "providers.netif", func(v provider.ConfigReader) (provider.Provider, error) {
+		if !v.IsSet("providers.netif") {
+			return nil, provider.ErrNotConfigured
+		}
+
 		cfg := Config{}
 		err := v.UnmarshalKey("providers.netif", &cfg)
 		if err != nil {

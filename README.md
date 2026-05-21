@@ -67,6 +67,7 @@ Example:
 
 ```yaml
 providers:
+  use: ip_service
   routeros:
     endpoint: https://192.168.88.1
     username: admin
@@ -79,6 +80,7 @@ providers:
     name: ppp0
 
 updaters:
+  use: cloudflare
   cloudflare:
     apitoken: your-cloudflare-api-token
     # Or use email + apikey:
@@ -110,8 +112,11 @@ logging:
   retention_days: 7
 ```
 
-Configure at least one provider and one updater. If multiple providers or
-updaters are configured, UDDNS uses the first one that can be initialized.
+Configure at least one provider and one updater. Use `providers.use` and
+`updaters.use` to select a specific implementation when multiple entries are
+present. If `use` is omitted, UDDNS checks configured entries in deterministic
+registry order. A configured but invalid provider or updater stops startup with
+its configuration error instead of silently falling back to another entry.
 
 ### Providers
 
@@ -201,6 +206,7 @@ Environment variables override config-file logging values:
 ## Changelog
 
 See [CHANGELOG.md](CHANGELOG.md) for release history and unreleased changes.
+Chinese release notes are available in [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
 
 ## Roadmap
 

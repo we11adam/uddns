@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/go-resty/resty/v2"
-	"github.com/spf13/viper"
 	"github.com/we11adam/uddns/provider"
 )
 
@@ -40,7 +39,11 @@ type rosAddress struct {
 }
 
 func init() {
-	provider.Register("RouterOS", func(v *viper.Viper) (provider.Provider, error) {
+	provider.Register("RouterOS", "providers.routeros", func(v provider.ConfigReader) (provider.Provider, error) {
+		if !v.IsSet("providers.routeros") {
+			return nil, provider.ErrNotConfigured
+		}
+
 		cfg := Config{}
 		err := v.UnmarshalKey("providers.routeros", &cfg)
 		if err != nil {

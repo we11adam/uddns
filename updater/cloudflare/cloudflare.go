@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/cloudflare/cloudflare-go"
-	"github.com/spf13/viper"
 	"github.com/we11adam/uddns/provider"
 	"github.com/we11adam/uddns/updater"
 )
@@ -36,7 +35,11 @@ type Cloudflare struct {
 }
 
 func init() {
-	updater.Register("Cloudflare", func(v *viper.Viper) (updater.Updater, error) {
+	updater.Register("Cloudflare", "updaters.cloudflare", func(v updater.ConfigReader) (updater.Updater, error) {
+		if !v.IsSet("updaters.cloudflare") {
+			return nil, updater.ErrNotConfigured
+		}
+
 		cfg := Config{}
 		err := v.UnmarshalKey("updaters.cloudflare", &cfg)
 		if err != nil {

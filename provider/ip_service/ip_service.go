@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/go-resty/resty/v2"
-	"github.com/spf13/viper"
 	"github.com/we11adam/uddns/provider"
 )
 
@@ -30,7 +29,11 @@ type IpService struct {
 }
 
 func init() {
-	provider.Register("IpService", func(v *viper.Viper) (provider.Provider, error) {
+	provider.Register("IpService", "providers.ip_service", func(v provider.ConfigReader) (provider.Provider, error) {
+		if !v.IsSet("providers.ip_service") {
+			return nil, provider.ErrNotConfigured
+		}
+
 		cfg := ServiceNames{}
 		err := v.UnmarshalKey("providers.ip_service", &cfg)
 		if err != nil {

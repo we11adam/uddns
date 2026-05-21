@@ -3,7 +3,7 @@
 UDDNS 是一个轻量的动态 DNS 更新器。它会从 provider 获取当前公网 IP，
 再通过 updater 更新 DNS 记录，并且可以在 IP 变化或更新失败时发送通知。
 
-[English README](README.md) | [更新日志](CHANGELOG.md)
+[English README](README.md) | [更新日志](CHANGELOG.zh-CN.md)
 
 ## 功能
 
@@ -65,6 +65,7 @@ UDDNS 会按以下顺序查找配置文件：
 
 ```yaml
 providers:
+  use: ip_service
   routeros:
     endpoint: https://192.168.88.1
     username: admin
@@ -77,6 +78,7 @@ providers:
     name: ppp0
 
 updaters:
+  use: cloudflare
   cloudflare:
     apitoken: your-cloudflare-api-token
     # 也可以使用 email + apikey:
@@ -108,8 +110,10 @@ logging:
   retention_days: 7
 ```
 
-至少需要配置一个 provider 和一个 updater。如果配置了多个 provider 或 updater，
-UDDNS 会使用第一个能够成功初始化的配置。
+至少需要配置一个 provider 和一个 updater。如果同时配置多个 provider 或 updater，
+建议用 `providers.use` 和 `updaters.use` 明确选择。未设置 `use` 时，UDDNS 会按确定的
+registry 顺序检查已配置项。如果某个已配置的 provider 或 updater 配置错误，程序会直接
+报出该配置错误，而不是静默回退到其他配置。
 
 ### Providers
 
@@ -195,10 +199,6 @@ uddns-YYYY-MM-DD.log
 - `UDDNS_LOG_LEVEL`
 - `UDDNS_LOG_DIR`
 - `UDDNS_LOG_RETENTION_DAYS`
-
-## 更新日志
-
-查看 [CHANGELOG.md](CHANGELOG.md) 了解版本历史和未发布变更。
 
 ## Roadmap
 

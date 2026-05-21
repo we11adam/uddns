@@ -1,9 +1,7 @@
 package provider
 
 import (
-	"fmt"
-
-	"github.com/spf13/viper"
+	"github.com/we11adam/uddns/internal/registry"
 )
 
 type IpResult struct {
@@ -15,21 +13,18 @@ type Provider interface {
 	GetIPs() (*IpResult, error)
 }
 
-type constructor func(v *viper.Viper) (Provider, error)
+type ConfigReader = registry.ConfigReader
 
-var Providers = make(map[string]constructor)
+type constructor = registry.Constructor[Provider]
 
-func Register(name string, constructor constructor) {
-	Providers[name] = constructor
+var ErrNotConfigured = registry.ErrNotConfigured
+
+var providers = registry.New[Provider]("provider", "providers.use")
+
+func Register(name, configKey string, constructor constructor) {
+	providers.Register(name, configKey, constructor)
 }
 
-func GetProvider(v *viper.Viper) (string, Provider, error) {
-	for n, c := range Providers {
-		p, err := c(v)
-		if err == nil {
-			return n, p, nil
-		}
-	}
-
-	return "", nil, fmt.Errorf("no provider can be initialized")
+func GetProvider(config ConfigReader) (string, Provider, error) {
+	return providers.Get(config)
 }
