@@ -8,6 +8,21 @@ UDDNS - Universal (or Ultimate) Dynamic DNS updater
 
 You can either:
 
+Install the latest release with curl:
+
+```shell
+curl -fsSL https://raw.githubusercontent.com/we11adam/uddns/main/install.sh | sh
+```
+
+The installer detects systemd at startup and asks whether to install UDDNS as a
+systemd service. For non-interactive installs, pass flags after `sh -s --`:
+
+```shell
+curl -fsSL https://raw.githubusercontent.com/we11adam/uddns/main/install.sh | sh -s -- --systemd --config /etc/uddns.yaml
+```
+
+Or:
+
 `go install github.com/we11adam/uddns@latest`
 
 or download the binary for you platform directly from the [releases page](https://github.com/we11adam/uddns/releases/)
@@ -98,7 +113,8 @@ nohup ./uddns > uddns.log 2>&1 &
 - [ ] Add CI/CD
 - [ ] Add Dockerfile
 - [ ] Add Daemon mode
-- [ ] Add systemd service file
+- [x] Add curl installer
+- [x] Add systemd service installer
 
 ## Contributing
 

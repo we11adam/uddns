@@ -36,6 +36,10 @@ builds:
 checksum:
   name_template: 'checksums.txt'
 
+release:
+  extra_files:
+    - glob: ./install.sh
+
 archives:
   - id: default
     builds:
