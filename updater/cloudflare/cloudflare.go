@@ -51,7 +51,7 @@ func init() {
 
 func New(config *Config) (*Cloudflare, error) {
 	if config.Domain == "" {
-		return nil, fmt.Errorf("Cloudflare Domain is not set in the configuration")
+		return nil, fmt.Errorf("Cloudflare domain is not set in the configuration")
 	}
 
 	var (
@@ -65,7 +65,7 @@ func New(config *Config) (*Cloudflare, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse Cloudflare proxy URL: %w", err)
 		}
-		slog.Info("[Cloudflare] Using proxy", "proxy", config.Proxy)
+		slog.Info("using proxy", "updater", "cloudflare", "proxy", config.Proxy)
 		httpClient = &http.Client{
 			Transport: &http.Transport{
 				Proxy: http.ProxyURL(proxy),
@@ -74,13 +74,13 @@ func New(config *Config) (*Cloudflare, error) {
 	}
 
 	if config.APIToken != "" {
-		slog.Debug("[Cloudflare] Using API Token for authentication")
+		slog.Debug("using API token for authentication", "updater", "cloudflare")
 		api, err = cloudflare.NewWithAPIToken(config.APIToken, cloudflare.HTTPClient(httpClient))
 	} else if config.APIKey != "" && config.Email != "" {
-		slog.Debug("[Cloudflare] Using API Key and Email for authentication")
+		slog.Debug("using API key and email for authentication", "updater", "cloudflare")
 		api, err = cloudflare.New(config.APIKey, config.Email, cloudflare.HTTPClient(httpClient))
 	} else {
-		return nil, fmt.Errorf("Cloudflare configuration error: either APIToken or both APIKey and Email must be provided")
+		return nil, fmt.Errorf("Cloudflare configuration error: either API token or both API key and email must be provided")
 	}
 
 	if err != nil {
@@ -110,7 +110,7 @@ func (c *Cloudflare) Update(ips *provider.IpResult) error {
 		}
 
 		c.zoneID = zoneID
-		slog.Debug("[Cloudflare] Zone ID retrieved", "domain", domain, "zoneID", zoneID)
+		slog.Debug("zone ID retrieved", "updater", "cloudflare", "domain", domain, "zone_id", zoneID)
 	}
 
 	ctx := context.Background()
@@ -157,7 +157,7 @@ func (c *Cloudflare) updateDNSRecord(ctx context.Context, recordType, ip string)
 		record := dnsRecords[0]
 
 		if record.Content == ip {
-			slog.Debug("[Cloudflare] DNS record is already up to date", "type", recordType, "ip", ip)
+			slog.Debug("skipping current DNS record", "updater", "cloudflare", "record_type", recordType, "ip", ip)
 			return nil
 		}
 
@@ -174,7 +174,7 @@ func (c *Cloudflare) updateDNSRecord(ctx context.Context, recordType, ip string)
 		if err != nil {
 			return fmt.Errorf("failed to update Cloudflare DNS record: %w", err)
 		}
-		slog.Info("[Cloudflare] DNS record updated successfully", "type", recordType, "ip", ip)
+		slog.Info("updated DNS record", "updater", "cloudflare", "record_type", recordType, "ip", ip)
 	} else {
 		createParams := cloudflare.CreateDNSRecordParams{
 			Type:    recordType,
@@ -188,7 +188,7 @@ func (c *Cloudflare) updateDNSRecord(ctx context.Context, recordType, ip string)
 		if err != nil {
 			return fmt.Errorf("failed to create Cloudflare DNS record: %w", err)
 		}
-		slog.Info("[Cloudflare] DNS record created successfully", "type", recordType, "ip", ip)
+		slog.Info("created DNS record", "updater", "cloudflare", "record_type", recordType, "ip", ip)
 	}
 
 	return nil

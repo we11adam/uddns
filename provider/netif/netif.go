@@ -27,7 +27,7 @@ func init() {
 			return nil, err
 		}
 		if cfg.Name == "" {
-			return nil, fmt.Errorf("[NetworkInterface] missing required fields")
+			return nil, fmt.Errorf("missing network interface name")
 		}
 		return New(&cfg)
 	})
@@ -62,7 +62,7 @@ func (n *Netif) GetIPs() (*provider.IpResult, error) {
 	}
 
 	if result.IPv4 == "" && result.IPv6 == "" {
-		return nil, fmt.Errorf("[NetworkInterface] no IP address found on network interface %s", n.iface.Name)
+		return nil, fmt.Errorf("no IP address found on network interface %s", n.iface.Name)
 	}
 
 	return result, nil

@@ -32,7 +32,7 @@ func init() {
 			return nil, err
 		}
 		if cfg.Domain == "" || cfg.Key == "" {
-			return nil, fmt.Errorf("[LightDNS] missing required fields")
+			return nil, fmt.Errorf("missing required LightDNS fields")
 		}
 		return New(&cfg), nil
 	})
@@ -80,10 +80,10 @@ func (c *LightDNS) updateIP(ip string) error {
 	body := string(resp.Body())
 
 	if resp.StatusCode() != 200 {
-		return fmt.Errorf("[LightDNS] failed to update DNS record: %s", body)
+		return fmt.Errorf("failed to update LightDNS DNS record: %s", body)
 	}
 
-	slog.Info("[LightDNS] DNS record updated successfully", "ip", ip)
+	slog.Info("updated DNS record", "updater", "lightdns", "ip", ip)
 
 	return nil
 }

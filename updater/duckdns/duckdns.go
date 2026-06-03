@@ -32,7 +32,7 @@ func init() {
 			return nil, err
 		}
 		if cfg.Domain == "" || cfg.Token == "" {
-			return nil, fmt.Errorf("[DuckDNS] missing required fields")
+			return nil, fmt.Errorf("missing required DuckDNS fields")
 		}
 		return New(&cfg), nil
 	})
@@ -80,10 +80,10 @@ func (c *DuckDNS) updateIP(ip string) error {
 	body := string(resp.Body())
 
 	if body != "OK" {
-		return fmt.Errorf("[DuckDNS] failed to update DNS record: %s", body)
+		return fmt.Errorf("failed to update DuckDNS DNS record: %s", body)
 	}
 
-	slog.Info("[DuckDNS] DNS record updated successfully", "ip", ip)
+	slog.Info("updated DNS record", "updater", "duckdns", "ip", ip)
 
 	return nil
 }

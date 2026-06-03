@@ -51,7 +51,7 @@ func init() {
 		}
 
 		if cfg.Username == "" || cfg.Endpoint == "" {
-			return nil, fmt.Errorf("[RouterOS] missing required fields")
+			return nil, fmt.Errorf("missing required RouterOS fields")
 		}
 		return New(&cfg)
 	})
@@ -117,7 +117,7 @@ func (r *RouterOS) GetIPs() (*provider.IpResult, error) {
 	}
 
 	if result.IPv4 == "" && result.IPv6 == "" {
-		return nil, fmt.Errorf("[RouterOS] no IP address found")
+		return nil, fmt.Errorf("no IP address found")
 	}
 
 	return result, nil

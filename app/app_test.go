@@ -59,6 +59,12 @@ func TestRunOnceUpdatesDNSWhenIPChanges(t *testing.T) {
 	if len(n.notifications) != 2 {
 		t.Fatalf("expected IP change and update success notifications, got %d", len(n.notifications))
 	}
+	if n.notifications[0].Message != "IPv4 address changed to 192.0.2.10" {
+		t.Fatalf("expected IP change notification message, got %q", n.notifications[0].Message)
+	}
+	if n.notifications[1].Message != "DNS records updated for IPv4 192.0.2.10" {
+		t.Fatalf("expected update success notification message, got %q", n.notifications[1].Message)
+	}
 }
 
 func TestRunOnceSkipsUnchangedIP(t *testing.T) {
@@ -95,6 +101,9 @@ func TestRunOnceDoesNotAdvanceLastIPWhenUpdateFails(t *testing.T) {
 	}
 	if len(n.notifications) != 2 {
 		t.Fatalf("expected IP change and update failure notifications, got %d", len(n.notifications))
+	}
+	if n.notifications[1].Message != "DNS update failed for IPv4 192.0.2.10: update failed" {
+		t.Fatalf("expected update failure notification message, got %q", n.notifications[1].Message)
 	}
 }
 

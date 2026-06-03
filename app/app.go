@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/we11adam/uddns/notifier"
@@ -41,7 +42,7 @@ func intervalFromEnv() time.Duration {
 
 	duration, err := time.ParseDuration(interval)
 	if err != nil {
-		slog.Warn("invalid UDDNS_INTERVAL, using default", "value", interval, "default", "30s", "error", err)
+		slog.Warn("invalid update interval, using default", "env_var", "UDDNS_INTERVAL", "value", interval, "default", "30s", "error", err)
 		return 30 * time.Second
 	}
 	return duration
@@ -104,7 +105,7 @@ func (a *App) runOnce() {
 	updateNeeded := ipv4Changed || ipv6Changed
 
 	slog.Info(
-		"ip check completed",
+		"completed IP check",
 		"provider", a.providerName,
 		"updater", a.updaterName,
 		"ipv4", ipResult.IPv4,
@@ -122,15 +123,15 @@ func (a *App) runOnce() {
 	}
 
 	if ipv4Changed {
-		a.notify("ip_change", notifier.Notification{Message: fmt.Sprintf("New IPv4 obtained: %s", ipResult.IPv4)})
+		a.notify("ip_change", notifier.Notification{Message: fmt.Sprintf("IPv4 address changed to %s", ipResult.IPv4)})
 	}
 
 	if ipv6Changed {
-		a.notify("ip_change", notifier.Notification{Message: fmt.Sprintf("New IPv6 obtained: %s", ipResult.IPv6)})
+		a.notify("ip_change", notifier.Notification{Message: fmt.Sprintf("IPv6 address changed to %s", ipResult.IPv6)})
 	}
 
 	slog.Info(
-		"updating dns records",
+		"updating DNS records",
 		"updater", a.updaterName,
 		"ipv4", ipResult.IPv4,
 		"ipv6", ipResult.IPv6,
@@ -139,13 +140,13 @@ func (a *App) runOnce() {
 	if err := a.updater.Update(ipResult); err != nil {
 		status = "updater_error"
 		slog.Error(
-			"failed to update dns records",
+			"failed to update DNS records",
 			"updater", a.updaterName,
 			"ipv4", ipResult.IPv4,
 			"ipv6", ipResult.IPv6,
 			"error", err,
 		)
-		a.notify("update_failure", notifier.Notification{Message: fmt.Sprintf("Failed to update DNS records: %s", err)})
+		a.notify("update_failure", notifier.Notification{Message: fmt.Sprintf("DNS update failed for %s: %s", notificationIPSummary(ipResult), err)})
 		return
 	}
 
@@ -154,12 +155,12 @@ func (a *App) runOnce() {
 	a.lastIPv6 = ipResult.IPv6
 
 	slog.Info(
-		"dns records updated",
+		"updated DNS records",
 		"updater", a.updaterName,
 		"ipv4", ipResult.IPv4,
 		"ipv6", ipResult.IPv6,
 	)
-	a.notify("update_success", notifier.Notification{Message: fmt.Sprintf("DNS records updated: IPv4=%s, IPv6=%s", ipResult.IPv4, ipResult.IPv6)})
+	a.notify("update_success", notifier.Notification{Message: fmt.Sprintf("DNS records updated for %s", notificationIPSummary(ipResult))})
 }
 
 func (a *App) notify(reason string, notification notifier.Notification) {
@@ -171,6 +172,24 @@ func (a *App) notify(reason string, notification notifier.Notification) {
 			"error", err,
 		)
 	}
+}
+
+func notificationIPSummary(ipResult *provider.IpResult) string {
+	if ipResult == nil {
+		return "no IP addresses"
+	}
+
+	parts := make([]string, 0, 2)
+	if ipResult.IPv4 != "" {
+		parts = append(parts, "IPv4 "+ipResult.IPv4)
+	}
+	if ipResult.IPv6 != "" {
+		parts = append(parts, "IPv6 "+ipResult.IPv6)
+	}
+	if len(parts) == 0 {
+		return "no IP addresses"
+	}
+	return strings.Join(parts, ", ")
 }
 
 func (a *App) Run() {

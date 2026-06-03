@@ -40,7 +40,7 @@ func init() {
 			return nil, err
 		}
 		if len(cfg) == 0 {
-			return nil, fmt.Errorf("[IpService] no service names provided")
+			return nil, fmt.Errorf("no IP service names provided")
 		}
 		return New(&cfg)
 	})
@@ -87,7 +87,7 @@ func (i *IpService) GetIPs() (*provider.IpResult, error) {
 	}
 
 	if result.IPv4 == "" && result.IPv6 == "" {
-		return nil, fmt.Errorf("[IpService] failed to get both IPv4 and IPv6 addresses")
+		return nil, fmt.Errorf("failed to get both IPv4 and IPv6 addresses")
 	}
 
 	return result, nil
@@ -96,14 +96,14 @@ func (i *IpService) GetIPs() (*provider.IpResult, error) {
 func (i *IpService) getIP(client *resty.Client) (string, error) {
 	for _, name := range *i.names {
 		resp, err := client.R().Get(SERVICES[name])
-		slog.Debug("[IpService] requesting IP address from:", "service", SERVICES[name])
+		slog.Debug("requesting IP address", "provider", "ip_service", "service", SERVICES[name])
 		if err != nil || resp.StatusCode() != 200 {
 			continue
 		}
 		ip := string(resp.Body())
 		ip = strings.TrimSpace(ip)
-		slog.Debug("[IpService] got IP address:", "ip", ip)
+		slog.Debug("got IP address", "provider", "ip_service", "ip", ip)
 		return ip, nil
 	}
-	return "", fmt.Errorf("[IpService] failed to get IP address from all services")
+	return "", fmt.Errorf("failed to get IP address from all services")
 }

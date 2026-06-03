@@ -46,18 +46,18 @@ func init() {
 
 func New(config *Config) (*Aliyun, error) {
 	if config.AccessKeyID == "" {
-		return nil, fmt.Errorf("Aliyun AccessKeyID is not set in the configuration")
+		return nil, fmt.Errorf("Aliyun access key ID is not set in the configuration")
 	}
 	if config.AccessKeySecret == "" {
-		return nil, fmt.Errorf("Aliyun AccessKeySecret is not set in the configuration")
+		return nil, fmt.Errorf("Aliyun access key secret is not set in the configuration")
 	}
 	if config.Domain == "" {
-		return nil, fmt.Errorf("Aliyun Domain is not set in the configuration")
+		return nil, fmt.Errorf("Aliyun domain is not set in the configuration")
 	}
 
 	if config.RegionID == "" {
 		config.RegionID = "cn-hangzhou"
-		slog.Debug("[Aliyun] RegionID not set, using default value", "regionId", config.RegionID)
+		slog.Debug("region ID not set, using default", "updater", "aliyun", "region_id", config.RegionID)
 	}
 
 	client, err := alidns.NewClientWithAccessKey(config.RegionID, config.AccessKeyID, config.AccessKeySecret)
@@ -120,7 +120,7 @@ func (a *Aliyun) updateDNSRecord(recordType, ip string) error {
 		existingRecord := response.DomainRecords.Record[0]
 
 		if existingRecord.Value == ip {
-			slog.Debug("[Aliyun] DNS record is already up to date", "type", recordType, "ip", ip)
+			slog.Debug("skipping current DNS record", "updater", "aliyun", "record_type", recordType, "ip", ip)
 			return nil
 		}
 
@@ -135,7 +135,7 @@ func (a *Aliyun) updateDNSRecord(recordType, ip string) error {
 			return fmt.Errorf("failed to update DNS record: %w", err)
 		}
 
-		slog.Info("[Aliyun] DNS record updated successfully", "type", recordType, "ip", ip, "recordId", existingRecord.RecordId)
+		slog.Info("updated DNS record", "updater", "aliyun", "record_type", recordType, "ip", ip, "record_id", existingRecord.RecordId)
 	} else {
 		addRequest := alidns.CreateAddDomainRecordRequest()
 		addRequest.DomainName = domainName
@@ -148,7 +148,7 @@ func (a *Aliyun) updateDNSRecord(recordType, ip string) error {
 			return fmt.Errorf("failed to add DNS record: %w", err)
 		}
 
-		slog.Info("[Aliyun] DNS record added successfully", "type", recordType, "ip", ip, "recordId", response.RecordId)
+		slog.Info("added DNS record", "updater", "aliyun", "record_type", recordType, "ip", ip, "record_id", response.RecordId)
 	}
 
 	return nil

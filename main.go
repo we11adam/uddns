@@ -106,7 +106,7 @@ func getConfigFile(providedPath string) (string, error) {
 		}
 	}
 
-	return "", fmt.Errorf("[UDDNS] no readable config file found in %v", locations)
+	return "", fmt.Errorf("no readable config file found in %v", locations)
 }
 
 func isReadable(p string) bool {
