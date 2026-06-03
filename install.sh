@@ -63,6 +63,50 @@ run_as_root() {
 	fi
 }
 
+path_parent_dir() {
+	path="$1"
+	case "$path" in
+		*/*)
+			parent="${path%/*}"
+			[ -n "$parent" ] || parent="/"
+			;;
+		*)
+			parent="."
+			;;
+	esac
+	printf '%s\n' "$parent"
+}
+
+can_write_path() {
+	path="$1"
+	if [ -e "$path" ]; then
+		[ -w "$path" ]
+		return
+	fi
+
+	parent="$(path_parent_dir "$path")"
+	while [ ! -d "$parent" ] && [ "$parent" != "/" ] && [ "$parent" != "." ]; do
+		parent="$(path_parent_dir "$parent")"
+	done
+
+	[ -d "$parent" ] && [ -w "$parent" ]
+}
+
+warn_config_write_permission() {
+	config_file="$1"
+
+	[ "$(id -u)" -eq 0 ] && return
+	can_write_path "$config_file" && return
+
+	if command -v sudo >/dev/null 2>&1; then
+		log "Current user cannot write ${config_file}."
+		log "Use sudo when creating or editing this config file, for example:"
+		log "  sudo install -m 0600 /path/to/uddns.yaml ${config_file}"
+	else
+		log "Current user cannot write ${config_file}. Create or edit it as root before starting the service."
+	fi
+}
+
 is_tty_available() {
 	[ -r /dev/tty ] && [ -w /dev/tty ]
 }
@@ -346,6 +390,7 @@ install_systemd_service() {
 	if [ "$CONFIG_FILE" = "/etc/uddns.yaml" ] && is_tty_available; then
 		CONFIG_FILE="$(prompt_text "Config file path for the systemd service" "$CONFIG_FILE")"
 	fi
+	warn_config_write_permission "$CONFIG_FILE"
 
 	cat >"$unit_file" <<EOF
 [Unit]
