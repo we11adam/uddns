@@ -13,7 +13,6 @@ import (
 
 	"github.com/lmittmann/tint"
 	"github.com/mattn/go-isatty"
-	"github.com/spf13/viper"
 )
 
 const (
@@ -33,13 +32,18 @@ type logConfig struct {
 	retentionDays logConfigValue
 }
 
+type logConfigReader interface {
+	GetString(key string) string
+	IsSet(key string) bool
+}
+
 var activeLogFile *calendarRotatingWriter
 
 func configureLogger() {
 	configureLoggerFromConfig(nil)
 }
 
-func configureLoggerFromConfig(v *viper.Viper) {
+func configureLoggerFromConfig(v logConfigReader) {
 	config := resolveLogConfig(v)
 	level, levelOK := parseLogLevel(config.level.value)
 	handlers := []slog.Handler{
@@ -81,7 +85,7 @@ func configureLoggerFromConfig(v *viper.Viper) {
 	}
 }
 
-func resolveLogConfig(v *viper.Viper) logConfig {
+func resolveLogConfig(v logConfigReader) logConfig {
 	config := logConfig{
 		level:         logConfigValue{source: "default"},
 		dir:           logConfigValue{source: "default"},

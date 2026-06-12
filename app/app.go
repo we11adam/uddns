@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"os"
 	"strings"
 	"time"
 
@@ -20,11 +19,15 @@ type App struct {
 	updater      updater.Updater
 	notifierName string
 	notifier     notifier.Notifier
+	interval     time.Duration
 	lastIPv4     string
 	lastIPv6     string
 }
 
-func NewApp(providerName string, p provider.Provider, updaterName string, u updater.Updater, notifierName string, n notifier.Notifier) *App {
+func NewApp(providerName string, p provider.Provider, updaterName string, u updater.Updater, notifierName string, n notifier.Notifier, interval time.Duration) *App {
+	if interval <= 0 {
+		interval = 30 * time.Second
+	}
 	return &App{
 		providerName: providerName,
 		provider:     p,
@@ -32,25 +35,12 @@ func NewApp(providerName string, p provider.Provider, updaterName string, u upda
 		updater:      u,
 		notifierName: notifierName,
 		notifier:     n,
+		interval:     interval,
 	}
-}
-
-func intervalFromEnv() time.Duration {
-	interval := os.Getenv("UDDNS_INTERVAL")
-	if interval == "" {
-		interval = "30s"
-	}
-
-	duration, err := time.ParseDuration(interval)
-	if err != nil {
-		slog.Warn("invalid update interval, using default", "env_var", "UDDNS_INTERVAL", "value", interval, "default", "30s", "error", err)
-		return 30 * time.Second
-	}
-	return duration
 }
 
 func (a *App) schedule(ctx context.Context) {
-	duration := intervalFromEnv()
+	duration := a.interval
 
 	slog.Info(
 		"starting scheduler",

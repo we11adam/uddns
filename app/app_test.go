@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/we11adam/uddns/notifier"
 	"github.com/we11adam/uddns/provider"
@@ -44,7 +45,7 @@ func TestRunOnceUpdatesDNSWhenIPChanges(t *testing.T) {
 	p := &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10"}}
 	u := &recordingUpdater{}
 	n := &recordingNotifier{}
-	a := NewApp("test-provider", p, "test-updater", u, "test-notifier", n)
+	a := NewApp("test-provider", p, "test-updater", u, "test-notifier", n, time.Second)
 
 	a.runOnce()
 
@@ -72,7 +73,7 @@ func TestRunOnceSkipsUnchangedIP(t *testing.T) {
 	p := &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10"}}
 	u := &recordingUpdater{}
 	n := &recordingNotifier{}
-	a := NewApp("test-provider", p, "test-updater", u, "test-notifier", n)
+	a := NewApp("test-provider", p, "test-updater", u, "test-notifier", n, time.Second)
 
 	a.runOnce()
 	a.runOnce()
@@ -90,7 +91,7 @@ func TestRunOnceDoesNotAdvanceLastIPWhenUpdateFails(t *testing.T) {
 	p := &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10"}}
 	u := &recordingUpdater{err: updateErr}
 	n := &recordingNotifier{}
-	a := NewApp("test-provider", p, "test-updater", u, "test-notifier", n)
+	a := NewApp("test-provider", p, "test-updater", u, "test-notifier", n, time.Second)
 
 	a.runOnce()
 
@@ -113,7 +114,7 @@ func TestRunOnceSkipsUpdateWhenProviderFails(t *testing.T) {
 	p := &staticProvider{err: providerErr}
 	u := &recordingUpdater{}
 	n := &recordingNotifier{}
-	a := NewApp("test-provider", p, "test-updater", u, "test-notifier", n)
+	a := NewApp("test-provider", p, "test-updater", u, "test-notifier", n, time.Second)
 
 	a.runOnce()
 
@@ -129,7 +130,7 @@ func TestRunOnceSkipsUpdateWhenProviderReturnsInvalidIP(t *testing.T) {
 	p := &staticProvider{result: &provider.IpResult{IPv4: "not-an-ip"}}
 	u := &recordingUpdater{}
 	n := &recordingNotifier{}
-	a := NewApp("test-provider", p, "test-updater", u, "test-notifier", n)
+	a := NewApp("test-provider", p, "test-updater", u, "test-notifier", n, time.Second)
 
 	a.runOnce()
 
@@ -145,7 +146,7 @@ func TestRunReturnsWhenContextIsCanceled(t *testing.T) {
 	p := &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10"}}
 	u := &recordingUpdater{}
 	n := &recordingNotifier{}
-	a := NewApp("test-provider", p, "test-updater", u, "test-notifier", n)
+	a := NewApp("test-provider", p, "test-updater", u, "test-notifier", n, time.Second)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 

@@ -3,14 +3,13 @@ package main
 import (
 	"context"
 	"flag"
-	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
 
-	"github.com/spf13/viper"
 	"github.com/we11adam/uddns/app"
+	"github.com/we11adam/uddns/internal/config"
 	"github.com/we11adam/uddns/notifier"
 	"github.com/we11adam/uddns/provider"
 	"github.com/we11adam/uddns/updater"
@@ -36,24 +35,15 @@ func main() {
 	flag.StringVar(&configPath, "c", "", "Path to the configuration file")
 	flag.Parse()
 
-	config, err := getConfigFile(configPath)
+	cfg, err := config.Load(configPath)
 	if err != nil {
-		slog.Error("failed to find config file", "error", err)
+		slog.Error("failed to load config file", "error", err)
 		os.Exit(1)
 	}
+	configureLoggerFromConfig(cfg)
+	slog.Info("using config file", "config", cfg.Path())
 
-	v := viper.New()
-	v.SetConfigFile(config)
-	if err = v.ReadInConfig(); err != nil {
-		slog.Error("failed to read config file", "config", config, "error", err)
-		os.Exit(1)
-	}
-	configureLoggerFromConfig(v)
-	slog.Info("using config file", "config", config)
-
-	configReader := viperConfigReader{v: v}
-
-	providerName, p, err := provider.GetProvider(configReader)
+	providerName, p, err := provider.GetProvider(cfg)
 	if err != nil {
 		slog.Error("no provider found", "error", err)
 		os.Exit(1)
@@ -61,7 +51,7 @@ func main() {
 		slog.Info("provider selected", "provider", providerName)
 	}
 
-	updaterName, u, err := updater.GetUpdater(configReader)
+	updaterName, u, err := updater.GetUpdater(cfg)
 	if err != nil {
 		slog.Error("no updater found", "error", err)
 		os.Exit(1)
@@ -69,59 +59,20 @@ func main() {
 		slog.Info("updater selected", "updater", updaterName)
 	}
 
-	notifierName, n, err := notifier.GetNotifier(configReader)
+	notifierName, n, err := notifier.GetNotifier(cfg)
 	if err != nil {
 		slog.Error("notifier configuration error", "error", err)
 		os.Exit(1)
 	}
 	slog.Info("notifier selected", "notifier", notifierName)
 
+	interval, rawInterval, err := cfg.Interval()
+	if err != nil {
+		slog.Warn("invalid update interval, using default", "env_var", "UDDNS_INTERVAL", "value", rawInterval, "default", config.DefaultInterval, "error", err)
+	}
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	app.NewApp(providerName, p, updaterName, u, notifierName, n).Run(ctx)
-}
-
-type viperConfigReader struct {
-	v *viper.Viper
-}
-
-func (r viperConfigReader) GetString(key string) string {
-	return r.v.GetString(key)
-}
-
-func (r viperConfigReader) IsSet(key string) bool {
-	return r.v.IsSet(key)
-}
-
-func (r viperConfigReader) UnmarshalKey(key string, rawVal any) error {
-	return r.v.UnmarshalKey(key, rawVal)
-}
-
-func getConfigFile(providedPath string) (string, error) {
-	if providedPath != "" && isReadable(providedPath) {
-		return providedPath, nil
-	}
-
-	locations := []string{
-		os.Getenv("UDDNS_CONFIG"),
-		"./uddns.yaml",
-		os.Getenv("HOME") + "/.config/uddns.yaml",
-		"/etc/uddns.yaml",
-	}
-
-	for _, p := range locations {
-		if isReadable(p) {
-			return p, nil
-		}
-	}
-
-	return "", fmt.Errorf("no readable config file found in %v", locations)
-}
-
-func isReadable(p string) bool {
-	if _, err := os.Stat(p); err == nil {
-		return true
-	}
-	return false
+	app.NewApp(providerName, p, updaterName, u, notifierName, n, interval).Run(ctx)
 }
