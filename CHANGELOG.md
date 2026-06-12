@@ -6,6 +6,18 @@ All notable changes to UDDNS are documented here, based on the Git commit histor
 
 No changes yet.
 
+## v1.6.1 - 2026-06-13
+
+### Added
+
+- Added `version` and `pid` fields to structured logs.
+- Added release-build version injection through GoReleaser and Makefile builds.
+
+### Changed
+
+- Improved structured logging context for jobs, DNS records, providers, and updaters.
+- Trimmed the release target matrix and installer architecture matching to the supported release assets.
+
 ## v1.6.0 - 2026-06-13
 
 ### Added

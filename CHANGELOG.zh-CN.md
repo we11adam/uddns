@@ -6,6 +6,18 @@
 
 暂无变更。
 
+## v1.6.1 - 2026-06-13
+
+### 新增
+
+- 结构化日志新增 `version` 和 `pid` 字段。
+- GoReleaser 和 Makefile release-build 支持注入构建版本号。
+
+### 变更
+
+- 改进 job、DNS 记录、provider 和 updater 相关的结构化日志上下文。
+- 精简 release 目标矩阵，并同步收敛安装器的架构匹配范围。
+
 ## v1.6.0 - 2026-06-13
 
 ### 新增
