@@ -306,17 +306,8 @@ detect_os() {
 detect_arch() {
 	case "$(uname -m)" in
 		x86_64 | amd64) printf 'amd64\n' ;;
-		i386 | i686) printf '386\n' ;;
 		aarch64 | arm64) printf 'arm64\n' ;;
-		armv5*) printf 'armv5\n' ;;
-		armv6*) printf 'armv6\n' ;;
 		armv7*) printf 'armv7\n' ;;
-		mips64le) printf 'mips64le\n' ;;
-		mips64) printf 'mips64\n' ;;
-		mipsle) printf 'mipsle\n' ;;
-		mips) printf 'mips\n' ;;
-		s390x) printf 's390x\n' ;;
-		riscv64) printf 'riscv64\n' ;;
 		*) fail "unsupported architecture: $(uname -m)" ;;
 	esac
 }
@@ -332,17 +323,8 @@ os_regex() {
 arch_regex() {
 	case "$1" in
 		amd64) printf 'amd64|x86_64' ;;
-		386) printf '386|i386|i686' ;;
 		arm64) printf 'arm64|aarch64' ;;
-		armv5) printf 'armv5|arm_5|arm-5|arm5' ;;
-		armv6) printf 'armv6|arm_6|arm-6|arm6' ;;
 		armv7) printf 'armv7|arm_7|arm-7|arm7' ;;
-		mips64le) printf 'mips64le' ;;
-		mips64) printf 'mips64' ;;
-		mipsle) printf 'mipsle' ;;
-		mips) printf 'mips' ;;
-		s390x) printf 's390x' ;;
-		riscv64) printf 'riscv64' ;;
 	esac
 }
 
@@ -370,13 +352,6 @@ find_asset_url() {
 	arch_re="$(arch_regex "$arch")"
 
 	candidates="$(extract_urls "$release_json" | grep -E '(\.tar\.gz|\.tgz|\.zip)$' | grep -E "(${os_re})" | grep -E "(${arch_re})" || true)"
-
-	if [ "$arch" = "amd64" ]; then
-		without_v3="$(printf '%s\n' "$candidates" | grep -Ev 'amd64[_-]?v3|x86_64[_-]?v3' || true)"
-		if [ -n "$without_v3" ]; then
-			candidates="$without_v3"
-		fi
-	fi
 
 	printf '%s\n' "$candidates" | head -n 1
 }
