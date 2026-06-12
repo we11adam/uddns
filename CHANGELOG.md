@@ -6,6 +6,33 @@ All notable changes to UDDNS are documented here, based on the Git commit histor
 
 No changes yet.
 
+## v1.6.0 - 2026-06-13
+
+### Added
+
+- Added advanced jobs mode for running multiple named DNS update jobs from one process.
+- Added per-job provider, updater, DNS record, zone, and address-family selection.
+- Added `verify` modes: `auto`, `off`, and `updater_api`.
+- Added updater API verification for Cloudflare and Aliyun DNS records.
+- Added `config check` to validate configuration without starting the scheduler.
+
+### Changed
+
+- Centralized config loading and per-job config overrides.
+- Hardened the systemd installer and preserved existing service configuration during upgrades.
+- Expanded CI validation before release.
+
+### Fixed
+
+- Fixed graceful shutdown handling.
+- Fixed invalid notifier, IP, and DNS record configuration validation.
+
+## v1.5.1 - 2026-06-03
+
+### Fixed
+
+- Warn when the selected config path requires sudo during installation.
+
 ## v1.5.0 - 2026-05-22
 
 ### Added

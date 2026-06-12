@@ -6,6 +6,33 @@
 
 暂无变更。
 
+## v1.6.0 - 2026-06-13
+
+### 新增
+
+- 新增高级 jobs 模式，可在同一进程中运行多个命名 DNS 更新任务。
+- 每个 job 支持独立选择 provider、updater、DNS 记录、zone 和地址族。
+- 新增 `verify` 模式：`auto`、`off` 和 `updater_api`。
+- Cloudflare 和 Aliyun updater 支持通过 API 验证当前 DNS 记录。
+- 新增 `config check`，用于在不启动调度器的情况下验证配置。
+
+### 变更
+
+- 集中配置加载逻辑，并支持 per-job 配置覆盖。
+- 加固 systemd 安装器，升级时保留现有 service 配置。
+- 扩展发布前 CI 校验。
+
+### 修复
+
+- 修复优雅退出处理。
+- 修复 notifier、IP 和 DNS 记录无效配置的校验。
+
+## v1.5.1 - 2026-06-03
+
+### 修复
+
+- 安装时如果所选配置路径需要 sudo，会给出提示。
+
 ## v1.5.0 - 2026-05-22
 
 ### 新增
