@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -137,5 +138,20 @@ func TestRunOnceSkipsUpdateWhenProviderReturnsInvalidIP(t *testing.T) {
 	}
 	if len(n.notifications) != 0 {
 		t.Fatalf("expected invalid provider result to skip notifications, got %d", len(n.notifications))
+	}
+}
+
+func TestRunReturnsWhenContextIsCanceled(t *testing.T) {
+	p := &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10"}}
+	u := &recordingUpdater{}
+	n := &recordingNotifier{}
+	a := NewApp("test-provider", p, "test-updater", u, "test-notifier", n)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	a.Run(ctx)
+
+	if u.calls != 0 {
+		t.Fatalf("expected canceled context to skip updates, got %d calls", u.calls)
 	}
 }

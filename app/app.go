@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"os"
@@ -48,7 +49,7 @@ func intervalFromEnv() time.Duration {
 	return duration
 }
 
-func (a *App) schedule() {
+func (a *App) schedule(ctx context.Context) {
 	duration := intervalFromEnv()
 
 	slog.Info(
@@ -59,9 +60,22 @@ func (a *App) schedule() {
 		"notifier", a.notifierName,
 	)
 
+	ticker := time.NewTicker(duration)
+	defer ticker.Stop()
+
 	for {
+		if ctx.Err() != nil {
+			slog.Info("scheduler stopped", "reason", ctx.Err())
+			return
+		}
+
 		a.runOnce()
-		time.Sleep(duration)
+		select {
+		case <-ctx.Done():
+			slog.Info("scheduler stopped", "reason", ctx.Err())
+			return
+		case <-ticker.C:
+		}
 	}
 }
 
@@ -197,6 +211,9 @@ func notificationIPSummary(ipResult *provider.IpResult) string {
 	return strings.Join(parts, ", ")
 }
 
-func (a *App) Run() {
-	a.schedule()
+func (a *App) Run(ctx context.Context) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	a.schedule(ctx)
 }

@@ -1,10 +1,13 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log/slog"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/spf13/viper"
 	"github.com/we11adam/uddns/app"
@@ -73,7 +76,10 @@ func main() {
 	}
 	slog.Info("notifier selected", "notifier", notifierName)
 
-	app.NewApp(providerName, p, updaterName, u, notifierName, n).Run()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	app.NewApp(providerName, p, updaterName, u, notifierName, n).Run(ctx)
 }
 
 type viperConfigReader struct {
