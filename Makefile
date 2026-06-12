@@ -1,12 +1,13 @@
 NAME=uddns
-ENTRIES=main.go
+ENTRIES=.
 BINDIR=bin
+VERSION?=dev
 GIT_REV=$$(git rev-parse HEAD)
 BUILD_TIME=$$(date -Iseconds)
 
 
 BUILD_OPTS=-trimpath
-LDFLAGS+=-s -w
+LDFLAGS+=-s -w -X main.version=${VERSION}
 
 BUILD_OPTS+=-ldflags="${LDFLAGS}"
 
@@ -42,4 +43,3 @@ cov:
 	go test ./... -coverpkg=./...
 
 default: build
-

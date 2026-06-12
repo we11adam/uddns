@@ -70,7 +70,7 @@ func configureLoggerFromConfig(v logConfigReader) {
 		}
 	}
 
-	slog.SetDefault(slog.New(fanoutHandler(handlers)))
+	slog.SetDefault(slog.New(fanoutHandler(handlers)).With(logProcessAttrs()...))
 	closeActiveLogFile(fileLogWriter)
 
 	if !levelOK {
@@ -83,6 +83,13 @@ func configureLoggerFromConfig(v logConfigReader) {
 		slog.Warn("failed to enable file logging", "dir", logDir, "source", config.dir.source, "error", fileLogErr)
 	} else if logDir != "" {
 		slog.Info("file logging enabled", "dir", logDir, "retention_days", retentionDays, "source", config.dir.source)
+	}
+}
+
+func logProcessAttrs() []any {
+	return []any{
+		"version", version,
+		"pid", os.Getpid(),
 	}
 }
 

@@ -75,6 +75,31 @@ func TestParseRotatedLogDate(t *testing.T) {
 	}
 }
 
+func TestLogProcessAttrsIncludesVersionAndPID(t *testing.T) {
+	oldVersion := version
+	version = "v-test"
+	t.Cleanup(func() {
+		version = oldVersion
+	})
+
+	attrs := logProcessAttrs()
+	values := map[string]any{}
+	for i := 0; i < len(attrs); i += 2 {
+		key, ok := attrs[i].(string)
+		if !ok {
+			t.Fatalf("expected attr key at index %d to be string, got %T", i, attrs[i])
+		}
+		values[key] = attrs[i+1]
+	}
+
+	if values["version"] != "v-test" {
+		t.Fatalf("expected version attr v-test, got %#v", values["version"])
+	}
+	if values["pid"] != os.Getpid() {
+		t.Fatalf("expected pid attr %d, got %#v", os.Getpid(), values["pid"])
+	}
+}
+
 func writeTestFile(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {

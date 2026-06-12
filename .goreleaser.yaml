@@ -9,6 +9,8 @@ builds:
     id: default
     binary: uddns
     flags: [-trimpath]
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
     env:
       - CGO_ENABLED=0
     targets:
