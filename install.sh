@@ -6,7 +6,13 @@ REPO="${REPO:-uddns}"
 VERSION="${UDDNS_VERSION:-latest}"
 INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
 SERVICE_NAME="${SERVICE_NAME:-uddns}"
-CONFIG_FILE="${UDDNS_CONFIG:-/etc/uddns.yaml}"
+CONFIG_FILE_SET=0
+if [ -n "${UDDNS_CONFIG:-}" ]; then
+	CONFIG_FILE="$UDDNS_CONFIG"
+	CONFIG_FILE_SET=1
+else
+	CONFIG_FILE="/etc/uddns.yaml"
+fi
 SERVICE_INTERVAL="${UDDNS_INTERVAL:-30s}"
 LOG_DIR="${UDDNS_LOG_DIR:-}"
 LOG_RETENTION_DAYS="${UDDNS_LOG_RETENTION_DAYS:-}"
@@ -92,10 +98,20 @@ can_write_path() {
 	[ -d "$parent" ] && [ -w "$parent" ]
 }
 
-warn_config_write_permission() {
+config_file_available_to_service() {
 	config_file="$1"
 
+	[ -r "$config_file" ] && return 0
+	[ -e "$config_file" ] && return 0
+	return 1
+}
+
+warn_config_write_permission() {
+	config_file="$1"
+	needs_write="${2:-1}"
+
 	[ "$(id -u)" -eq 0 ] && return
+	[ "$needs_write" -eq 0 ] && return
 	can_write_path "$config_file" && return
 
 	if command -v sudo >/dev/null 2>&1; then
@@ -157,14 +173,30 @@ systemd_available() {
 	command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]
 }
 
+systemd_unit_path() {
+	unit="${SERVICE_NAME}.service"
+
+	for path in "/etc/systemd/system/${unit}" "/usr/lib/systemd/system/${unit}" "/lib/systemd/system/${unit}"; do
+		if [ -e "$path" ]; then
+			printf '%s\n' "$path"
+			return 0
+		fi
+	done
+
+	return 1
+}
+
 systemd_unit_exists() {
 	unit="${SERVICE_NAME}.service"
 
-	[ -e "/etc/systemd/system/${unit}" ] && return 0
-	[ -e "/usr/lib/systemd/system/${unit}" ] && return 0
-	[ -e "/lib/systemd/system/${unit}" ] && return 0
-
+	systemd_unit_path >/dev/null && return 0
 	systemctl list-unit-files "$unit" --no-legend 2>/dev/null | grep -q "^${unit}[[:space:]]"
+}
+
+systemd_unit_config_file() {
+	unit_path="$(systemd_unit_path)" || return 1
+
+	sed -n 's/^Environment=UDDNS_CONFIG=\(.*\)$/\1/p' "$unit_path" | head -n 1
 }
 
 ask_systemd_preference() {
@@ -215,6 +247,7 @@ parse_args() {
 			--config)
 				[ "$#" -ge 2 ] || fail "--config requires a value"
 				CONFIG_FILE="$2"
+				CONFIG_FILE_SET=1
 				shift 2
 				;;
 			--interval)
@@ -373,11 +406,28 @@ download_release() {
 	printf '%s\n' "$binary"
 }
 
+installed_binary_path() {
+	printf '%s/%s\n' "$INSTALL_DIR" "$REPO"
+}
+
+installed_binary_exists() {
+	[ -e "$(installed_binary_path)" ]
+}
+
+upgrade_install_exists() {
+	installed_binary_exists && return 0
+	systemd_unit_exists
+}
+
 install_binary() {
 	binary="$1"
-	target="${INSTALL_DIR}/${REPO}"
+	target="$(installed_binary_path)"
 
-	log "Installing ${REPO} to ${target}"
+	if [ -e "$target" ]; then
+		log "Upgrading ${REPO} at ${target}"
+	else
+		log "Installing ${REPO} to ${target}"
+	fi
 	run_as_root mkdir -p "$INSTALL_DIR"
 	run_as_root install -m 0755 "$binary" "$target"
 }
@@ -386,11 +436,28 @@ install_systemd_service() {
 	binary_path="${INSTALL_DIR}/${REPO}"
 	unit_path="/etc/systemd/system/${SERVICE_NAME}.service"
 	unit_file="${tmpdir}/${SERVICE_NAME}.service"
+	update_service=0
+	needs_config_write=1
 
-	if [ "$CONFIG_FILE" = "/etc/uddns.yaml" ] && is_tty_available; then
+	if systemd_unit_exists; then
+		update_service=1
+	fi
+
+	if [ "$update_service" -eq 1 ] && [ "$CONFIG_FILE_SET" -eq 0 ]; then
+		existing_config="$(systemd_unit_config_file || true)"
+		if [ -n "$existing_config" ]; then
+			CONFIG_FILE="$existing_config"
+			log "Reusing existing systemd config path: ${CONFIG_FILE}"
+			if [ -e "$CONFIG_FILE" ]; then
+				needs_config_write=0
+			fi
+		fi
+	fi
+
+	if [ "$update_service" -eq 0 ] && [ "$CONFIG_FILE" = "/etc/uddns.yaml" ] && is_tty_available; then
 		CONFIG_FILE="$(prompt_text "Config file path for the systemd service" "$CONFIG_FILE")"
 	fi
-	warn_config_write_permission "$CONFIG_FILE"
+	warn_config_write_permission "$CONFIG_FILE" "$needs_config_write"
 
 	cat >"$unit_file" <<EOF
 [Unit]
@@ -421,11 +488,15 @@ RestartSec=10s
 WantedBy=multi-user.target
 EOF
 
-	log "Installing systemd unit to ${unit_path}"
+	if [ "$update_service" -eq 1 ]; then
+		log "Updating systemd unit at ${unit_path}"
+	else
+		log "Installing systemd unit to ${unit_path}"
+	fi
 	run_as_root install -m 0644 "$unit_file" "$unit_path"
 	run_as_root systemctl daemon-reload
 
-	if [ -r "$CONFIG_FILE" ]; then
+	if config_file_available_to_service "$CONFIG_FILE"; then
 		run_as_root systemctl enable --now "${SERVICE_NAME}.service"
 		log "systemd service enabled and started: ${SERVICE_NAME}.service"
 	else
@@ -436,6 +507,11 @@ EOF
 }
 
 parse_args "$@"
+
+upgrade_install=0
+if upgrade_install_exists; then
+	upgrade_install=1
+fi
 
 want_systemd=0
 if ask_systemd_preference; then
@@ -463,4 +539,8 @@ if [ "$want_systemd" -eq 1 ]; then
 	install_systemd_service
 fi
 
-log "UDDNS installed successfully."
+if [ "$upgrade_install" -eq 1 ]; then
+	log "UDDNS upgraded successfully."
+else
+	log "UDDNS installed successfully."
+fi
