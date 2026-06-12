@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -37,12 +38,9 @@ func main() {
 }
 
 type runtimeConfig struct {
-	providerName string
-	provider     provider.Provider
-	updaterName  string
-	updater      updater.Updater
 	notifierName string
 	notifier     notifier.Notifier
+	jobs         []app.Job
 	interval     time.Duration
 }
 
@@ -59,7 +57,7 @@ func run(args []string) int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	app.NewApp(rt.providerName, rt.provider, rt.updaterName, rt.updater, rt.notifierName, rt.notifier, rt.interval).Run(ctx)
+	app.NewApp(rt.jobs, rt.notifierName, rt.notifier, rt.interval).Run(ctx)
 	return 0
 }
 
@@ -77,9 +75,8 @@ func runConfigCommand(args []string) int {
 		}
 		slog.Info(
 			"config valid",
-			"provider", rt.providerName,
-			"updater", rt.updaterName,
 			"notifier", rt.notifierName,
+			"jobs", len(rt.jobs),
 			"interval", rt.interval,
 		)
 		return 0
@@ -118,18 +115,9 @@ func loadRuntime(configPath string) (*runtimeConfig, error) {
 	configureLoggerFromConfig(cfg)
 	slog.Info("using config file", "config", cfg.Path())
 
-	providerName, p, err := provider.GetProvider(cfg)
+	jobs, err := loadJobs(cfg)
 	if err != nil {
-		return nil, fmt.Errorf("no provider found: %w", err)
-	} else {
-		slog.Info("provider selected", "provider", providerName)
-	}
-
-	updaterName, u, err := updater.GetUpdater(cfg)
-	if err != nil {
-		return nil, fmt.Errorf("no updater found: %w", err)
-	} else {
-		slog.Info("updater selected", "updater", updaterName)
+		return nil, err
 	}
 
 	notifierName, n, err := notifier.GetNotifier(cfg)
@@ -144,12 +132,131 @@ func loadRuntime(configPath string) (*runtimeConfig, error) {
 	}
 
 	return &runtimeConfig{
-		providerName: providerName,
-		provider:     p,
-		updaterName:  updaterName,
-		updater:      u,
 		notifierName: notifierName,
 		notifier:     n,
+		jobs:         jobs,
 		interval:     interval,
 	}, nil
+}
+
+func loadJobs(cfg *config.Config) ([]app.Job, error) {
+	jobConfigs, ok, err := cfg.Jobs()
+	if err != nil {
+		return nil, fmt.Errorf("failed to read jobs: %w", err)
+	}
+	if !ok {
+		job, err := loadDefaultJob(cfg)
+		if err != nil {
+			return nil, err
+		}
+		return []app.Job{job}, nil
+	}
+	if len(jobConfigs) == 0 {
+		return nil, fmt.Errorf("jobs must contain at least one job")
+	}
+
+	jobs := make([]app.Job, 0, len(jobConfigs))
+	seen := map[string]struct{}{}
+	for i, jobConfig := range jobConfigs {
+		job, err := loadConfiguredJob(cfg, jobConfig, i)
+		if err != nil {
+			return nil, err
+		}
+		if _, exists := seen[job.Name]; exists {
+			return nil, fmt.Errorf("job %q is duplicated", job.Name)
+		}
+		seen[job.Name] = struct{}{}
+		jobs = append(jobs, job)
+	}
+	return jobs, nil
+}
+
+func loadDefaultJob(cfg *config.Config) (app.Job, error) {
+	providerName, p, err := provider.GetProvider(cfg)
+	if err != nil {
+		return app.Job{}, fmt.Errorf("no provider found: %w", err)
+	}
+	updaterName, u, err := updater.GetUpdater(cfg)
+	if err != nil {
+		return app.Job{}, fmt.Errorf("no updater found: %w", err)
+	}
+
+	slog.Info("job selected", "job", "default", "provider", providerName, "updater", updaterName, "families", app.AllFamilies().String())
+	return app.NewJob("default", providerName, p, updaterName, u, app.AllFamilies()), nil
+}
+
+func loadConfiguredJob(cfg *config.Config, jobConfig config.Job, index int) (app.Job, error) {
+	name := strings.TrimSpace(jobConfig.Name)
+	if name == "" {
+		name = fmt.Sprintf("job-%d", index+1)
+	}
+	if strings.TrimSpace(jobConfig.Provider) == "" {
+		return app.Job{}, fmt.Errorf("job %q missing provider", name)
+	}
+	if strings.TrimSpace(jobConfig.Updater) == "" {
+		return app.Job{}, fmt.Errorf("job %q missing updater", name)
+	}
+	if strings.TrimSpace(jobConfig.Record) == "" {
+		return app.Job{}, fmt.Errorf("job %q missing record", name)
+	}
+
+	families, err := parseFamilies(jobConfig.Families)
+	if err != nil {
+		return app.Job{}, fmt.Errorf("job %q invalid families: %w", name, err)
+	}
+
+	jobReader := cfg.WithOverrides(jobOverrides(jobConfig))
+	providerName, p, err := provider.GetProvider(jobReader)
+	if err != nil {
+		return app.Job{}, fmt.Errorf("job %q provider error: %w", name, err)
+	}
+	updaterName, u, err := updater.GetUpdater(jobReader)
+	if err != nil {
+		return app.Job{}, fmt.Errorf("job %q updater error: %w", name, err)
+	}
+
+	slog.Info("job selected", "job", name, "provider", providerName, "updater", updaterName, "families", families.String())
+	return app.NewJob(name, providerName, p, updaterName, u, families), nil
+}
+
+func jobOverrides(job config.Job) map[string]any {
+	record := strings.TrimSpace(job.Record)
+	zone := strings.TrimSpace(job.Zone)
+	overrides := map[string]any{
+		"providers.use":              strings.TrimSpace(job.Provider),
+		"updaters.use":               strings.TrimSpace(job.Updater),
+		"updaters.cloudflare.domain": record,
+		"updaters.aliyun.domain":     record,
+		"updaters.duckdns.domain":    record,
+		"updaters.lightdns.domain":   record,
+	}
+	if zone != "" {
+		overrides["updaters.cloudflare.zone"] = zone
+		overrides["updaters.aliyun.zone"] = zone
+	}
+	return overrides
+}
+
+func parseFamilies(values []string) (app.Families, error) {
+	if len(values) == 0 {
+		return app.AllFamilies(), nil
+	}
+
+	var families app.Families
+	for _, value := range values {
+		switch strings.ToLower(strings.TrimSpace(value)) {
+		case "ipv4", "v4", "4":
+			families.IPv4 = true
+		case "ipv6", "v6", "6":
+			families.IPv6 = true
+		case "":
+			continue
+		default:
+			return app.Families{}, fmt.Errorf("unsupported family %q", value)
+		}
+	}
+	if !families.IPv4 && !families.IPv6 {
+		return app.Families{}, fmt.Errorf("at least one family is required")
+	}
+	return families, nil
 }

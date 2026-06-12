@@ -61,7 +61,10 @@ UDDNS 会按以下顺序查找配置文件：
 4. `~/.config/uddns.yaml`。
 5. `/etc/uddns.yaml`。
 
-示例：
+### 简单模式
+
+如果一个 UDDNS 进程只更新一条 DNS 记录，使用简单模式即可。这是原有配置格式，
+会继续完整支持。
 
 ```yaml
 providers:
@@ -121,6 +124,70 @@ registry 顺序检查已配置项。如果某个已配置的 provider 或 update
 报出该配置错误，而不是静默回退到其他配置。
 notifier 是可选的；配置 notifier 时可以用 `notifiers.use` 明确选择，配置错误会让程序
 在启动时失败。
+
+### 高级 Jobs 模式
+
+如果一个进程需要更新多条 DNS 记录、使用不同 DNS 服务，或者只更新指定地址族，可以使用
+jobs 模式。provider 只描述如何获取 IP，updater 只描述如何访问 DNS 服务，每个 job
+负责把一个 provider、一个 updater 和一条 DNS 记录连接起来。
+
+```yaml
+providers:
+  ip_service:
+    - ifconfig.me
+    - ip.fm
+  netif:
+    name: ppp0
+
+updaters:
+  cloudflare:
+    apitoken: your-cloudflare-api-token
+    # proxy: http://127.0.0.1:2080
+  duckdns:
+    token: your-duckdns-token
+
+jobs:
+  - name: home-cloudflare
+    provider: ip_service
+    updater: cloudflare
+    record: home.example.com
+    # 可选。DNS zone 无法从最后两段推断时设置。
+    zone: example.com
+    families: [ipv4, ipv6]
+
+  - name: nas-duckdns
+    provider: netif
+    updater: duckdns
+    record: your-subdomain
+    families: [ipv4]
+
+notifiers:
+  use: telegram
+  telegram:
+    chat_id: -1001234567890
+    token: 1234567890:telegram-bot-token
+
+logging:
+  level: info
+  dir: /var/log/uddns
+  retention_days: 7
+```
+
+job 字段：
+
+- `name`：可选的唯一任务名。不设置时默认为 `job-<n>`。
+- `provider`：要使用的 provider，例如 `ip_service`、`routeros` 或 `netif`。
+- `updater`：要使用的 updater，例如 `cloudflare`、`aliyun`、`duckdns` 或 `lightdns`。
+- `record`：需要更新的 DNS 记录。DuckDNS 使用不包含 `.duckdns.org` 的子域名。
+- `zone`：Cloudflare 和 Aliyun 可选的 DNS zone 覆盖。
+- `families`：可选地址族。支持 `ipv4` 和 `ipv6`；不设置时更新两者。
+
+存在 `jobs` 时，每个 job 都有独立的 last IPv4/IPv6 状态，并按全局更新间隔顺序执行。
+没有 `jobs` 时，UDDNS 会按简单模式配置运行一个隐式的 `default` job。命名 job 发出的
+通知会自动带上 job 名作为前缀。
+
+job 选择的是 provider/updater 的实现名。使用同一个实现的多个 job 会共享该实现的配置；
+例如所有 `cloudflare` job 都会使用 `updaters.cloudflare` 里的凭据。
 
 ### Providers
 

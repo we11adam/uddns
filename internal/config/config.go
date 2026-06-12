@@ -16,6 +16,15 @@ type Config struct {
 	v    *viper.Viper
 }
 
+type Job struct {
+	Name     string   `mapstructure:"name"`
+	Provider string   `mapstructure:"provider"`
+	Updater  string   `mapstructure:"updater"`
+	Record   string   `mapstructure:"record"`
+	Zone     string   `mapstructure:"zone"`
+	Families []string `mapstructure:"families"`
+}
+
 func Load(providedPath string) (*Config, error) {
 	path, err := FindFile(providedPath)
 	if err != nil {
@@ -66,6 +75,29 @@ func (c *Config) IsSet(key string) bool {
 
 func (c *Config) UnmarshalKey(key string, rawVal any) error {
 	return c.v.UnmarshalKey(key, rawVal)
+}
+
+func (c *Config) Jobs() ([]Job, bool, error) {
+	if !c.IsSet("jobs") {
+		return nil, false, nil
+	}
+
+	var jobs []Job
+	if err := c.UnmarshalKey("jobs", &jobs); err != nil {
+		return nil, true, err
+	}
+	return jobs, true, nil
+}
+
+func (c *Config) WithOverrides(overrides map[string]any) *Config {
+	v := viper.New()
+	for key, value := range c.v.AllSettings() {
+		v.Set(key, value)
+	}
+	for key, value := range overrides {
+		v.Set(key, value)
+	}
+	return &Config{path: c.path, v: v}
 }
 
 func (c *Config) Interval() (time.Duration, string, error) {

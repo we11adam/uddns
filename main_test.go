@@ -151,6 +151,51 @@ updaters:
 	}
 }
 
+func TestRunConfigCheckSupportsJobs(t *testing.T) {
+	t.Setenv("UDDNS_INTERVAL", "")
+	path := writeTempConfig(t, `
+providers:
+  ip_service:
+    - ifconfig.me
+updaters:
+  duckdns:
+    token: test-token
+jobs:
+  - name: home
+    provider: ip_service
+    updater: duckdns
+    record: home-subdomain
+    families: [ipv4]
+`)
+
+	code := run([]string{"config", "check", "-c", path})
+	if code != 0 {
+		t.Fatalf("expected jobs config check to succeed, got exit code %d", code)
+	}
+}
+
+func TestRunConfigCheckRejectsInvalidJobs(t *testing.T) {
+	t.Setenv("UDDNS_INTERVAL", "")
+	path := writeTempConfig(t, `
+providers:
+  ip_service:
+    - ifconfig.me
+updaters:
+  duckdns:
+    token: test-token
+jobs:
+  - name: home
+    provider: ip_service
+    updater: duckdns
+    families: [ipv4]
+`)
+
+	code := run([]string{"config", "check", "-c", path})
+	if code == 0 {
+		t.Fatal("expected jobs config check to fail")
+	}
+}
+
 func writeTempConfig(t *testing.T, content string) string {
 	t.Helper()
 

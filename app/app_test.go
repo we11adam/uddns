@@ -8,6 +8,7 @@ import (
 
 	"github.com/we11adam/uddns/notifier"
 	"github.com/we11adam/uddns/provider"
+	"github.com/we11adam/uddns/updater"
 )
 
 type staticProvider struct {
@@ -45,9 +46,9 @@ func TestRunOnceUpdatesDNSWhenIPChanges(t *testing.T) {
 	p := &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10"}}
 	u := &recordingUpdater{}
 	n := &recordingNotifier{}
-	a := NewApp("test-provider", p, "test-updater", u, "test-notifier", n, time.Second)
+	a := newTestApp(p, u, n, AllFamilies())
 
-	a.runOnce()
+	a.runOnce(context.Background())
 
 	if u.calls != 1 {
 		t.Fatalf("expected updater to be called once, got %d", u.calls)
@@ -55,8 +56,8 @@ func TestRunOnceUpdatesDNSWhenIPChanges(t *testing.T) {
 	if u.last == nil || u.last.IPv4 != "192.0.2.10" {
 		t.Fatalf("expected updater to receive IPv4 192.0.2.10, got %#v", u.last)
 	}
-	if a.lastIPv4 != "192.0.2.10" {
-		t.Fatalf("expected lastIPv4 to be updated, got %q", a.lastIPv4)
+	if a.jobs[0].lastIPv4 != "192.0.2.10" {
+		t.Fatalf("expected lastIPv4 to be updated, got %q", a.jobs[0].lastIPv4)
 	}
 	if len(n.notifications) != 2 {
 		t.Fatalf("expected IP change and update success notifications, got %d", len(n.notifications))
@@ -73,10 +74,10 @@ func TestRunOnceSkipsUnchangedIP(t *testing.T) {
 	p := &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10"}}
 	u := &recordingUpdater{}
 	n := &recordingNotifier{}
-	a := NewApp("test-provider", p, "test-updater", u, "test-notifier", n, time.Second)
+	a := newTestApp(p, u, n, AllFamilies())
 
-	a.runOnce()
-	a.runOnce()
+	a.runOnce(context.Background())
+	a.runOnce(context.Background())
 
 	if u.calls != 1 {
 		t.Fatalf("expected unchanged IP to skip second update, got %d calls", u.calls)
@@ -91,15 +92,15 @@ func TestRunOnceDoesNotAdvanceLastIPWhenUpdateFails(t *testing.T) {
 	p := &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10"}}
 	u := &recordingUpdater{err: updateErr}
 	n := &recordingNotifier{}
-	a := NewApp("test-provider", p, "test-updater", u, "test-notifier", n, time.Second)
+	a := newTestApp(p, u, n, AllFamilies())
 
-	a.runOnce()
+	a.runOnce(context.Background())
 
 	if u.calls != 1 {
 		t.Fatalf("expected updater to be called once, got %d", u.calls)
 	}
-	if a.lastIPv4 != "" {
-		t.Fatalf("expected lastIPv4 to remain empty after failed update, got %q", a.lastIPv4)
+	if a.jobs[0].lastIPv4 != "" {
+		t.Fatalf("expected lastIPv4 to remain empty after failed update, got %q", a.jobs[0].lastIPv4)
 	}
 	if len(n.notifications) != 2 {
 		t.Fatalf("expected IP change and update failure notifications, got %d", len(n.notifications))
@@ -114,9 +115,9 @@ func TestRunOnceSkipsUpdateWhenProviderFails(t *testing.T) {
 	p := &staticProvider{err: providerErr}
 	u := &recordingUpdater{}
 	n := &recordingNotifier{}
-	a := NewApp("test-provider", p, "test-updater", u, "test-notifier", n, time.Second)
+	a := newTestApp(p, u, n, AllFamilies())
 
-	a.runOnce()
+	a.runOnce(context.Background())
 
 	if u.calls != 0 {
 		t.Fatalf("expected provider failure to skip updater, got %d calls", u.calls)
@@ -130,9 +131,9 @@ func TestRunOnceSkipsUpdateWhenProviderReturnsInvalidIP(t *testing.T) {
 	p := &staticProvider{result: &provider.IpResult{IPv4: "not-an-ip"}}
 	u := &recordingUpdater{}
 	n := &recordingNotifier{}
-	a := NewApp("test-provider", p, "test-updater", u, "test-notifier", n, time.Second)
+	a := newTestApp(p, u, n, AllFamilies())
 
-	a.runOnce()
+	a.runOnce(context.Background())
 
 	if u.calls != 0 {
 		t.Fatalf("expected invalid provider result to skip updater, got %d calls", u.calls)
@@ -146,7 +147,7 @@ func TestRunReturnsWhenContextIsCanceled(t *testing.T) {
 	p := &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10"}}
 	u := &recordingUpdater{}
 	n := &recordingNotifier{}
-	a := NewApp("test-provider", p, "test-updater", u, "test-notifier", n, time.Second)
+	a := newTestApp(p, u, n, AllFamilies())
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
@@ -155,4 +156,42 @@ func TestRunReturnsWhenContextIsCanceled(t *testing.T) {
 	if u.calls != 0 {
 		t.Fatalf("expected canceled context to skip updates, got %d calls", u.calls)
 	}
+}
+
+func TestRunOnceFiltersRequestedFamilies(t *testing.T) {
+	p := &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10", IPv6: "2001:db8::1"}}
+	u := &recordingUpdater{}
+	n := &recordingNotifier{}
+	a := newTestApp(p, u, n, Families{IPv4: true})
+
+	a.runOnce(context.Background())
+
+	if u.calls != 1 {
+		t.Fatalf("expected updater to be called once, got %d", u.calls)
+	}
+	if u.last == nil || u.last.IPv4 != "192.0.2.10" || u.last.IPv6 != "" {
+		t.Fatalf("expected updater to receive only IPv4, got %#v", u.last)
+	}
+}
+
+func TestRunOncePrefixesNotificationsForNamedJobs(t *testing.T) {
+	p := &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10"}}
+	u := &recordingUpdater{}
+	n := &recordingNotifier{}
+	job := NewJob("home", "test-provider", p, "test-updater", u, AllFamilies())
+	a := NewApp([]Job{job}, "test-notifier", n, time.Second)
+
+	a.runOnce(context.Background())
+
+	if len(n.notifications) != 2 {
+		t.Fatalf("expected two notifications, got %d", len(n.notifications))
+	}
+	if n.notifications[0].Message != "home: IPv4 address changed to 192.0.2.10" {
+		t.Fatalf("expected job-prefixed notification, got %q", n.notifications[0].Message)
+	}
+}
+
+func newTestApp(p provider.Provider, u updater.Updater, n notifier.Notifier, families Families) *App {
+	job := NewJob("default", "test-provider", p, "test-updater", u, families)
+	return NewApp([]Job{job}, "test-notifier", n, time.Second)
 }

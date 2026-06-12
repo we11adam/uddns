@@ -63,7 +63,10 @@ UDDNS looks for a config file in this order:
 4. `~/.config/uddns.yaml`.
 5. `/etc/uddns.yaml`.
 
-Example:
+### Simple Mode
+
+Use simple mode when one UDDNS process updates one DNS record. This is the
+traditional configuration format and remains fully supported.
 
 ```yaml
 providers:
@@ -124,6 +127,77 @@ registry order. A configured but invalid provider or updater stops startup with
 its configuration error instead of silently falling back to another entry.
 Notifiers are optional; when configured, `notifiers.use` selects the notifier
 and invalid notifier configuration stops startup.
+
+### Advanced Jobs Mode
+
+Use jobs mode when one process should update multiple DNS records, use different
+DNS services, or update only selected address families. Providers describe how
+to obtain IP addresses, updaters describe how to access a DNS service, and each
+job connects one provider to one updater and one DNS record.
+
+```yaml
+providers:
+  ip_service:
+    - ifconfig.me
+    - ip.fm
+  netif:
+    name: ppp0
+
+updaters:
+  cloudflare:
+    apitoken: your-cloudflare-api-token
+    # proxy: http://127.0.0.1:2080
+  duckdns:
+    token: your-duckdns-token
+
+jobs:
+  - name: home-cloudflare
+    provider: ip_service
+    updater: cloudflare
+    record: home.example.com
+    # Optional. Set when the DNS zone cannot be inferred from the last two labels.
+    zone: example.com
+    families: [ipv4, ipv6]
+
+  - name: nas-duckdns
+    provider: netif
+    updater: duckdns
+    record: your-subdomain
+    families: [ipv4]
+
+notifiers:
+  use: telegram
+  telegram:
+    chat_id: -1001234567890
+    token: 1234567890:telegram-bot-token
+
+logging:
+  level: info
+  dir: /var/log/uddns
+  retention_days: 7
+```
+
+Job fields:
+
+- `name`: Optional unique job name. Defaults to `job-<n>` when omitted.
+- `provider`: Provider implementation to use, for example `ip_service`,
+  `routeros`, or `netif`.
+- `updater`: Updater implementation to use, for example `cloudflare`,
+  `aliyun`, `duckdns`, or `lightdns`.
+- `record`: DNS record to update. For DuckDNS this is the subdomain without
+  `.duckdns.org`.
+- `zone`: Optional DNS zone override for Cloudflare and Aliyun.
+- `families`: Optional address families. Supported values are `ipv4` and
+  `ipv6`; omitted means both.
+
+When `jobs` is present, each job has its own last IPv4/IPv6 state and is run
+sequentially on the global update interval. Without `jobs`, UDDNS behaves as a
+single implicit `default` job using the simple-mode config. Notifications from
+named jobs are prefixed with the job name.
+
+Jobs select provider and updater implementation names. Jobs that use the same
+implementation share that implementation's configuration, for example all
+`cloudflare` jobs use `updaters.cloudflare` credentials.
 
 ### Providers
 
