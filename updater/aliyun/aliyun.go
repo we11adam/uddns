@@ -146,7 +146,7 @@ func (a *Aliyun) updateDNSRecord(recordType, ip string) error {
 		existingRecord := response.DomainRecords.Record[0]
 
 		if existingRecord.Value == ip {
-			slog.Debug("skipping current DNS record", "updater", "aliyun", "record_type", recordType, "ip", ip)
+			slog.Debug("skipping current DNS record", "updater", "aliyun", "record", domain, "record_type", recordType, "ip", ip)
 			return nil
 		}
 
@@ -161,7 +161,7 @@ func (a *Aliyun) updateDNSRecord(recordType, ip string) error {
 			return fmt.Errorf("failed to update DNS record: %w", err)
 		}
 
-		slog.Info("updated DNS record", "updater", "aliyun", "record_type", recordType, "ip", ip, "record_id", existingRecord.RecordId)
+		slog.Info("updated DNS record", "updater", "aliyun", "record", domain, "record_type", recordType, "ip", ip, "record_id", existingRecord.RecordId)
 	} else {
 		addRequest := alidns.CreateAddDomainRecordRequest()
 		addRequest.DomainName = domainName
@@ -174,7 +174,7 @@ func (a *Aliyun) updateDNSRecord(recordType, ip string) error {
 			return fmt.Errorf("failed to add DNS record: %w", err)
 		}
 
-		slog.Info("added DNS record", "updater", "aliyun", "record_type", recordType, "ip", ip, "record_id", response.RecordId)
+		slog.Info("added DNS record", "updater", "aliyun", "record", domain, "record_type", recordType, "ip", ip, "record_id", response.RecordId)
 	}
 
 	return nil

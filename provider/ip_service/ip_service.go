@@ -106,9 +106,14 @@ func (i *IpService) getIP(client *resty.Client, family string) (string, error) {
 			continue
 		}
 
-		resp, err := client.R().Get(serviceURL)
 		slog.Debug("requesting IP address", "provider", "ip_service", "service", serviceURL, "family", family)
-		if err != nil || resp.StatusCode() != 200 {
+		resp, err := client.R().Get(serviceURL)
+		if err != nil {
+			slog.Debug("failed to request IP address", "provider", "ip_service", "service", serviceURL, "family", family, "error", err)
+			continue
+		}
+		if resp.StatusCode() != 200 {
+			slog.Debug("unexpected IP address response status", "provider", "ip_service", "service", serviceURL, "family", family, "status", resp.StatusCode())
 			continue
 		}
 		ip := string(resp.Body())

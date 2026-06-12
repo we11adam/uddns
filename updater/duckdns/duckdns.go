@@ -83,7 +83,7 @@ func (c *DuckDNS) updateIP(ip string) error {
 		return fmt.Errorf("failed to update DuckDNS DNS record: %s", body)
 	}
 
-	slog.Info("updated DNS record", "updater", "duckdns", "ip", ip)
+	slog.Info("updated DNS record", "updater", "duckdns", "record", c.config.Domain, "ip", ip)
 
 	return nil
 }

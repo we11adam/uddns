@@ -83,7 +83,7 @@ func (c *LightDNS) updateIP(ip string) error {
 		return fmt.Errorf("failed to update LightDNS DNS record: %s", body)
 	}
 
-	slog.Info("updated DNS record", "updater", "lightdns", "ip", ip)
+	slog.Info("updated DNS record", "updater", "lightdns", "record", c.config.Domain, "ip", ip)
 
 	return nil
 }

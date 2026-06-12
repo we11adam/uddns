@@ -188,7 +188,7 @@ func TestRunOncePrefixesNotificationsForNamedJobs(t *testing.T) {
 	p := &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10"}}
 	u := &recordingUpdater{}
 	n := &recordingNotifier{}
-	job := NewJob("home", "test-provider", p, "test-updater", u, AllFamilies(), VerifyAuto)
+	job := NewJob("home", "test-provider", p, "test-updater", u, "home.example.com", "example.com", AllFamilies(), VerifyAuto)
 	a := NewApp([]Job{job}, "test-notifier", n, time.Second)
 
 	a.runOnce(context.Background())
@@ -205,7 +205,7 @@ func TestRunOnceUpdatesWhenCurrentRecordDrifts(t *testing.T) {
 	p := &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10"}}
 	u := &recordReadingUpdater{current: &provider.IpResult{IPv4: "192.0.2.9"}}
 	n := &recordingNotifier{}
-	job := NewJob("default", "test-provider", p, "test-updater", u, AllFamilies(), VerifyUpdaterAPI)
+	job := NewJob("default", "test-provider", p, "test-updater", u, "home.example.com", "example.com", AllFamilies(), VerifyUpdaterAPI)
 	job.lastIPv4 = "192.0.2.10"
 	a := NewApp([]Job{job}, "test-notifier", n, time.Second)
 
@@ -223,7 +223,7 @@ func TestRunOnceSkipsUpdateWhenRecordReadFails(t *testing.T) {
 	p := &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10"}}
 	u := &recordReadingUpdater{err: errors.New("verify failed")}
 	n := &recordingNotifier{}
-	job := NewJob("default", "test-provider", p, "test-updater", u, AllFamilies(), VerifyUpdaterAPI)
+	job := NewJob("default", "test-provider", p, "test-updater", u, "home.example.com", "example.com", AllFamilies(), VerifyUpdaterAPI)
 	job.lastIPv4 = "192.0.2.10"
 	a := NewApp([]Job{job}, "test-notifier", n, time.Second)
 
@@ -235,6 +235,6 @@ func TestRunOnceSkipsUpdateWhenRecordReadFails(t *testing.T) {
 }
 
 func newTestApp(p provider.Provider, u updater.Updater, n notifier.Notifier, families Families) *App {
-	job := NewJob("default", "test-provider", p, "test-updater", u, families, VerifyAuto)
+	job := NewJob("default", "test-provider", p, "test-updater", u, "", "", families, VerifyAuto)
 	return NewApp([]Job{job}, "test-notifier", n, time.Second)
 }

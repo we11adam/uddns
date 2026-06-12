@@ -79,7 +79,7 @@ func New(config *Config) (*Cloudflare, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse Cloudflare proxy URL: %w", err)
 		}
-		slog.Info("using proxy", "updater", "cloudflare", "proxy", config.Proxy)
+		slog.Info("using proxy", "updater", "cloudflare", "proxy", proxyLogValue(proxy))
 		httpClient = &http.Client{
 			Transport: &http.Transport{
 				Proxy: http.ProxyURL(proxy),
@@ -174,7 +174,7 @@ func (c *Cloudflare) ensureZoneID() error {
 	}
 
 	c.zoneID = zoneID
-	slog.Debug("zone ID retrieved", "updater", "cloudflare", "domain", c.config.Domain, "zone", zone, "zone_id", zoneID)
+	slog.Debug("zone ID retrieved", "updater", "cloudflare", "record", c.config.Domain, "zone", zone, "zone_id", zoneID)
 	return nil
 }
 
@@ -191,7 +191,7 @@ func (c *Cloudflare) updateDNSRecord(ctx context.Context, recordType, ip string)
 		record := dnsRecords[0]
 
 		if record.Content == ip {
-			slog.Debug("skipping current DNS record", "updater", "cloudflare", "record_type", recordType, "ip", ip)
+			slog.Debug("skipping current DNS record", "updater", "cloudflare", "record", domain, "record_type", recordType, "ip", ip)
 			return nil
 		}
 
@@ -208,7 +208,7 @@ func (c *Cloudflare) updateDNSRecord(ctx context.Context, recordType, ip string)
 		if err != nil {
 			return fmt.Errorf("failed to update Cloudflare DNS record: %w", err)
 		}
-		slog.Info("updated DNS record", "updater", "cloudflare", "record_type", recordType, "ip", ip)
+		slog.Info("updated DNS record", "updater", "cloudflare", "record", domain, "record_type", recordType, "ip", ip)
 	} else {
 		createParams := cloudflare.CreateDNSRecordParams{
 			Type:    recordType,
@@ -222,7 +222,7 @@ func (c *Cloudflare) updateDNSRecord(ctx context.Context, recordType, ip string)
 		if err != nil {
 			return fmt.Errorf("failed to create Cloudflare DNS record: %w", err)
 		}
-		slog.Info("created DNS record", "updater", "cloudflare", "record_type", recordType, "ip", ip)
+		slog.Info("created DNS record", "updater", "cloudflare", "record", domain, "record_type", recordType, "ip", ip)
 	}
 
 	return nil
@@ -241,4 +241,14 @@ func (c *Cloudflare) currentDNSRecord(ctx context.Context, recordType string) (s
 	}
 
 	return dnsRecords[0].Content, nil
+}
+
+func proxyLogValue(proxy *url.URL) string {
+	if proxy == nil {
+		return ""
+	}
+	if proxy.Scheme == "" {
+		return proxy.Host
+	}
+	return proxy.Scheme + "://" + proxy.Host
 }

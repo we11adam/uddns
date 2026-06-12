@@ -187,9 +187,10 @@ func loadDefaultJob(cfg *config.Config) (app.Job, error) {
 	if err := validateVerifySupport("default", updaterName, u, verify); err != nil {
 		return app.Job{}, err
 	}
+	record, zone := defaultJobRecord(cfg, updaterName)
 
-	slog.Info("job selected", "job", "default", "provider", providerName, "updater", updaterName, "families", app.AllFamilies().String(), "verify", verify)
-	return app.NewJob("default", providerName, p, updaterName, u, app.AllFamilies(), verify), nil
+	slog.Info("job selected", "job", "default", "provider", providerName, "updater", updaterName, "record", record, "zone", zone, "families", app.AllFamilies().String(), "verify", verify)
+	return app.NewJob("default", providerName, p, updaterName, u, record, zone, app.AllFamilies(), verify), nil
 }
 
 func loadConfiguredJob(cfg *config.Config, jobConfig config.Job, index int) (app.Job, error) {
@@ -203,7 +204,9 @@ func loadConfiguredJob(cfg *config.Config, jobConfig config.Job, index int) (app
 	if strings.TrimSpace(jobConfig.Updater) == "" {
 		return app.Job{}, fmt.Errorf("job %q missing updater", name)
 	}
-	if strings.TrimSpace(jobConfig.Record) == "" {
+	record := strings.TrimSpace(jobConfig.Record)
+	zone := strings.TrimSpace(jobConfig.Zone)
+	if record == "" {
 		return app.Job{}, fmt.Errorf("job %q missing record", name)
 	}
 
@@ -229,8 +232,23 @@ func loadConfiguredJob(cfg *config.Config, jobConfig config.Job, index int) (app
 		return app.Job{}, err
 	}
 
-	slog.Info("job selected", "job", name, "provider", providerName, "updater", updaterName, "families", families.String(), "verify", verify)
-	return app.NewJob(name, providerName, p, updaterName, u, families, verify), nil
+	slog.Info("job selected", "job", name, "provider", providerName, "updater", updaterName, "record", record, "zone", zone, "families", families.String(), "verify", verify)
+	return app.NewJob(name, providerName, p, updaterName, u, record, zone, families, verify), nil
+}
+
+func defaultJobRecord(cfg *config.Config, updaterName string) (string, string) {
+	switch strings.ToLower(strings.TrimSpace(updaterName)) {
+	case "cloudflare":
+		return strings.TrimSpace(cfg.GetString("updaters.cloudflare.domain")), strings.TrimSpace(cfg.GetString("updaters.cloudflare.zone"))
+	case "aliyun":
+		return strings.TrimSpace(cfg.GetString("updaters.aliyun.domain")), strings.TrimSpace(cfg.GetString("updaters.aliyun.zone"))
+	case "duckdns":
+		return strings.TrimSpace(cfg.GetString("updaters.duckdns.domain")), ""
+	case "lightdns":
+		return strings.TrimSpace(cfg.GetString("updaters.lightdns.domain")), ""
+	default:
+		return "", ""
+	}
 }
 
 func jobOverrides(job config.Job) map[string]any {

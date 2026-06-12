@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -282,6 +283,7 @@ func (w *calendarRotatingWriter) cleanupOldLogs(now time.Time) {
 	cutoff := dateOnly(now).AddDate(0, 0, -w.retentionDays+1)
 	entries, err := os.ReadDir(w.dir)
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "uddns: failed to read log directory for cleanup: dir=%s error=%v\n", w.dir, err)
 		return
 	}
 
@@ -295,7 +297,10 @@ func (w *calendarRotatingWriter) cleanupOldLogs(now time.Time) {
 			continue
 		}
 
-		_ = os.Remove(filepath.Join(w.dir, entry.Name()))
+		path := filepath.Join(w.dir, entry.Name())
+		if err := os.Remove(path); err != nil {
+			fmt.Fprintf(os.Stderr, "uddns: failed to remove expired log file: path=%s error=%v\n", path, err)
+		}
 	}
 }
 
