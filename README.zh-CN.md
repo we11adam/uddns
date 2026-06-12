@@ -99,6 +99,7 @@ updaters:
     domain: ddns.example.com
 
 notifiers:
+  use: telegram
   telegram:
     chat_id: -1001234567890
     token: 1234567890:telegram-bot-token
@@ -114,6 +115,8 @@ logging:
 建议用 `providers.use` 和 `updaters.use` 明确选择。未设置 `use` 时，UDDNS 会按确定的
 registry 顺序检查已配置项。如果某个已配置的 provider 或 updater 配置错误，程序会直接
 报出该配置错误，而不是静默回退到其他配置。
+notifier 是可选的；配置 notifier 时可以用 `notifiers.use` 明确选择，配置错误会让程序
+在启动时失败。
 
 ### Providers
 

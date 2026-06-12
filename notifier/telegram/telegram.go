@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/go-resty/resty/v2"
-	"github.com/spf13/viper"
 	"github.com/we11adam/uddns/notifier"
 )
 
@@ -16,7 +15,11 @@ type Telegram struct {
 }
 
 func init() {
-	notifier.Register("Telegram", func(v *viper.Viper) (notifier.Notifier, error) {
+	notifier.Register("Telegram", "notifiers.telegram", func(v notifier.ConfigReader) (notifier.Notifier, error) {
+		if !v.IsSet("notifiers.telegram") {
+			return nil, notifier.ErrNotConfigured
+		}
+
 		telegram := Telegram{}
 		err := v.UnmarshalKey("notifiers.telegram", &telegram)
 		if err != nil {

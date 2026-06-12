@@ -105,3 +105,33 @@ func TestRegistryGetReportsUnknownSelector(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
+
+func TestRegistryGetOptionalUsesFallbackWhenUnconfigured(t *testing.T) {
+	r := New[string]("thing", "things.use")
+	r.Register("First", "things.first", func(ConfigReader) (string, error) {
+		return "", ErrNotConfigured
+	})
+
+	name, value, err := r.GetOptional(testConfig{}, "Fallback", "fallback")
+	if err != nil {
+		t.Fatalf("expected optional registry lookup to succeed, got %v", err)
+	}
+	if name != "Fallback" || value != "fallback" {
+		t.Fatalf("expected Fallback/fallback, got %s/%s", name, value)
+	}
+}
+
+func TestRegistryGetOptionalReportsConfiguredError(t *testing.T) {
+	r := New[string]("thing", "things.use")
+	r.Register("First", "things.first", func(ConfigReader) (string, error) {
+		return "", errors.New("bad optional config")
+	})
+
+	_, _, err := r.GetOptional(testConfig{"things.first": "configured"}, "Fallback", "fallback")
+	if err == nil {
+		t.Fatal("expected configuration error")
+	}
+	if !strings.Contains(err.Error(), `thing "First" configuration error`) {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}

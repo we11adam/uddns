@@ -1,7 +1,7 @@
 package notifier
 
 import (
-	"github.com/spf13/viper"
+	"github.com/we11adam/uddns/internal/registry"
 )
 
 type Notification struct {
@@ -13,13 +13,13 @@ type Notifier interface {
 	Notify(notification Notification) error
 }
 
-type constructor func(v *viper.Viper) (Notifier, error)
+type ConfigReader = registry.ConfigReader
 
-var Notifiers = make(map[string]constructor)
+type constructor = registry.Constructor[Notifier]
 
-func Register(name string, constructor constructor) {
-	Notifiers[name] = constructor
-}
+var ErrNotConfigured = registry.ErrNotConfigured
+
+var notifiers = registry.New[Notifier]("notifier", "notifiers.use")
 
 type Noop struct{}
 
@@ -27,13 +27,10 @@ func (n *Noop) Notify(_ Notification) error {
 	return nil
 }
 
-func GetNotifier(v *viper.Viper) (string, Notifier) {
-	for name, c := range Notifiers {
-		notifier, err := c(v)
-		if err == nil {
-			return name, notifier
-		}
-	}
+func Register(name, configKey string, constructor constructor) {
+	notifiers.Register(name, configKey, constructor)
+}
 
-	return "No-op", &Noop{}
+func GetNotifier(config ConfigReader) (string, Notifier, error) {
+	return notifiers.GetOptional(config, "No-op", &Noop{})
 }

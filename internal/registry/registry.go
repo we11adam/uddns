@@ -80,6 +80,31 @@ func (r *Registry[T]) Get(config ConfigReader) (string, T, error) {
 	return "", zero, fmt.Errorf("no %s configured; configure one of: %s", r.kind, strings.Join(r.configKeys(), ", "))
 }
 
+func (r *Registry[T]) GetOptional(config ConfigReader, fallbackName string, fallback T) (string, T, error) {
+	selector := strings.TrimSpace(config.GetString(r.selectorKey))
+	if selector != "" {
+		return r.getSelected(config, selector)
+	}
+
+	var zero T
+	for _, entry := range r.entries {
+		if !config.IsSet(entry.ConfigKey) {
+			continue
+		}
+
+		value, err := entry.New(config)
+		if err == nil {
+			return entry.Name, value, nil
+		}
+		if errors.Is(err, ErrNotConfigured) {
+			continue
+		}
+		return "", zero, fmt.Errorf("%s %q configuration error: %w", r.kind, entry.Name, err)
+	}
+
+	return fallbackName, fallback, nil
+}
+
 func (r *Registry[T]) getSelected(config ConfigReader, selector string) (string, T, error) {
 	var zero T
 	for _, entry := range r.entries {

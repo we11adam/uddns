@@ -101,6 +101,7 @@ updaters:
     domain: ddns.example.com
 
 notifiers:
+  use: telegram
   telegram:
     chat_id: -1001234567890
     token: 1234567890:telegram-bot-token
@@ -117,6 +118,8 @@ Configure at least one provider and one updater. Use `providers.use` and
 present. If `use` is omitted, UDDNS checks configured entries in deterministic
 registry order. A configured but invalid provider or updater stops startup with
 its configuration error instead of silently falling back to another entry.
+Notifiers are optional; when configured, `notifiers.use` selects the notifier
+and invalid notifier configuration stops startup.
 
 ### Providers
 

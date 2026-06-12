@@ -66,7 +66,11 @@ func main() {
 		slog.Info("updater selected", "updater", updaterName)
 	}
 
-	notifierName, n := notifier.GetNotifier(v)
+	notifierName, n, err := notifier.GetNotifier(configReader)
+	if err != nil {
+		slog.Error("notifier configuration error", "error", err)
+		os.Exit(1)
+	}
 	slog.Info("notifier selected", "notifier", notifierName)
 
 	app.NewApp(providerName, p, updaterName, u, notifierName, n).Run()
