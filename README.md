@@ -173,6 +173,12 @@ Run directly:
 uddns -c /etc/uddns.yaml
 ```
 
+Check configuration without starting the updater:
+
+```shell
+uddns config check -c /etc/uddns.yaml
+```
+
 Or run in the background:
 
 ```shell

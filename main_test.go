@@ -2,6 +2,8 @@ package main
 
 import (
 	"log/slog"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/spf13/viper"
@@ -107,4 +109,54 @@ func TestResolveLogConfigLetsEnvironmentOverrideConfig(t *testing.T) {
 	if config.retentionDays.value != "3" || config.retentionDays.source != "env:UDDNS_LOG_RETENTION_DAYS" {
 		t.Fatalf("expected env retention override, got %#v", config.retentionDays)
 	}
+}
+
+func TestRunConfigCheckValidatesConfig(t *testing.T) {
+	t.Setenv("UDDNS_INTERVAL", "")
+	path := writeTempConfig(t, `
+providers:
+  use: ip_service
+  ip_service:
+    - ifconfig.me
+updaters:
+  use: duckdns
+  duckdns:
+    token: test-token
+    domain: test-subdomain
+`)
+
+	code := run([]string{"config", "check", "-c", path})
+	if code != 0 {
+		t.Fatalf("expected config check to succeed, got exit code %d", code)
+	}
+}
+
+func TestRunConfigCheckReportsInvalidConfig(t *testing.T) {
+	t.Setenv("UDDNS_INTERVAL", "")
+	path := writeTempConfig(t, `
+providers:
+  use: ip_service
+  ip_service:
+    - missing-service
+updaters:
+  use: duckdns
+  duckdns:
+    token: test-token
+    domain: test-subdomain
+`)
+
+	code := run([]string{"config", "check", "-c", path})
+	if code == 0 {
+		t.Fatal("expected config check to fail")
+	}
+}
+
+func writeTempConfig(t *testing.T, content string) string {
+	t.Helper()
+
+	path := filepath.Join(t.TempDir(), "uddns.yaml")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	return path
 }
