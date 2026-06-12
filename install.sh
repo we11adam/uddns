@@ -308,9 +308,9 @@ detect_arch() {
 		x86_64 | amd64) printf 'amd64\n' ;;
 		i386 | i686) printf '386\n' ;;
 		aarch64 | arm64) printf 'arm64\n' ;;
-		armv5* | armv5tel) printf 'armv5\n' ;;
-		armv6* | armv6l) printf 'armv6\n' ;;
-		armv7* | armv7l) printf 'armv7\n' ;;
+		armv5*) printf 'armv5\n' ;;
+		armv6*) printf 'armv6\n' ;;
+		armv7*) printf 'armv7\n' ;;
 		mips64le) printf 'mips64le\n' ;;
 		mips64) printf 'mips64\n' ;;
 		mipsle) printf 'mipsle\n' ;;
