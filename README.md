@@ -87,11 +87,15 @@ updaters:
     # email: user@example.com
     # apikey: your-cloudflare-api-key
     domain: ddns.example.com
+    # Optional. Set when the DNS zone cannot be inferred from the last two labels.
+    # zone: example.com
     proxy: http://127.0.0.1:2080
   aliyun:
     accesskeyid: your-access-key-id
     accesskeysecret: your-access-key-secret
     domain: ddns.example.com
+    # Optional. Set when the DNS zone cannot be inferred from the last two labels.
+    # zone: example.com
     regionid: cn-hangzhou
   duckdns:
     token: your-duckdns-token
@@ -139,11 +143,13 @@ and invalid notifier configuration stops startup.
   - `apitoken`: Cloudflare API token.
   - `email` and `apikey`: Alternative Cloudflare API key authentication.
   - `domain`: DNS record to update, for example `ddns.example.com`.
+  - `zone`: Optional DNS zone, for example `example.co.uk`.
   - `proxy`: Optional HTTP proxy.
 - `aliyun`:
   - `accesskeyid`: Aliyun access key ID.
   - `accesskeysecret`: Aliyun access key secret.
   - `domain`: DNS record to update.
+  - `zone`: Optional DNS zone, for example `example.co.uk`.
   - `regionid`: Optional, defaults to `cn-hangzhou`.
 - `duckdns`:
   - `token`: DuckDNS token.

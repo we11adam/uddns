@@ -99,6 +99,11 @@ func (a *App) runOnce() {
 		slog.Error("provider returned no IP result", "provider", a.providerName)
 		return
 	}
+	if err := ipResult.Validate(); err != nil {
+		status = "provider_error"
+		slog.Error("provider returned invalid IP result", "provider", a.providerName, "error", err)
+		return
+	}
 
 	ipv4Changed := ipResult.IPv4 != "" && ipResult.IPv4 != a.lastIPv4
 	ipv6Changed := ipResult.IPv6 != "" && ipResult.IPv6 != a.lastIPv6

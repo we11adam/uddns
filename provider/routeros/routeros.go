@@ -3,7 +3,9 @@ package routeros
 import (
 	"crypto/tls"
 	"fmt"
+	"net/url"
 	"strings"
+	"time"
 
 	"github.com/go-resty/resty/v2"
 	"github.com/we11adam/uddns/provider"
@@ -18,7 +20,7 @@ type Config struct {
 	Username string `mapstructure:"username"`
 	Password string `mapstructure:"password"`
 	Endpoint string `mapstructure:"endpoint"`
-	Insecure *bool  `yaml:"insecure"`
+	Insecure *bool  `mapstructure:"insecure"`
 }
 
 type rosInterface struct {
@@ -62,13 +64,31 @@ func New(config *Config) (*RouterOS, error) {
 		insecure := true
 		config.Insecure = &insecure
 	}
+	baseURL, err := routerOSRestURL(config.Endpoint)
+	if err != nil {
+		return nil, err
+	}
 	httpClient := resty.New().SetBasicAuth(config.Username, config.Password).
 		SetTLSClientConfig(&tls.Config{InsecureSkipVerify: *config.Insecure}).
-		SetBaseURL(config.Endpoint + "/rest")
+		SetBaseURL(baseURL).
+		SetTimeout(10 * time.Second)
 	return &RouterOS{
 		config:     *config,
 		httpClient: httpClient,
 	}, nil
+}
+
+func routerOSRestURL(endpoint string) (string, error) {
+	endpoint = strings.TrimSpace(endpoint)
+	parsed, err := url.Parse(endpoint)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return "", fmt.Errorf("invalid RouterOS endpoint: %s", endpoint)
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return "", fmt.Errorf("RouterOS endpoint must use http or https: %s", endpoint)
+	}
+
+	return strings.TrimRight(endpoint, "/") + "/rest", nil
 }
 
 func (r *RouterOS) GetIPs() (*provider.IpResult, error) {

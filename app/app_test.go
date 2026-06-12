@@ -123,3 +123,19 @@ func TestRunOnceSkipsUpdateWhenProviderFails(t *testing.T) {
 		t.Fatalf("expected provider failure to skip notifications, got %d", len(n.notifications))
 	}
 }
+
+func TestRunOnceSkipsUpdateWhenProviderReturnsInvalidIP(t *testing.T) {
+	p := &staticProvider{result: &provider.IpResult{IPv4: "not-an-ip"}}
+	u := &recordingUpdater{}
+	n := &recordingNotifier{}
+	a := NewApp("test-provider", p, "test-updater", u, "test-notifier", n)
+
+	a.runOnce()
+
+	if u.calls != 0 {
+		t.Fatalf("expected invalid provider result to skip updater, got %d calls", u.calls)
+	}
+	if len(n.notifications) != 0 {
+		t.Fatalf("expected invalid provider result to skip notifications, got %d", len(n.notifications))
+	}
+}

@@ -4,12 +4,11 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"net"
 	"net/http"
 	"net/url"
-	"strings"
 
 	"github.com/cloudflare/cloudflare-go"
+	"github.com/we11adam/uddns/internal/dnsname"
 	"github.com/we11adam/uddns/provider"
 	"github.com/we11adam/uddns/updater"
 )
@@ -25,6 +24,7 @@ type Config struct {
 	APIKey   string `mapstructure:"apikey"`
 	APIToken string `mapstructure:"apitoken"`
 	Domain   string `mapstructure:"domain"`
+	Zone     string `mapstructure:"zone"`
 	Proxy    string `mapstructure:"proxy"`
 }
 
@@ -53,11 +53,25 @@ func New(config *Config) (*Cloudflare, error) {
 	if config.Domain == "" {
 		return nil, fmt.Errorf("Cloudflare domain is not set in the configuration")
 	}
+	domain, err := dnsname.Normalize(config.Domain)
+	if err != nil {
+		return nil, fmt.Errorf("invalid Cloudflare domain: %w", err)
+	}
+	config.Domain = domain
+	if config.Zone != "" {
+		zone, err := dnsname.Normalize(config.Zone)
+		if err != nil {
+			return nil, fmt.Errorf("invalid Cloudflare zone: %w", err)
+		}
+		config.Zone = zone
+	}
+	if _, _, err := dnsname.SplitRecord(config.Domain, config.Zone); err != nil {
+		return nil, fmt.Errorf("invalid Cloudflare DNS record: %w", err)
+	}
 
 	var (
 		api        *cloudflare.API
 		httpClient *http.Client
-		err        error
 	)
 
 	if config.Proxy != "" {
@@ -95,28 +109,24 @@ func New(config *Config) (*Cloudflare, error) {
 
 func (c *Cloudflare) Update(ips *provider.IpResult) error {
 	if c.zoneID == "" {
-		domain := c.config.Domain
-		parts := strings.Split(domain, ".")
-		if len(parts) < 2 {
-			return fmt.Errorf("invalid Cloudflare domain format: %s", domain)
+		zone, _, err := dnsname.SplitRecord(c.config.Domain, c.config.Zone)
+		if err != nil {
+			return fmt.Errorf("invalid Cloudflare DNS record: %w", err)
 		}
-
-		l := len(parts)
-		zone := parts[l-2] + "." + parts[l-1]
 		zoneID, err := c.client.ZoneIDByName(zone)
 		if err != nil {
 			c.zoneID = ""
-			return fmt.Errorf("failed to get Cloudflare zone ID for domain %s: %w", domain, err)
+			return fmt.Errorf("failed to get Cloudflare zone ID for zone %s: %w", zone, err)
 		}
 
 		c.zoneID = zoneID
-		slog.Debug("zone ID retrieved", "updater", "cloudflare", "domain", domain, "zone_id", zoneID)
+		slog.Debug("zone ID retrieved", "updater", "cloudflare", "domain", c.config.Domain, "zone", zone, "zone_id", zoneID)
 	}
 
 	ctx := context.Background()
 
 	if ips.IPv4 != "" {
-		if !isValidIPv4(ips.IPv4) {
+		if !provider.IsValidIPv4(ips.IPv4) {
 			return fmt.Errorf("invalid IPv4 address: %s", ips.IPv4)
 		}
 		if err := c.updateDNSRecord(ctx, recordTypeA, ips.IPv4); err != nil {
@@ -125,7 +135,7 @@ func (c *Cloudflare) Update(ips *provider.IpResult) error {
 	}
 
 	if ips.IPv6 != "" {
-		if !isValidIPv6(ips.IPv6) {
+		if !provider.IsValidIPv6(ips.IPv6) {
 			return fmt.Errorf("invalid IPv6 address: %s", ips.IPv6)
 		}
 		if err := c.updateDNSRecord(ctx, recordTypeAAAA, ips.IPv6); err != nil {
@@ -134,14 +144,6 @@ func (c *Cloudflare) Update(ips *provider.IpResult) error {
 	}
 
 	return nil
-}
-
-func isValidIPv4(ip string) bool {
-	return net.ParseIP(ip) != nil && strings.Contains(ip, ".")
-}
-
-func isValidIPv6(ip string) bool {
-	return net.ParseIP(ip) != nil && strings.Contains(ip, ":")
 }
 
 func (c *Cloudflare) updateDNSRecord(ctx context.Context, recordType, ip string) error {

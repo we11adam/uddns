@@ -3,10 +3,9 @@ package aliyun
 import (
 	"fmt"
 	"log/slog"
-	"net"
-	"strings"
 
 	"github.com/aliyun/alibaba-cloud-sdk-go/services/alidns"
+	"github.com/we11adam/uddns/internal/dnsname"
 	"github.com/we11adam/uddns/provider"
 	"github.com/we11adam/uddns/updater"
 )
@@ -22,6 +21,7 @@ type Config struct {
 	AccessKeySecret string `mapstructure:"accesskeysecret"`
 	RegionID        string `mapstructure:"regionid"`
 	Domain          string `mapstructure:"domain"`
+	Zone            string `mapstructure:"zone"`
 }
 
 type Aliyun struct {
@@ -54,6 +54,21 @@ func New(config *Config) (*Aliyun, error) {
 	if config.Domain == "" {
 		return nil, fmt.Errorf("Aliyun domain is not set in the configuration")
 	}
+	domain, err := dnsname.Normalize(config.Domain)
+	if err != nil {
+		return nil, fmt.Errorf("invalid Aliyun domain: %w", err)
+	}
+	config.Domain = domain
+	if config.Zone != "" {
+		zone, err := dnsname.Normalize(config.Zone)
+		if err != nil {
+			return nil, fmt.Errorf("invalid Aliyun zone: %w", err)
+		}
+		config.Zone = zone
+	}
+	if _, _, err := dnsname.SplitRecord(config.Domain, config.Zone); err != nil {
+		return nil, fmt.Errorf("invalid Aliyun DNS record: %w", err)
+	}
 
 	if config.RegionID == "" {
 		config.RegionID = "cn-hangzhou"
@@ -73,7 +88,7 @@ func New(config *Config) (*Aliyun, error) {
 
 func (a *Aliyun) Update(ips *provider.IpResult) error {
 	if ips.IPv4 != "" {
-		if !isValidIPv4(ips.IPv4) {
+		if !provider.IsValidIPv4(ips.IPv4) {
 			return fmt.Errorf("invalid IPv4 address: %s", ips.IPv4)
 		}
 		if err := a.updateDNSRecord(recordTypeA, ips.IPv4); err != nil {
@@ -82,7 +97,7 @@ func (a *Aliyun) Update(ips *provider.IpResult) error {
 	}
 
 	if ips.IPv6 != "" {
-		if !isValidIPv6(ips.IPv6) {
+		if !provider.IsValidIPv6(ips.IPv6) {
 			return fmt.Errorf("invalid IPv6 address: %s", ips.IPv6)
 		}
 		if err := a.updateDNSRecord(recordTypeAAAA, ips.IPv6); err != nil {
@@ -93,19 +108,12 @@ func (a *Aliyun) Update(ips *provider.IpResult) error {
 	return nil
 }
 
-func isValidIPv4(ip string) bool {
-	return net.ParseIP(ip) != nil && strings.Contains(ip, ".")
-}
-
-func isValidIPv6(ip string) bool {
-	return net.ParseIP(ip) != nil && strings.Contains(ip, ":")
-}
-
 func (a *Aliyun) updateDNSRecord(recordType, ip string) error {
 	domain := a.config.Domain
-	parts := strings.Split(domain, ".")
-	domainName := strings.Join(parts[len(parts)-2:], ".")
-	rr := strings.TrimSuffix(domain, "."+domainName)
+	domainName, rr, err := dnsname.SplitRecord(domain, a.config.Zone)
+	if err != nil {
+		return fmt.Errorf("invalid Aliyun DNS record: %w", err)
+	}
 
 	request := alidns.CreateDescribeSubDomainRecordsRequest()
 	request.SubDomain = domain

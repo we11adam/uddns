@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -42,6 +43,11 @@ func init() {
 		if len(cfg) == 0 {
 			return nil, fmt.Errorf("no IP service names provided")
 		}
+		for _, name := range cfg {
+			if _, ok := SERVICES[name]; !ok {
+				return nil, fmt.Errorf("unsupported IP service %q; supported services: %s", name, strings.Join(supportedServiceNames(), ", "))
+			}
+		}
 		return New(&cfg)
 	})
 }
@@ -76,12 +82,12 @@ func createClient(network string) *resty.Client {
 func (i *IpService) GetIPs() (*provider.IpResult, error) {
 	result := &provider.IpResult{}
 
-	ipv4, err := i.getIP(i.client4)
+	ipv4, err := i.getIP(i.client4, "ipv4")
 	if err == nil {
 		result.IPv4 = ipv4
 	}
 
-	ipv6, err := i.getIP(i.client6)
+	ipv6, err := i.getIP(i.client6, "ipv6")
 	if err == nil {
 		result.IPv6 = ipv6
 	}
@@ -93,17 +99,46 @@ func (i *IpService) GetIPs() (*provider.IpResult, error) {
 	return result, nil
 }
 
-func (i *IpService) getIP(client *resty.Client) (string, error) {
+func (i *IpService) getIP(client *resty.Client, family string) (string, error) {
 	for _, name := range *i.names {
-		resp, err := client.R().Get(SERVICES[name])
-		slog.Debug("requesting IP address", "provider", "ip_service", "service", SERVICES[name])
+		serviceURL, ok := SERVICES[name]
+		if !ok {
+			continue
+		}
+
+		resp, err := client.R().Get(serviceURL)
+		slog.Debug("requesting IP address", "provider", "ip_service", "service", serviceURL, "family", family)
 		if err != nil || resp.StatusCode() != 200 {
 			continue
 		}
 		ip := string(resp.Body())
 		ip = strings.TrimSpace(ip)
-		slog.Debug("got IP address", "provider", "ip_service", "ip", ip)
+		if !isValidIPFamily(ip, family) {
+			slog.Debug("ignoring invalid IP address response", "provider", "ip_service", "service", serviceURL, "family", family, "ip", ip)
+			continue
+		}
+		slog.Debug("got IP address", "provider", "ip_service", "family", family, "ip", ip)
 		return ip, nil
 	}
 	return "", fmt.Errorf("failed to get IP address from all services")
+}
+
+func isValidIPFamily(ip, family string) bool {
+	switch family {
+	case "ipv4":
+		return provider.IsValidIPv4(ip)
+	case "ipv6":
+		return provider.IsValidIPv6(ip)
+	default:
+		return false
+	}
+}
+
+func supportedServiceNames() []string {
+	names := make([]string, 0, len(SERVICES))
+	for name := range SERVICES {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }
