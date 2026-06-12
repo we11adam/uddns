@@ -196,7 +196,25 @@ systemd_unit_exists() {
 systemd_unit_config_file() {
 	unit_path="$(systemd_unit_path)" || return 1
 
-	sed -n 's/^Environment=UDDNS_CONFIG=\(.*\)$/\1/p' "$unit_path" | head -n 1
+	sed -n \
+		-e 's/^Environment=UDDNS_CONFIG=\(.*\)$/\1/p' \
+		-e 's/^Environment="UDDNS_CONFIG=\(.*\)"$/\1/p' \
+		"$unit_path" |
+		head -n 1 |
+		sed 's/\\"/"/g; s/\\\\/\\/g; s/%%/%/g'
+}
+
+systemd_quote() {
+	value="$1"
+
+	printf '"%s"' "$(printf '%s' "$value" | sed 's/\\/\\\\/g; s/"/\\"/g; s/%/%%/g')"
+}
+
+systemd_env_line() {
+	name="$1"
+	value="$2"
+
+	printf 'Environment=%s\n' "$(systemd_quote "${name}=${value}")"
 }
 
 ask_systemd_preference() {
@@ -517,21 +535,39 @@ After=network-online.target
 
 [Service]
 Type=simple
-Environment=UDDNS_CONFIG=${CONFIG_FILE}
-Environment=UDDNS_INTERVAL=${SERVICE_INTERVAL}
 EOF
 
+	systemd_env_line UDDNS_CONFIG "$CONFIG_FILE" >>"$unit_file"
+	systemd_env_line UDDNS_INTERVAL "$SERVICE_INTERVAL" >>"$unit_file"
+
 	if [ -n "$LOG_DIR" ]; then
-		printf 'Environment=UDDNS_LOG_DIR=%s\n' "$LOG_DIR" >>"$unit_file"
+		systemd_env_line UDDNS_LOG_DIR "$LOG_DIR" >>"$unit_file"
 	fi
 	if [ -n "$LOG_RETENTION_DAYS" ]; then
-		printf 'Environment=UDDNS_LOG_RETENTION_DAYS=%s\n' "$LOG_RETENTION_DAYS" >>"$unit_file"
+		systemd_env_line UDDNS_LOG_RETENTION_DAYS "$LOG_RETENTION_DAYS" >>"$unit_file"
 	fi
 
 	cat >>"$unit_file" <<EOF
-ExecStart=${binary_path}
+ExecStart=$(systemd_quote "$binary_path")
 Restart=on-failure
 RestartSec=10s
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ProtectControlGroups=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+RestrictSUIDSGID=true
+LockPersonality=true
+SystemCallArchitectures=native
+EOF
+
+	if [ -n "$LOG_DIR" ]; then
+		printf 'ReadWritePaths=%s\n' "$(systemd_quote "$LOG_DIR")" >>"$unit_file"
+	fi
+
+	cat >>"$unit_file" <<EOF
 
 [Install]
 WantedBy=multi-user.target
