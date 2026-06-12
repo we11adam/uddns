@@ -108,19 +108,8 @@ func New(config *Config) (*Cloudflare, error) {
 }
 
 func (c *Cloudflare) Update(ips *provider.IpResult) error {
-	if c.zoneID == "" {
-		zone, _, err := dnsname.SplitRecord(c.config.Domain, c.config.Zone)
-		if err != nil {
-			return fmt.Errorf("invalid Cloudflare DNS record: %w", err)
-		}
-		zoneID, err := c.client.ZoneIDByName(zone)
-		if err != nil {
-			c.zoneID = ""
-			return fmt.Errorf("failed to get Cloudflare zone ID for zone %s: %w", zone, err)
-		}
-
-		c.zoneID = zoneID
-		slog.Debug("zone ID retrieved", "updater", "cloudflare", "domain", c.config.Domain, "zone", zone, "zone_id", zoneID)
+	if err := c.ensureZoneID(); err != nil {
+		return err
 	}
 
 	ctx := context.Background()
@@ -143,6 +132,49 @@ func (c *Cloudflare) Update(ips *provider.IpResult) error {
 		}
 	}
 
+	return nil
+}
+
+func (c *Cloudflare) Current() (*provider.IpResult, error) {
+	if err := c.ensureZoneID(); err != nil {
+		return nil, err
+	}
+
+	ctx := context.Background()
+	result := &provider.IpResult{}
+
+	ipv4, err := c.currentDNSRecord(ctx, recordTypeA)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get Cloudflare IPv4 record: %w", err)
+	}
+	result.IPv4 = ipv4
+
+	ipv6, err := c.currentDNSRecord(ctx, recordTypeAAAA)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get Cloudflare IPv6 record: %w", err)
+	}
+	result.IPv6 = ipv6
+
+	return result, nil
+}
+
+func (c *Cloudflare) ensureZoneID() error {
+	if c.zoneID != "" {
+		return nil
+	}
+
+	zone, _, err := dnsname.SplitRecord(c.config.Domain, c.config.Zone)
+	if err != nil {
+		return fmt.Errorf("invalid Cloudflare DNS record: %w", err)
+	}
+	zoneID, err := c.client.ZoneIDByName(zone)
+	if err != nil {
+		c.zoneID = ""
+		return fmt.Errorf("failed to get Cloudflare zone ID for zone %s: %w", zone, err)
+	}
+
+	c.zoneID = zoneID
+	slog.Debug("zone ID retrieved", "updater", "cloudflare", "domain", c.config.Domain, "zone", zone, "zone_id", zoneID)
 	return nil
 }
 
@@ -194,4 +226,19 @@ func (c *Cloudflare) updateDNSRecord(ctx context.Context, recordType, ip string)
 	}
 
 	return nil
+}
+
+func (c *Cloudflare) currentDNSRecord(ctx context.Context, recordType string) (string, error) {
+	domain := c.config.Domain
+
+	params := cloudflare.ListDNSRecordsParams{Type: recordType, Name: domain}
+	dnsRecords, _, err := c.client.ListDNSRecords(ctx, cloudflare.ZoneIdentifier(c.zoneID), params)
+	if err != nil {
+		return "", fmt.Errorf("failed to list Cloudflare DNS records: %w", err)
+	}
+	if len(dnsRecords) == 0 {
+		return "", nil
+	}
+
+	return dnsRecords[0].Content, nil
 }

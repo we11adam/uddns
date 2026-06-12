@@ -23,6 +23,7 @@ type Job struct {
 	Record   string   `mapstructure:"record"`
 	Zone     string   `mapstructure:"zone"`
 	Families []string `mapstructure:"families"`
+	Verify   string   `mapstructure:"verify"`
 }
 
 func Load(providedPath string) (*Config, error) {
@@ -87,6 +88,14 @@ func (c *Config) Jobs() ([]Job, bool, error) {
 		return nil, true, err
 	}
 	return jobs, true, nil
+}
+
+func (c *Config) Verify() string {
+	return c.GetString("verify")
+}
+
+func (j Job) VerifyMode() string {
+	return j.Verify
 }
 
 func (c *Config) WithOverrides(overrides map[string]any) *Config {

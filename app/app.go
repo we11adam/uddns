@@ -26,9 +26,18 @@ type Job struct {
 	UpdaterName  string
 	Updater      updater.Updater
 	Families     Families
+	Verify       VerifyMode
 	lastIPv4     string
 	lastIPv6     string
 }
+
+type VerifyMode string
+
+const (
+	VerifyAuto       VerifyMode = "auto"
+	VerifyOff        VerifyMode = "off"
+	VerifyUpdaterAPI VerifyMode = "updater_api"
+)
 
 type Families struct {
 	IPv4 bool
@@ -39,12 +48,15 @@ func AllFamilies() Families {
 	return Families{IPv4: true, IPv6: true}
 }
 
-func NewJob(name, providerName string, p provider.Provider, updaterName string, u updater.Updater, families Families) Job {
+func NewJob(name, providerName string, p provider.Provider, updaterName string, u updater.Updater, families Families, verify VerifyMode) Job {
 	if name == "" {
 		name = "default"
 	}
 	if !families.IPv4 && !families.IPv6 {
 		families = AllFamilies()
+	}
+	if verify == "" {
+		verify = VerifyAuto
 	}
 
 	return Job{
@@ -54,6 +66,7 @@ func NewJob(name, providerName string, p provider.Provider, updaterName string, 
 		UpdaterName:  updaterName,
 		Updater:      u,
 		Families:     families,
+		Verify:       verify,
 	}
 }
 
@@ -158,6 +171,22 @@ func (a *App) runJob(job *Job) {
 	ipv4Changed := ipResult.IPv4 != "" && ipResult.IPv4 != job.lastIPv4
 	ipv6Changed := ipResult.IPv6 != "" && ipResult.IPv6 != job.lastIPv6
 	updateNeeded := ipv4Changed || ipv6Changed
+	verified := false
+	recordChanged := false
+	var currentIPResult *provider.IpResult
+
+	if job.shouldReadCurrentRecords() {
+		currentIPResult, err = job.currentRecordIPs()
+		if err != nil {
+			status = "verify_error"
+			slog.Error("failed to verify current DNS records", "job", job.Name, "updater", job.UpdaterName, "verify", job.Verify, "error", err)
+			return
+		}
+		verified = true
+		currentIPResult = filterFamilies(currentIPResult, job.Families)
+		recordChanged = currentRecordsNeedUpdate(ipResult, currentIPResult)
+		updateNeeded = updateNeeded || recordChanged
+	}
 
 	slog.Info(
 		"completed IP check",
@@ -170,6 +199,11 @@ func (a *App) runJob(job *Job) {
 		"ipv6", ipResult.IPv6,
 		"last_ipv6", job.lastIPv6,
 		"ipv6_changed", ipv6Changed,
+		"verify", job.Verify,
+		"verified", verified,
+		"current_ipv4", ipResultValue(currentIPResult, "ipv4"),
+		"current_ipv6", ipResultValue(currentIPResult, "ipv6"),
+		"current_record_changed", recordChanged,
 		"update_needed", updateNeeded,
 	)
 
@@ -224,6 +258,9 @@ func (a *App) runJob(job *Job) {
 
 func filterFamilies(ipResult *provider.IpResult, families Families) *provider.IpResult {
 	filtered := &provider.IpResult{}
+	if ipResult == nil {
+		return filtered
+	}
 	if families.IPv4 {
 		filtered.IPv4 = ipResult.IPv4
 	}
@@ -231,6 +268,69 @@ func filterFamilies(ipResult *provider.IpResult, families Families) *provider.Ip
 		filtered.IPv6 = ipResult.IPv6
 	}
 	return filtered
+}
+
+func (job *Job) shouldReadCurrentRecords() bool {
+	switch job.Verify {
+	case VerifyOff:
+		return false
+	case VerifyUpdaterAPI:
+		return true
+	default:
+		_, ok := job.Updater.(updater.RecordReader)
+		return ok
+	}
+}
+
+func (job *Job) currentRecordIPs() (*provider.IpResult, error) {
+	reader, ok := job.Updater.(updater.RecordReader)
+	if !ok {
+		return nil, fmt.Errorf("updater %s does not support verify mode %s", job.UpdaterName, VerifyUpdaterAPI)
+	}
+	current, err := reader.Current()
+	if err != nil {
+		return nil, err
+	}
+	if current == nil {
+		current = &provider.IpResult{}
+	}
+	if current.IPv4 != "" && !provider.IsValidIPv4(current.IPv4) {
+		return nil, fmt.Errorf("verify returned invalid IPv4 address: %s", current.IPv4)
+	}
+	if current.IPv6 != "" && !provider.IsValidIPv6(current.IPv6) {
+		return nil, fmt.Errorf("verify returned invalid IPv6 address: %s", current.IPv6)
+	}
+	return current, nil
+}
+
+func currentRecordsNeedUpdate(desired, current *provider.IpResult) bool {
+	if desired == nil {
+		return false
+	}
+	if current == nil {
+		current = &provider.IpResult{}
+	}
+	if desired.IPv4 != "" && desired.IPv4 != current.IPv4 {
+		return true
+	}
+	if desired.IPv6 != "" && desired.IPv6 != current.IPv6 {
+		return true
+	}
+	return false
+}
+
+func ipResultValue(ipResult *provider.IpResult, family string) string {
+	if ipResult == nil {
+		return ""
+	}
+	switch family {
+	case "ipv4":
+		return ipResult.IPv4
+	case "ipv6":
+		return ipResult.IPv6
+	default:
+		return ""
+	}
 }
 
 func (f Families) String() string {

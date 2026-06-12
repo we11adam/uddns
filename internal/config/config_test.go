@@ -79,6 +79,7 @@ jobs:
     updater: duckdns
     record: home
     families: [ipv4]
+    verify: off
 `)
 
 	cfg, err := Load(path)
@@ -93,7 +94,7 @@ jobs:
 	if !ok {
 		t.Fatal("expected jobs to be configured")
 	}
-	if len(jobs) != 1 || jobs[0].Name != "home" || jobs[0].Record != "home" {
+	if len(jobs) != 1 || jobs[0].Name != "home" || jobs[0].Record != "home" || jobs[0].VerifyMode() != "off" {
 		t.Fatalf("unexpected jobs: %#v", jobs)
 	}
 }

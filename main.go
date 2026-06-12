@@ -180,9 +180,16 @@ func loadDefaultJob(cfg *config.Config) (app.Job, error) {
 	if err != nil {
 		return app.Job{}, fmt.Errorf("no updater found: %w", err)
 	}
+	verify, err := parseVerify(cfg.Verify())
+	if err != nil {
+		return app.Job{}, fmt.Errorf("default job verify error: %w", err)
+	}
+	if err := validateVerifySupport("default", updaterName, u, verify); err != nil {
+		return app.Job{}, err
+	}
 
-	slog.Info("job selected", "job", "default", "provider", providerName, "updater", updaterName, "families", app.AllFamilies().String())
-	return app.NewJob("default", providerName, p, updaterName, u, app.AllFamilies()), nil
+	slog.Info("job selected", "job", "default", "provider", providerName, "updater", updaterName, "families", app.AllFamilies().String(), "verify", verify)
+	return app.NewJob("default", providerName, p, updaterName, u, app.AllFamilies(), verify), nil
 }
 
 func loadConfiguredJob(cfg *config.Config, jobConfig config.Job, index int) (app.Job, error) {
@@ -204,6 +211,10 @@ func loadConfiguredJob(cfg *config.Config, jobConfig config.Job, index int) (app
 	if err != nil {
 		return app.Job{}, fmt.Errorf("job %q invalid families: %w", name, err)
 	}
+	verify, err := parseVerify(jobConfig.VerifyMode())
+	if err != nil {
+		return app.Job{}, fmt.Errorf("job %q verify error: %w", name, err)
+	}
 
 	jobReader := cfg.WithOverrides(jobOverrides(jobConfig))
 	providerName, p, err := provider.GetProvider(jobReader)
@@ -214,9 +225,12 @@ func loadConfiguredJob(cfg *config.Config, jobConfig config.Job, index int) (app
 	if err != nil {
 		return app.Job{}, fmt.Errorf("job %q updater error: %w", name, err)
 	}
+	if err := validateVerifySupport(name, updaterName, u, verify); err != nil {
+		return app.Job{}, err
+	}
 
-	slog.Info("job selected", "job", name, "provider", providerName, "updater", updaterName, "families", families.String())
-	return app.NewJob(name, providerName, p, updaterName, u, families), nil
+	slog.Info("job selected", "job", name, "provider", providerName, "updater", updaterName, "families", families.String(), "verify", verify)
+	return app.NewJob(name, providerName, p, updaterName, u, families, verify), nil
 }
 
 func jobOverrides(job config.Job) map[string]any {
@@ -259,4 +273,27 @@ func parseFamilies(values []string) (app.Families, error) {
 		return app.Families{}, fmt.Errorf("at least one family is required")
 	}
 	return families, nil
+}
+
+func parseVerify(value string) (app.VerifyMode, error) {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "", string(app.VerifyAuto):
+		return app.VerifyAuto, nil
+	case string(app.VerifyOff):
+		return app.VerifyOff, nil
+	case string(app.VerifyUpdaterAPI):
+		return app.VerifyUpdaterAPI, nil
+	default:
+		return "", fmt.Errorf("unsupported verify mode %q", value)
+	}
+}
+
+func validateVerifySupport(jobName, updaterName string, u updater.Updater, verify app.VerifyMode) error {
+	if verify != app.VerifyUpdaterAPI {
+		return nil
+	}
+	if _, ok := u.(updater.RecordReader); !ok {
+		return fmt.Errorf("job %q updater %q does not support verify mode %q", jobName, updaterName, verify)
+	}
+	return nil
 }

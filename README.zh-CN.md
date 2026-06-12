@@ -112,6 +112,9 @@ notifiers:
     token: 1234567890:telegram-bot-token
     proxy: http://127.0.0.1:2080
 
+# 可选。auto 会在 updater 支持时使用 updater API 验证。
+verify: auto
+
 logging:
   level: info
   dir: /var/log/uddns
@@ -154,12 +157,14 @@ jobs:
     # 可选。DNS zone 无法从最后两段推断时设置。
     zone: example.com
     families: [ipv4, ipv6]
+    verify: updater_api
 
   - name: nas-duckdns
     provider: netif
     updater: duckdns
     record: your-subdomain
     families: [ipv4]
+    verify: off
 
 notifiers:
   use: telegram
@@ -181,6 +186,7 @@ job 字段：
 - `record`：需要更新的 DNS 记录。DuckDNS 使用不包含 `.duckdns.org` 的子域名。
 - `zone`：Cloudflare 和 Aliyun 可选的 DNS zone 覆盖。
 - `families`：可选地址族。支持 `ipv4` 和 `ipv6`；不设置时更新两者。
+- `verify`：可选验证模式。支持 `auto`、`off` 和 `updater_api`；不设置时为 `auto`。
 
 存在 `jobs` 时，每个 job 都有独立的 last IPv4/IPv6 状态，并按全局更新间隔顺序执行。
 没有 `jobs` 时，UDDNS 会按简单模式配置运行一个隐式的 `default` job。命名 job 发出的
@@ -188,6 +194,18 @@ job 字段：
 
 job 选择的是 provider/updater 的实现名。使用同一个实现的多个 job 会共享该实现的配置；
 例如所有 `cloudflare` job 都会使用 `updaters.cloudflare` 里的凭据。
+
+verify 行为：
+
+- `auto`：当所选 updater 支持时，用 updater API 验证当前 DNS 记录；否则跳过验证。
+- `off`：更新前不验证 DNS 记录，只按本地 last IP 判断。
+- `updater_api`：强制通过所选 updater 对应的 DNS 服务商 API 查询当前记录。Cloudflare
+  和 Aliyun 支持该模式。DuckDNS 和 LightDNS 不支持，所以与 `verify: updater_api`
+  一起使用时 `config check` 会失败。
+
+启用 updater API 验证后，只要探测到的 IP 与 job 上次成功 IP 不同，或者 updater API
+返回的当前 DNS 记录与探测 IP 不匹配，UDDNS 就会更新。验证失败时，该 job 会跳过当前
+循环的更新。
 
 ### Providers
 

@@ -9,6 +9,10 @@ type Updater interface {
 	Update(ips *provider.IpResult) error
 }
 
+type RecordReader interface {
+	Current() (*provider.IpResult, error)
+}
+
 type ConfigReader = registry.ConfigReader
 
 type constructor = registry.Constructor[Updater]

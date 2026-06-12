@@ -108,6 +108,24 @@ func (a *Aliyun) Update(ips *provider.IpResult) error {
 	return nil
 }
 
+func (a *Aliyun) Current() (*provider.IpResult, error) {
+	result := &provider.IpResult{}
+
+	ipv4, err := a.currentDNSRecord(recordTypeA)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get Aliyun IPv4 record: %w", err)
+	}
+	result.IPv4 = ipv4
+
+	ipv6, err := a.currentDNSRecord(recordTypeAAAA)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get Aliyun IPv6 record: %w", err)
+	}
+	result.IPv6 = ipv6
+
+	return result, nil
+}
+
 func (a *Aliyun) updateDNSRecord(recordType, ip string) error {
 	domain := a.config.Domain
 	domainName, rr, err := dnsname.SplitRecord(domain, a.config.Zone)
@@ -160,4 +178,20 @@ func (a *Aliyun) updateDNSRecord(recordType, ip string) error {
 	}
 
 	return nil
+}
+
+func (a *Aliyun) currentDNSRecord(recordType string) (string, error) {
+	request := alidns.CreateDescribeSubDomainRecordsRequest()
+	request.SubDomain = a.config.Domain
+	request.Type = recordType
+
+	response, err := a.client.DescribeSubDomainRecords(request)
+	if err != nil {
+		return "", fmt.Errorf("failed to get DNS records: %w", err)
+	}
+	if response.TotalCount == 0 || len(response.DomainRecords.Record) == 0 {
+		return "", nil
+	}
+
+	return response.DomainRecords.Record[0].Value, nil
 }

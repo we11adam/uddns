@@ -174,6 +174,29 @@ jobs:
 	}
 }
 
+func TestRunConfigCheckSupportsUpdaterAPIVerify(t *testing.T) {
+	t.Setenv("UDDNS_INTERVAL", "")
+	path := writeTempConfig(t, `
+providers:
+  ip_service:
+    - ifconfig.me
+updaters:
+  cloudflare:
+    apitoken: test-token
+jobs:
+  - name: home
+    provider: ip_service
+    updater: cloudflare
+    record: home.example.com
+    verify: updater_api
+`)
+
+	code := run([]string{"config", "check", "-c", path})
+	if code != 0 {
+		t.Fatalf("expected updater_api verify config check to succeed, got exit code %d", code)
+	}
+}
+
 func TestRunConfigCheckRejectsInvalidJobs(t *testing.T) {
 	t.Setenv("UDDNS_INTERVAL", "")
 	path := writeTempConfig(t, `
@@ -193,6 +216,73 @@ jobs:
 	code := run([]string{"config", "check", "-c", path})
 	if code == 0 {
 		t.Fatal("expected jobs config check to fail")
+	}
+}
+
+func TestRunConfigCheckRejectsUnsupportedUpdaterAPIVerify(t *testing.T) {
+	t.Setenv("UDDNS_INTERVAL", "")
+	path := writeTempConfig(t, `
+providers:
+  ip_service:
+    - ifconfig.me
+updaters:
+  duckdns:
+    token: test-token
+jobs:
+  - name: home
+    provider: ip_service
+    updater: duckdns
+    record: home-subdomain
+    verify: updater_api
+`)
+
+	code := run([]string{"config", "check", "-c", path})
+	if code == 0 {
+		t.Fatal("expected unsupported updater_api verify config check to fail")
+	}
+}
+
+func TestRunConfigCheckRejectsUnknownVerifyMode(t *testing.T) {
+	t.Setenv("UDDNS_INTERVAL", "")
+	path := writeTempConfig(t, `
+providers:
+  ip_service:
+    - ifconfig.me
+updaters:
+  duckdns:
+    token: test-token
+jobs:
+  - name: home
+    provider: ip_service
+    updater: duckdns
+    record: home-subdomain
+    verify: provider_api
+`)
+
+	code := run([]string{"config", "check", "-c", path})
+	if code == 0 {
+		t.Fatal("expected unknown verify config check to fail")
+	}
+}
+
+func TestRunConfigCheckRejectsUnsupportedTopLevelUpdaterAPIVerify(t *testing.T) {
+	t.Setenv("UDDNS_INTERVAL", "")
+	path := writeTempConfig(t, `
+providers:
+  use: ip_service
+  ip_service:
+    - ifconfig.me
+updaters:
+  use: duckdns
+  duckdns:
+    token: test-token
+    domain: home-subdomain
+verify: updater_api
+`)
+
+	code := run([]string{"config", "check", "-c", path})
+	if code == 0 {
+		t.Fatal("expected unsupported top-level updater_api verify config check to fail")
 	}
 }
 

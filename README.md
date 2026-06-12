@@ -114,6 +114,9 @@ notifiers:
     token: 1234567890:telegram-bot-token
     proxy: http://127.0.0.1:2080
 
+# Optional. auto uses updater API verification when available.
+verify: auto
+
 logging:
   level: info
   dir: /var/log/uddns
@@ -158,12 +161,14 @@ jobs:
     # Optional. Set when the DNS zone cannot be inferred from the last two labels.
     zone: example.com
     families: [ipv4, ipv6]
+    verify: updater_api
 
   - name: nas-duckdns
     provider: netif
     updater: duckdns
     record: your-subdomain
     families: [ipv4]
+    verify: off
 
 notifiers:
   use: telegram
@@ -189,6 +194,8 @@ Job fields:
 - `zone`: Optional DNS zone override for Cloudflare and Aliyun.
 - `families`: Optional address families. Supported values are `ipv4` and
   `ipv6`; omitted means both.
+- `verify`: Optional verification mode. Supported values are `auto`, `off`, and
+  `updater_api`; omitted means `auto`.
 
 When `jobs` is present, each job has its own last IPv4/IPv6 state and is run
 sequentially on the global update interval. Without `jobs`, UDDNS behaves as a
@@ -198,6 +205,21 @@ named jobs are prefixed with the job name.
 Jobs select provider and updater implementation names. Jobs that use the same
 implementation share that implementation's configuration, for example all
 `cloudflare` jobs use `updaters.cloudflare` credentials.
+
+Verify behavior:
+
+- `auto`: Use updater API verification when the selected updater supports it;
+  otherwise skip verification.
+- `off`: Do not verify DNS records before deciding whether to update.
+- `updater_api`: Require the selected updater to query the current DNS record
+  through its DNS provider API. Cloudflare and Aliyun support this. DuckDNS and
+  LightDNS do not, so `config check` fails if they are used with
+  `verify: updater_api`.
+
+When updater API verification is active, UDDNS updates if the detected IP
+differs from the job's last successful IP, or if the current DNS record returned
+by the updater API does not match the detected IP. If verification fails, that
+job skips the update for the current cycle.
 
 ### Providers
 

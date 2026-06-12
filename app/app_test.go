@@ -32,6 +32,16 @@ func (u *recordingUpdater) Update(ips *provider.IpResult) error {
 	return u.err
 }
 
+type recordReadingUpdater struct {
+	recordingUpdater
+	current *provider.IpResult
+	err     error
+}
+
+func (u *recordReadingUpdater) Current() (*provider.IpResult, error) {
+	return u.current, u.err
+}
+
 type recordingNotifier struct {
 	notifications []notifier.Notification
 	err           error
@@ -178,7 +188,7 @@ func TestRunOncePrefixesNotificationsForNamedJobs(t *testing.T) {
 	p := &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10"}}
 	u := &recordingUpdater{}
 	n := &recordingNotifier{}
-	job := NewJob("home", "test-provider", p, "test-updater", u, AllFamilies())
+	job := NewJob("home", "test-provider", p, "test-updater", u, AllFamilies(), VerifyAuto)
 	a := NewApp([]Job{job}, "test-notifier", n, time.Second)
 
 	a.runOnce(context.Background())
@@ -191,7 +201,40 @@ func TestRunOncePrefixesNotificationsForNamedJobs(t *testing.T) {
 	}
 }
 
+func TestRunOnceUpdatesWhenCurrentRecordDrifts(t *testing.T) {
+	p := &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10"}}
+	u := &recordReadingUpdater{current: &provider.IpResult{IPv4: "192.0.2.9"}}
+	n := &recordingNotifier{}
+	job := NewJob("default", "test-provider", p, "test-updater", u, AllFamilies(), VerifyUpdaterAPI)
+	job.lastIPv4 = "192.0.2.10"
+	a := NewApp([]Job{job}, "test-notifier", n, time.Second)
+
+	a.runOnce(context.Background())
+
+	if u.calls != 1 {
+		t.Fatalf("expected DNS record drift to trigger update, got %d calls", u.calls)
+	}
+	if u.last == nil || u.last.IPv4 != "192.0.2.10" {
+		t.Fatalf("expected updater to receive desired IPv4, got %#v", u.last)
+	}
+}
+
+func TestRunOnceSkipsUpdateWhenRecordReadFails(t *testing.T) {
+	p := &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10"}}
+	u := &recordReadingUpdater{err: errors.New("verify failed")}
+	n := &recordingNotifier{}
+	job := NewJob("default", "test-provider", p, "test-updater", u, AllFamilies(), VerifyUpdaterAPI)
+	job.lastIPv4 = "192.0.2.10"
+	a := NewApp([]Job{job}, "test-notifier", n, time.Second)
+
+	a.runOnce(context.Background())
+
+	if u.calls != 0 {
+		t.Fatalf("expected verify failure to skip update, got %d calls", u.calls)
+	}
+}
+
 func newTestApp(p provider.Provider, u updater.Updater, n notifier.Notifier, families Families) *App {
-	job := NewJob("default", "test-provider", p, "test-updater", u, families)
+	job := NewJob("default", "test-provider", p, "test-updater", u, families, VerifyAuto)
 	return NewApp([]Job{job}, "test-notifier", n, time.Second)
 }
