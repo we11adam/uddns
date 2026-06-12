@@ -23,8 +23,8 @@ usage() {
 Install UDDNS from GitHub releases.
 
 Usage:
-  curl -fsSL https://raw.githubusercontent.com/${OWNER}/${REPO}/main/install.sh | sh
-  curl -fsSL https://raw.githubusercontent.com/${OWNER}/${REPO}/main/install.sh | sh -s -- [options]
+  curl -fsSL https://raw.githubusercontent.com/${OWNER}/${REPO}/master/install.sh | sh
+  curl -fsSL https://raw.githubusercontent.com/${OWNER}/${REPO}/master/install.sh | sh -s -- [options]
 
 Options:
   --version <tag>       Release tag to install instead of latest
@@ -363,6 +363,48 @@ find_asset_url() {
 	printf '%s\n' "$candidates" | head -n 1
 }
 
+find_checksum_url() {
+	release_json="$1"
+
+	extract_urls "$release_json" | grep -E '/checksums\.txt$|/checksums\.txt\?' | head -n 1
+}
+
+sha256_file() {
+	file="$1"
+
+	if command -v sha256sum >/dev/null 2>&1; then
+		sha256sum "$file" | sed 's/[[:space:]].*//'
+	elif command -v shasum >/dev/null 2>&1; then
+		shasum -a 256 "$file" | sed 's/[[:space:]].*//'
+	elif command -v openssl >/dev/null 2>&1; then
+		openssl dgst -sha256 "$file" | sed 's/^.*= //'
+	else
+		fail "required command not found: sha256sum, shasum, or openssl"
+	fi
+}
+
+verify_checksum() {
+	archive="$1"
+	checksums="$2"
+	asset_url="$3"
+	asset_name="${asset_url##*/}"
+
+	expected="$(
+		while read -r checksum filename _; do
+			if [ "$filename" = "$asset_name" ]; then
+				printf '%s\n' "$checksum"
+				break
+			fi
+		done <"$checksums"
+	)"
+	[ -n "$expected" ] || fail "no checksum found for ${asset_name}"
+
+	actual="$(sha256_file "$archive")"
+	[ "$actual" = "$expected" ] || fail "checksum mismatch for ${asset_name}"
+
+	log "Verified checksum for ${asset_name}"
+}
+
 download_release() {
 	tmpdir="$1"
 	os="$2"
@@ -383,6 +425,13 @@ download_release() {
 	archive="${tmpdir}/archive"
 	log "Downloading ${REPO} ${resolved_version} for ${os}/${arch}"
 	curl -fL "$asset_url" -o "$archive"
+
+	checksum_url="$(find_checksum_url "$release_json")"
+	[ -n "$checksum_url" ] || fail "no checksums.txt asset found in ${resolved_version}"
+	checksums="${tmpdir}/checksums.txt"
+	log "Downloading checksums for ${resolved_version}"
+	curl -fsSL "$checksum_url" -o "$checksums"
+	verify_checksum "$archive" "$checksums" "$asset_url"
 
 	extract_dir="${tmpdir}/extract"
 	mkdir -p "$extract_dir"
