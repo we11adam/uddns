@@ -51,6 +51,36 @@ func TestCalendarRotatingWriterRotatesByDateAndRemovesExpiredLogs(t *testing.T) 
 	}
 }
 
+func TestCalendarRotatingWriterCreatesPrivateDirectoryAndLogFile(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "logs")
+	now := time.Date(2026, 5, 21, 10, 0, 0, 0, time.Local)
+
+	writer, err := newCalendarRotatingWriterWithClock(dir, logFilePrefix, 2, func() time.Time {
+		return now
+	})
+	if err != nil {
+		t.Fatalf("newCalendarRotatingWriterWithClock returned error: %v", err)
+	}
+	defer writer.Close()
+
+	dirInfo, err := os.Stat(dir)
+	if err != nil {
+		t.Fatalf("stat log directory: %v", err)
+	}
+	if got := dirInfo.Mode().Perm(); got != logDirMode {
+		t.Fatalf("expected log directory permissions %04o, got %04o", logDirMode, got)
+	}
+
+	logPath := filepath.Join(dir, "uddns-2026-05-21.log")
+	fileInfo, err := os.Stat(logPath)
+	if err != nil {
+		t.Fatalf("stat log file: %v", err)
+	}
+	if got := fileInfo.Mode().Perm(); got != logFileMode {
+		t.Fatalf("expected log file permissions %04o, got %04o", logFileMode, got)
+	}
+}
+
 func TestParseRotatedLogDate(t *testing.T) {
 	date, ok := parseRotatedLogDate("uddns-2026-05-21.log", logFilePrefix)
 	if !ok {

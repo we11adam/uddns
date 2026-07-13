@@ -20,6 +20,8 @@ const (
 	defaultLogRetentionDays = 7
 	logDateLayout           = "2006-01-02"
 	logFilePrefix           = "uddns"
+	logDirMode              = 0700
+	logFileMode             = 0600
 )
 
 type logConfigValue struct {
@@ -213,7 +215,7 @@ func newCalendarRotatingWriter(dir, prefix string, retentionDays int) (*calendar
 }
 
 func newCalendarRotatingWriterWithClock(dir, prefix string, retentionDays int, now func() time.Time) (*calendarRotatingWriter, error) {
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, logDirMode); err != nil {
 		return nil, err
 	}
 
@@ -265,7 +267,7 @@ func (w *calendarRotatingWriter) rotateLocked(now time.Time) error {
 		_ = w.file.Close()
 	}
 
-	file, err := os.OpenFile(w.logPath(date), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	file, err := os.OpenFile(w.logPath(date), os.O_CREATE|os.O_WRONLY|os.O_APPEND, logFileMode)
 	if err != nil {
 		w.file = nil
 		w.currentDate = ""
