@@ -34,6 +34,11 @@ jobs:
       - name: Test
         run: go test -race ./...
 
+      - name: Enforce coverage floor
+        run: |
+          sh tests/coverage_test.sh
+          sh scripts/check-coverage.sh
+
       - name: Vet
         run: go vet ./...
 
