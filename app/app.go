@@ -13,7 +13,10 @@ import (
 	"github.com/we11adam/uddns/updater"
 )
 
-const maxJobBackoff = 30 * time.Minute
+const (
+	maxJobBackoff      = 30 * time.Minute
+	autoVerifyInterval = 10 * time.Minute
+)
 
 type clock interface {
 	Now() time.Time
@@ -49,6 +52,8 @@ type Job struct {
 	lastNotifiedIPv4          string
 	lastNotifiedIPv6          string
 	lastNotifiedUpdateFailure string
+	lastVerifiedAt            time.Time
+	recordDriftPending        bool
 	failureCount              int
 	retryAfter                time.Time
 }
@@ -225,12 +230,13 @@ func (a *App) runJob(ctx context.Context, job *Job) {
 	ipv6Changed := ipResult.IPv6 != "" && ipResult.IPv6 != job.lastAppliedIPv6
 	ipv4NotificationNeeded := ipResult.IPv4 != "" && ipResult.IPv4 != job.lastNotifiedIPv4
 	ipv6NotificationNeeded := ipResult.IPv6 != "" && ipResult.IPv6 != job.lastNotifiedIPv6
-	updateNeeded := ipv4Changed || ipv6Changed
+	providerIPChanged := ipv4Changed || ipv6Changed
 	verified := false
-	recordChanged := false
+	recordChanged := job.recordDriftPending
+	updateNeeded := providerIPChanged || recordChanged
 	var currentIPResult *provider.IpResult
 
-	if job.shouldReadCurrentRecords() {
+	if job.shouldReadCurrentRecords(a.clock.Now(), providerIPChanged) {
 		currentIPResult, err = job.currentRecordIPs(ctx)
 		if err != nil {
 			if job.Verify == VerifyUpdaterAPI {
@@ -249,12 +255,15 @@ func (a *App) runJob(ctx context.Context, job *Job) {
 			currentIPResult = nil
 		} else {
 			verified = true
+			job.lastVerifiedAt = a.clock.Now()
 			currentIPResult = filterFamilies(currentIPResult, job.Families)
 			job.initializeAppliedFromCurrent(ipResult, currentIPResult)
 			ipv4Changed = ipResult.IPv4 != "" && ipResult.IPv4 != job.lastAppliedIPv4
 			ipv6Changed = ipResult.IPv6 != "" && ipResult.IPv6 != job.lastAppliedIPv6
+			providerIPChanged = ipv4Changed || ipv6Changed
 			recordChanged = currentRecordsNeedUpdate(ipResult, currentIPResult)
-			updateNeeded = ipv4Changed || ipv6Changed || recordChanged
+			job.recordDriftPending = recordChanged
+			updateNeeded = providerIPChanged || recordChanged
 		}
 	}
 
@@ -277,6 +286,7 @@ func (a *App) runJob(ctx context.Context, job *Job) {
 			"ipv6_notification_needed", ipv6NotificationNeeded,
 			"verify", job.Verify,
 			"verified", verified,
+			"last_verified_at", job.lastVerifiedAt,
 			"current_ipv4", ipResultValue(currentIPResult, "ipv4"),
 			"current_ipv6", ipResultValue(currentIPResult, "ipv6"),
 			"current_record_changed", recordChanged,
@@ -333,6 +343,7 @@ func (a *App) runJob(ctx context.Context, job *Job) {
 	if ipResult.IPv6 != "" {
 		job.lastAppliedIPv6 = ipResult.IPv6
 	}
+	job.recordDriftPending = false
 	job.lastNotifiedUpdateFailure = ""
 
 	slog.Info(
@@ -427,7 +438,7 @@ func filterFamilies(ipResult *provider.IpResult, families Families) *provider.Ip
 	return filtered
 }
 
-func (job *Job) shouldReadCurrentRecords() bool {
+func (job *Job) shouldReadCurrentRecords(now time.Time, providerIPChanged bool) bool {
 	switch job.Verify {
 	case VerifyOff:
 		return false
@@ -435,7 +446,10 @@ func (job *Job) shouldReadCurrentRecords() bool {
 		return true
 	default:
 		_, ok := job.Updater.(updater.RecordReader)
-		return ok
+		if !ok {
+			return false
+		}
+		return job.lastVerifiedAt.IsZero() || providerIPChanged || !now.Before(job.lastVerifiedAt.Add(autoVerifyInterval))
 	}
 }
 

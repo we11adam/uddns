@@ -50,11 +50,13 @@ func (u *recordingUpdater) Update(_ context.Context, ips *provider.IpResult) err
 
 type recordReadingUpdater struct {
 	recordingUpdater
-	current *provider.IpResult
-	err     error
+	current      *provider.IpResult
+	err          error
+	currentCalls int
 }
 
 func (u *recordReadingUpdater) Current(_ context.Context) (*provider.IpResult, error) {
+	u.currentCalls++
 	return u.current, u.err
 }
 
@@ -265,6 +267,7 @@ func TestRunOnceSuccessfulUpdateClearsFailureDeduplication(t *testing.T) {
 	u.recordingUpdater.err = nil
 	a.runOnce(context.Background())
 	u.recordingUpdater.err = updateErr
+	clock.Advance(autoVerifyInterval)
 	a.runOnce(context.Background())
 
 	if u.calls != 3 {
@@ -471,6 +474,114 @@ func TestRunOnceUpdatesWhenCurrentRecordDrifts(t *testing.T) {
 	}
 	if u.last == nil || u.last.IPv4 != "192.0.2.10" {
 		t.Fatalf("expected updater to receive desired IPv4, got %#v", u.last)
+	}
+}
+
+func TestRunOnceAutoVerifyDoesNotPollEveryInterval(t *testing.T) {
+	p := &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10"}}
+	u := &recordReadingUpdater{current: &provider.IpResult{IPv4: "192.0.2.10"}}
+	job := NewJob("default", "test-provider", p, "test-updater", u, "", "", AllFamilies(), VerifyAuto)
+	a := NewApp([]Job{job}, "test-notifier", &recordingNotifier{}, 30*time.Second)
+	clock := &fakeClock{now: time.Unix(1_700_000_000, 0)}
+	a.clock = clock
+
+	a.runOnce(context.Background())
+	for range 5 {
+		clock.Advance(30 * time.Second)
+		a.runOnce(context.Background())
+	}
+
+	if u.currentCalls != 1 {
+		t.Fatalf("expected one auto verify during short intervals, got %d", u.currentCalls)
+	}
+}
+
+func TestRunOnceAutoVerifyPollsWhenPeriodExpires(t *testing.T) {
+	p := &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10"}}
+	u := &recordReadingUpdater{current: &provider.IpResult{IPv4: "192.0.2.10"}}
+	job := NewJob("default", "test-provider", p, "test-updater", u, "", "", AllFamilies(), VerifyAuto)
+	a := NewApp([]Job{job}, "test-notifier", &recordingNotifier{}, 30*time.Second)
+	clock := &fakeClock{now: time.Unix(1_700_000_000, 0)}
+	a.clock = clock
+
+	a.runOnce(context.Background())
+	clock.Advance(autoVerifyInterval - time.Second)
+	a.runOnce(context.Background())
+	if u.currentCalls != 1 {
+		t.Fatalf("expected no early periodic verify, got %d calls", u.currentCalls)
+	}
+	clock.Advance(time.Second)
+	a.runOnce(context.Background())
+
+	if u.currentCalls != 2 {
+		t.Fatalf("expected verify when period expires, got %d calls", u.currentCalls)
+	}
+	if !a.jobs[0].lastVerifiedAt.Equal(clock.Now()) {
+		t.Fatalf("expected successful verify time %s, got %s", clock.Now(), a.jobs[0].lastVerifiedAt)
+	}
+}
+
+func TestRunOnceAutoVerifyPollsEarlyWhenProviderIPChanges(t *testing.T) {
+	p := &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10"}}
+	u := &recordReadingUpdater{current: &provider.IpResult{IPv4: "192.0.2.10"}}
+	job := NewJob("default", "test-provider", p, "test-updater", u, "", "", AllFamilies(), VerifyAuto)
+	a := NewApp([]Job{job}, "test-notifier", &recordingNotifier{}, 30*time.Second)
+	clock := &fakeClock{now: time.Unix(1_700_000_000, 0)}
+	a.clock = clock
+
+	a.runOnce(context.Background())
+	clock.Advance(30 * time.Second)
+	p.result = &provider.IpResult{IPv4: "192.0.2.11"}
+	a.runOnce(context.Background())
+
+	if u.currentCalls != 2 {
+		t.Fatalf("expected provider IP change to trigger early verify, got %d calls", u.currentCalls)
+	}
+	if u.calls != 1 {
+		t.Fatalf("expected changed provider IP to update after early verify, got %d calls", u.calls)
+	}
+}
+
+func TestRunOnceStrictVerifyPollsEveryInterval(t *testing.T) {
+	p := &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10"}}
+	u := &recordReadingUpdater{current: &provider.IpResult{IPv4: "192.0.2.10"}}
+	job := NewJob("default", "test-provider", p, "test-updater", u, "", "", AllFamilies(), VerifyUpdaterAPI)
+	a := NewApp([]Job{job}, "test-notifier", &recordingNotifier{}, 30*time.Second)
+	clock := &fakeClock{now: time.Unix(1_700_000_000, 0)}
+	a.clock = clock
+
+	for range 4 {
+		a.runOnce(context.Background())
+		clock.Advance(30 * time.Second)
+	}
+
+	if u.currentCalls != 4 {
+		t.Fatalf("expected strict verify on every interval, got %d calls", u.currentCalls)
+	}
+}
+
+func TestRunOnceAutoVerifyFailureRetriesWithoutAdvancingPeriod(t *testing.T) {
+	p := &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10"}}
+	u := &recordReadingUpdater{err: errors.New("verify failed")}
+	job := NewJob("default", "test-provider", p, "test-updater", u, "", "", AllFamilies(), VerifyAuto)
+	job.lastAppliedIPv4 = "192.0.2.10"
+	job.lastNotifiedIPv4 = "192.0.2.10"
+	a := NewApp([]Job{job}, "test-notifier", &recordingNotifier{}, 30*time.Second)
+	clock := &fakeClock{now: time.Unix(1_700_000_000, 0)}
+	a.clock = clock
+
+	a.runOnce(context.Background())
+	clock.Advance(30 * time.Second)
+	a.runOnce(context.Background())
+
+	if u.currentCalls != 2 {
+		t.Fatalf("expected failed auto verify to retry next interval, got %d calls", u.currentCalls)
+	}
+	if !a.jobs[0].lastVerifiedAt.IsZero() {
+		t.Fatalf("expected failed verify not to advance success time, got %s", a.jobs[0].lastVerifiedAt)
+	}
+	if u.calls != 0 {
+		t.Fatalf("expected unchanged provider IP not to update after verify errors, got %d calls", u.calls)
 	}
 }
 
