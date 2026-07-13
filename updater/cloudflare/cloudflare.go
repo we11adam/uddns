@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -20,6 +21,7 @@ const (
 	recordTypeA    = "A"
 	recordTypeAAAA = "AAAA"
 	requestTimeout = 15 * time.Second
+	retryBodyDrain = 64 << 10
 )
 
 type Config struct {
@@ -109,7 +111,30 @@ func newHTTPClient(proxy *url.URL) *http.Client {
 	if proxy != nil {
 		transport.Proxy = http.ProxyURL(proxy)
 	}
-	return &http.Client{Transport: transport, Timeout: requestTimeout}
+	return &http.Client{
+		Transport: retryResponseBodyClosingTransport{base: transport},
+		Timeout:   requestTimeout,
+	}
+}
+
+type retryResponseBodyClosingTransport struct {
+	base http.RoundTripper
+}
+
+func (t retryResponseBodyClosingTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	response, err := t.base.RoundTrip(request)
+	if response == nil || response.Body == nil || !isRetryableStatus(response.StatusCode) {
+		return response, err
+	}
+
+	_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, retryBodyDrain))
+	_ = response.Body.Close()
+	response.Body = http.NoBody
+	return response, err
+}
+
+func isRetryableStatus(statusCode int) bool {
+	return statusCode == http.StatusTooManyRequests || statusCode >= http.StatusInternalServerError
 }
 
 func (c *Cloudflare) Update(ctx context.Context, ips *provider.IpResult) error {
