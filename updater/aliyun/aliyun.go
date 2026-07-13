@@ -4,12 +4,14 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"time"
 
 	alidns "github.com/alibabacloud-go/alidns-20150109/v4/client"
 	openapi "github.com/alibabacloud-go/darabonba-openapi/v2/client"
 	"github.com/alibabacloud-go/tea/dara"
 	"github.com/we11adam/uddns/internal/dnsname"
+	"github.com/we11adam/uddns/internal/httpbody"
 	"github.com/we11adam/uddns/provider"
 	"github.com/we11adam/uddns/updater"
 )
@@ -18,6 +20,7 @@ const (
 	defaultRegionID = "cn-hangzhou"
 	connectTimeout  = 5 * time.Second
 	readTimeout     = 10 * time.Second
+	responseBodyMax = 1 << 20
 	recordPageSize  = 100
 	recordTypeA     = "A"
 	recordTypeAAAA  = "AAAA"
@@ -104,8 +107,19 @@ func newClient(config *Config) (*alidns.Client, error) {
 		SetRegionId(config.RegionID).
 		SetProtocol("HTTPS").
 		SetConnectTimeout(int(connectTimeout.Milliseconds())).
-		SetReadTimeout(int(readTimeout.Milliseconds()))
+		SetReadTimeout(int(readTimeout.Milliseconds())).
+		SetHttpClient(boundedHTTPClient{})
 	return alidns.NewClient(sdkConfig)
+}
+
+type boundedHTTPClient struct{}
+
+func (boundedHTTPClient) Call(request *http.Request, transport *http.Transport) (*http.Response, error) {
+	response, err := (&http.Client{Transport: transport, Timeout: readTimeout}).Do(request)
+	if response != nil && response.Body != nil {
+		response.Body = httpbody.Limit(response.Body, responseBodyMax)
+	}
+	return response, err
 }
 
 func (a *Aliyun) Update(ctx context.Context, ips *provider.IpResult) error {

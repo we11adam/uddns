@@ -12,17 +12,19 @@ import (
 
 	"github.com/cloudflare/cloudflare-go"
 	"github.com/we11adam/uddns/internal/dnsname"
+	"github.com/we11adam/uddns/internal/httpbody"
 	"github.com/we11adam/uddns/internal/proxyurl"
 	"github.com/we11adam/uddns/provider"
 	"github.com/we11adam/uddns/updater"
 )
 
 const (
-	defaultTTL     = 60
-	recordTypeA    = "A"
-	recordTypeAAAA = "AAAA"
-	requestTimeout = 15 * time.Second
-	retryBodyDrain = 64 << 10
+	defaultTTL      = 60
+	recordTypeA     = "A"
+	recordTypeAAAA  = "AAAA"
+	requestTimeout  = 15 * time.Second
+	retryBodyDrain  = 64 << 10
+	responseBodyMax = 1 << 20
 )
 
 type Config struct {
@@ -124,7 +126,11 @@ type retryResponseBodyClosingTransport struct {
 
 func (t retryResponseBodyClosingTransport) RoundTrip(request *http.Request) (*http.Response, error) {
 	response, err := t.base.RoundTrip(request)
-	if response == nil || response.Body == nil || !isRetryableStatus(response.StatusCode) {
+	if response == nil || response.Body == nil {
+		return response, err
+	}
+	if !isRetryableStatus(response.StatusCode) {
+		response.Body = httpbody.Limit(response.Body, responseBodyMax)
 		return response, err
 	}
 

@@ -74,8 +74,8 @@ func TestRetryResponseTransportClosesRetryableResponseBody(t *testing.T) {
 	}
 }
 
-func TestRetryResponseTransportLeavesNonRetryableResponseBodyUntouched(t *testing.T) {
-	body := &trackingBody{reader: strings.NewReader("client error")}
+func TestRetryResponseTransportLimitsNonRetryableResponseBody(t *testing.T) {
+	body := &trackingBody{reader: strings.NewReader(strings.Repeat("x", responseBodyMax+1))}
 	transport := retryResponseBodyClosingTransport{base: roundTripFunc(func(*http.Request) (*http.Response, error) {
 		return &http.Response{StatusCode: http.StatusBadRequest, Body: body}, nil
 	})}
@@ -84,11 +84,21 @@ func TestRetryResponseTransportLeavesNonRetryableResponseBodyUntouched(t *testin
 	if err != nil {
 		t.Fatalf("round trip: %v", err)
 	}
-	if response.Body != body {
-		t.Fatal("expected non-retryable response body to remain unchanged")
-	}
 	if body.closed {
 		t.Fatal("expected non-retryable response body to remain open")
+	}
+	content, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatalf("read limited response body: %v", err)
+	}
+	if len(content) != responseBodyMax {
+		t.Fatalf("response body length = %d, want %d", len(content), responseBodyMax)
+	}
+	if err := response.Body.Close(); err != nil {
+		t.Fatalf("close limited response body: %v", err)
+	}
+	if !body.closed {
+		t.Fatal("expected close to be forwarded to the original body")
 	}
 }
 

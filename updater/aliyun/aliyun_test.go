@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
@@ -44,6 +45,34 @@ func TestNewUsesHTTPSAndTimeouts(t *testing.T) {
 	}
 	if got := dara.IntValue(aliyun.runtime.ReadTimeout); got != int(readTimeout.Milliseconds()) {
 		t.Fatalf("expected runtime read timeout %dms, got %dms", readTimeout.Milliseconds(), got)
+	}
+}
+
+func TestBoundedHTTPClientLimitsResponseBody(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(response, strings.Repeat("x", responseBodyMax+1))
+	}))
+	defer server.Close()
+
+	request, err := http.NewRequest(http.MethodGet, server.URL, nil)
+	if err != nil {
+		t.Fatalf("create request: %v", err)
+	}
+	transport, ok := server.Client().Transport.(*http.Transport)
+	if !ok {
+		t.Fatalf("test server transport has type %T", server.Client().Transport)
+	}
+	response, err := (boundedHTTPClient{}).Call(request, transport)
+	if err != nil {
+		t.Fatalf("call bounded client: %v", err)
+	}
+	defer response.Body.Close()
+	content, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatalf("read bounded response: %v", err)
+	}
+	if len(content) != responseBodyMax {
+		t.Fatalf("response body length = %d, want %d", len(content), responseBodyMax)
 	}
 }
 
