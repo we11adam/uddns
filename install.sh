@@ -471,6 +471,40 @@ download_file() {
 		"$url" -o "$output"
 }
 
+validate_tar_archive() {
+	archive="$1"
+	members="${archive}.members"
+	verbose="${archive}.verbose"
+
+	if ! tar -tzf "$archive" >"$members"; then
+		fail "invalid tar archive"
+	fi
+
+	member_count="$(wc -l <"$members" | tr -d '[:space:]')"
+	[ "$member_count" = "1" ] || fail "release tar archive must contain exactly one file"
+	member="$(sed -n '1p' "$members")"
+
+	case "$member" in
+		/*) fail "release tar archive contains an absolute path" ;;
+		.. | ../* | */.. | */../*) fail "release tar archive contains a parent path" ;;
+	esac
+
+	[ "$member" = "$REPO" ] || fail "release tar archive must contain only ${REPO}"
+	if ! LC_ALL=C tar -tvzf "$archive" >"$verbose"; then
+		fail "invalid tar archive"
+	fi
+	entry_type="$(cut -c 1 "$verbose")"
+	[ "$entry_type" = "-" ] || fail "release tar archive entry must be a regular file; links are not allowed"
+}
+
+extract_tar_archive() {
+	archive="$1"
+	extract_dir="$2"
+
+	validate_tar_archive "$archive"
+	tar -xzf "$archive" -C "$extract_dir"
+}
+
 download_release() {
 	tmpdir="$1"
 	os="$2"
@@ -504,7 +538,7 @@ download_release() {
 	case "$asset_url" in
 		*.tar.gz | *.tgz)
 			need_cmd tar
-			tar -xzf "$archive" -C "$extract_dir"
+			extract_tar_archive "$archive" "$extract_dir"
 			;;
 		*.zip)
 			need_cmd unzip

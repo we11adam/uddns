@@ -186,4 +186,71 @@ if [ "$actual_curl_calls" != "$expected_curl_calls" ]; then
 	exit 1
 fi
 
+expect_tar_rejected() {
+	archive="$1"
+	description="$2"
+	rejected_extract_dir="${archive}.extract"
+	mkdir -p "$rejected_extract_dir"
+	if (extract_tar_archive "$archive" "$rejected_extract_dir") >/dev/null 2>&1; then
+		printf 'expected tar archive to be rejected: %s\n' "$description" >&2
+		exit 1
+	fi
+	extracted_count="$(find "$rejected_extract_dir" -print | wc -l | tr -d '[:space:]')"
+	if [ "$extracted_count" != "1" ]; then
+		printf 'rejected tar archive extracted files before validation completed: %s\n' "$description" >&2
+		exit 1
+	fi
+}
+
+REPO="uddns"
+tar_test_dir="$test_dir/tar-archives"
+mkdir -p "$tar_test_dir/legal-source" "$tar_test_dir/legal-extract"
+printf '#!/bin/sh\n' >"$tar_test_dir/legal-source/uddns"
+tar -czf "$tar_test_dir/legal.tar.gz" -C "$tar_test_dir/legal-source" uddns
+extract_tar_archive "$tar_test_dir/legal.tar.gz" "$tar_test_dir/legal-extract"
+if ! cmp "$tar_test_dir/legal-source/uddns" "$tar_test_dir/legal-extract/uddns" >/dev/null 2>&1; then
+	printf 'legal uddns tar archive was not extracted correctly\n' >&2
+	exit 1
+fi
+
+mkdir -p "$tar_test_dir/absolute-source"
+printf 'absolute\n' >"$tar_test_dir/absolute-source/uddns"
+tar -czPf "$tar_test_dir/absolute.tar.gz" "$tar_test_dir/absolute-source/uddns"
+expect_tar_rejected "$tar_test_dir/absolute.tar.gz" "absolute member path"
+
+mkdir -p "$tar_test_dir/traversal-source"
+printf 'traversal\n' >"$tar_test_dir/traversal-source/uddns"
+if tar --version 2>&1 | grep -qi 'bsdtar'; then
+	tar -czf "$tar_test_dir/traversal.tar.gz" -s ',^uddns$,../uddns,' -C "$tar_test_dir/traversal-source" uddns
+else
+	tar -czf "$tar_test_dir/traversal.tar.gz" --transform='s|^uddns$|../uddns|' -C "$tar_test_dir/traversal-source" uddns
+fi
+expect_tar_rejected "$tar_test_dir/traversal.tar.gz" "parent path traversal"
+
+mkdir -p "$tar_test_dir/symlink-source"
+ln -s ../../outside "$tar_test_dir/symlink-source/uddns"
+tar -czf "$tar_test_dir/symlink.tar.gz" -C "$tar_test_dir/symlink-source" uddns
+expect_tar_rejected "$tar_test_dir/symlink.tar.gz" "symlink target escape"
+
+mkdir -p "$tar_test_dir/hardlink-source"
+printf 'hardlink\n' >"$tar_test_dir/hardlink-source/target"
+ln "$tar_test_dir/hardlink-source/target" "$tar_test_dir/hardlink-source/uddns"
+tar -cf "$tar_test_dir/hardlink-with-target.tar" -C "$tar_test_dir/hardlink-source" target uddns
+dd if="$tar_test_dir/hardlink-with-target.tar" of="$tar_test_dir/hardlink.tar" bs=512 skip=2 2>/dev/null
+gzip -c "$tar_test_dir/hardlink.tar" >"$tar_test_dir/hardlink.tar.gz"
+hardlink_type="$(LC_ALL=C tar -tvzf "$tar_test_dir/hardlink.tar.gz" | cut -c 1)"
+if [ "$hardlink_type" != "h" ]; then
+	printf 'failed to create hardlink tar test fixture\n' >&2
+	exit 1
+fi
+expect_tar_rejected "$tar_test_dir/hardlink.tar.gz" "hardlink member"
+
+mkdir -p "$tar_test_dir/hierarchy-link-source" "$tar_test_dir/hierarchy-file-source/dir"
+ln -s .. "$tar_test_dir/hierarchy-link-source/dir"
+printf 'escape\n' >"$tar_test_dir/hierarchy-file-source/dir/escape"
+tar -cf "$tar_test_dir/hierarchy.tar" -C "$tar_test_dir/hierarchy-link-source" dir
+tar -rf "$tar_test_dir/hierarchy.tar" -C "$tar_test_dir/hierarchy-file-source" dir/escape
+gzip -c "$tar_test_dir/hierarchy.tar" >"$tar_test_dir/hierarchy.tar.gz"
+expect_tar_rejected "$tar_test_dir/hierarchy.tar.gz" "member nested below archive symlink"
+
 printf 'install.sh input validation tests passed\n'
