@@ -133,25 +133,32 @@ func sameOriginHTTPSRedirectPolicy(maxRedirects int) resty.RedirectPolicy {
 	})
 }
 
-func (i *IpService) GetIPs(ctx context.Context) (*provider.IpResult, error) {
+func (i *IpService) GetIPs(ctx context.Context, families provider.FamilyRequest) (*provider.IpResult, error) {
+	if !families.IPv4 && !families.IPv6 {
+		return nil, fmt.Errorf("no IP families requested")
+	}
 	result := &provider.IpResult{}
 
-	ipv4, err := i.getIP(ctx, i.client4, "ipv4")
-	if err == nil {
-		result.IPv4 = ipv4
-	} else if ctx.Err() != nil {
-		return nil, ctx.Err()
+	if families.IPv4 {
+		ipv4, err := i.getIP(ctx, i.client4, "ipv4")
+		if err == nil {
+			result.IPv4 = ipv4
+		} else if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
 	}
 
-	ipv6, err := i.getIP(ctx, i.client6, "ipv6")
-	if err == nil {
-		result.IPv6 = ipv6
-	} else if ctx.Err() != nil {
-		return nil, ctx.Err()
+	if families.IPv6 {
+		ipv6, err := i.getIP(ctx, i.client6, "ipv6")
+		if err == nil {
+			result.IPv6 = ipv6
+		} else if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
 	}
 
 	if result.IPv4 == "" && result.IPv6 == "" {
-		return nil, fmt.Errorf("failed to get both IPv4 and IPv6 addresses")
+		return nil, fmt.Errorf("failed to get requested IP addresses")
 	}
 
 	return result, nil

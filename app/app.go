@@ -195,7 +195,10 @@ func (a *App) runJob(ctx context.Context, job *Job) {
 		)...,
 	)
 
-	ipResult, err := job.Provider.GetIPs(ctx)
+	ipResult, err := job.Provider.GetIPs(ctx, provider.FamilyRequest{
+		IPv4: job.Families.IPv4,
+		IPv6: job.Families.IPv6,
+	})
 	if err != nil {
 		status = "provider_error"
 		slog.Error("failed to get IP addresses", job.logAttrs("error", err)...)
@@ -206,12 +209,12 @@ func (a *App) runJob(ctx context.Context, job *Job) {
 		slog.Error("provider returned no IP result", job.logAttrs()...)
 		return
 	}
+	ipResult = filterFamilies(ipResult, job.Families)
 	if err := ipResult.Validate(); err != nil {
 		status = "provider_error"
 		slog.Error("provider returned invalid IP result", job.logAttrs("error", err)...)
 		return
 	}
-	ipResult = filterFamilies(ipResult, job.Families)
 	if ipResult.IPv4 == "" && ipResult.IPv6 == "" {
 		status = "family_unavailable"
 		slog.Warn("provider returned no requested IP addresses", job.logAttrs("families", job.Families.String())...)

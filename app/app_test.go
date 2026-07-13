@@ -12,13 +12,15 @@ import (
 )
 
 type staticProvider struct {
-	result *provider.IpResult
-	err    error
-	calls  int
+	result      *provider.IpResult
+	err         error
+	calls       int
+	lastRequest provider.FamilyRequest
 }
 
-func (p *staticProvider) GetIPs(_ context.Context) (*provider.IpResult, error) {
+func (p *staticProvider) GetIPs(_ context.Context, request provider.FamilyRequest) (*provider.IpResult, error) {
 	p.calls++
+	p.lastRequest = request
 	return p.result, p.err
 }
 
@@ -76,7 +78,7 @@ type blockingProvider struct {
 	started chan struct{}
 }
 
-func (p *blockingProvider) GetIPs(ctx context.Context) (*provider.IpResult, error) {
+func (p *blockingProvider) GetIPs(ctx context.Context, _ provider.FamilyRequest) (*provider.IpResult, error) {
 	close(p.started)
 	<-ctx.Done()
 	return nil, ctx.Err()
@@ -358,7 +360,7 @@ func TestRunCancelsInFlightProvider(t *testing.T) {
 }
 
 func TestRunOnceFiltersRequestedFamilies(t *testing.T) {
-	p := &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10", IPv6: "2001:db8::1"}}
+	p := &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10", IPv6: "not-an-ip"}}
 	u := &recordingUpdater{}
 	n := &recordingNotifier{}
 	a := newTestApp(p, u, n, Families{IPv4: true})
@@ -370,6 +372,28 @@ func TestRunOnceFiltersRequestedFamilies(t *testing.T) {
 	}
 	if u.last == nil || u.last.IPv4 != "192.0.2.10" || u.last.IPv6 != "" {
 		t.Fatalf("expected updater to receive only IPv4, got %#v", u.last)
+	}
+	if !p.lastRequest.IPv4 || p.lastRequest.IPv6 {
+		t.Fatalf("expected provider to receive an IPv4-only request, got %+v", p.lastRequest)
+	}
+}
+
+func TestRunOnceRequestsOnlyIPv6(t *testing.T) {
+	p := &staticProvider{result: &provider.IpResult{IPv4: "not-an-ip", IPv6: "2001:db8::1"}}
+	u := &recordingUpdater{}
+	n := &recordingNotifier{}
+	a := newTestApp(p, u, n, Families{IPv6: true})
+
+	a.runOnce(context.Background())
+
+	if u.calls != 1 {
+		t.Fatalf("expected updater to be called once, got %d", u.calls)
+	}
+	if u.last == nil || u.last.IPv4 != "" || u.last.IPv6 != "2001:db8::1" {
+		t.Fatalf("expected updater to receive only IPv6, got %#v", u.last)
+	}
+	if p.lastRequest.IPv4 || !p.lastRequest.IPv6 {
+		t.Fatalf("expected provider to receive an IPv6-only request, got %+v", p.lastRequest)
 	}
 }
 

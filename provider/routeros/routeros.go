@@ -92,7 +92,10 @@ func routerOSRestURL(endpoint string) (string, error) {
 	return strings.TrimRight(endpoint, "/") + "/rest", nil
 }
 
-func (r *RouterOS) GetIPs(ctx context.Context) (*provider.IpResult, error) {
+func (r *RouterOS) GetIPs(ctx context.Context, families provider.FamilyRequest) (*provider.IpResult, error) {
+	if !families.IPv4 && !families.IPv6 {
+		return nil, fmt.Errorf("no IP families requested")
+	}
 	var rfaces []rosInterface
 	_, err := r.httpClient.R().SetContext(ctx).SetResult(&rfaces).Get("/interface")
 	if err != nil {
@@ -109,31 +112,33 @@ func (r *RouterOS) GetIPs(ctx context.Context) (*provider.IpResult, error) {
 
 	result := &provider.IpResult{}
 
-	// Get IPv4 address
-	var raddrs []rosAddress
-	_, err = r.httpClient.R().SetContext(ctx).SetResult(&raddrs).Get("/ip/address")
-	if err != nil {
-		return nil, err
-	}
+	if families.IPv4 {
+		var raddrs []rosAddress
+		_, err = r.httpClient.R().SetContext(ctx).SetResult(&raddrs).Get("/ip/address")
+		if err != nil {
+			return nil, err
+		}
 
-	for _, raddr := range raddrs {
-		if raddr.Interface == pppoeIfName {
-			result.IPv4 = strings.Split(raddr.Address, "/")[0]
-			break
+		for _, raddr := range raddrs {
+			if raddr.Interface == pppoeIfName {
+				result.IPv4 = strings.Split(raddr.Address, "/")[0]
+				break
+			}
 		}
 	}
 
-	// Get IPv6 address
-	var raddrs6 []rosAddress
-	_, err = r.httpClient.R().SetContext(ctx).SetResult(&raddrs6).Get("/ipv6/address")
-	if err != nil {
-		return nil, err
-	}
+	if families.IPv6 {
+		var raddrs6 []rosAddress
+		_, err = r.httpClient.R().SetContext(ctx).SetResult(&raddrs6).Get("/ipv6/address")
+		if err != nil {
+			return nil, err
+		}
 
-	for _, raddr := range raddrs6 {
-		if raddr.Interface == pppoeIfName {
-			result.IPv6 = strings.Split(raddr.Address, "/")[0]
-			break
+		for _, raddr := range raddrs6 {
+			if raddr.Interface == pppoeIfName {
+				result.IPv6 = strings.Split(raddr.Address, "/")[0]
+				break
+			}
 		}
 	}
 

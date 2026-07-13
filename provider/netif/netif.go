@@ -45,7 +45,10 @@ func New(cfg *Config) (*Netif, error) {
 	}, nil
 }
 
-func (n *Netif) GetIPs(ctx context.Context) (*provider.IpResult, error) {
+func (n *Netif) GetIPs(ctx context.Context, families provider.FamilyRequest) (*provider.IpResult, error) {
+	if !families.IPv4 && !families.IPv6 {
+		return nil, fmt.Errorf("no IP families requested")
+	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -54,7 +57,7 @@ func (n *Netif) GetIPs(ctx context.Context) (*provider.IpResult, error) {
 		return nil, err
 	}
 
-	result := selectPublishableIPs(addrs)
+	result := selectPublishableIPs(addrs, families)
 
 	if result.IPv4 == "" && result.IPv6 == "" {
 		return nil, fmt.Errorf("no IP address found on network interface %s", n.iface.Name)
@@ -63,7 +66,7 @@ func (n *Netif) GetIPs(ctx context.Context) (*provider.IpResult, error) {
 	return result, nil
 }
 
-func selectPublishableIPs(addrs []net.Addr) *provider.IpResult {
+func selectPublishableIPs(addrs []net.Addr, families provider.FamilyRequest) *provider.IpResult {
 	var selected4, selected6 netip.Addr
 
 	for _, addr := range addrs {
@@ -76,11 +79,11 @@ func selectPublishableIPs(addrs []net.Addr) *provider.IpResult {
 		// addresses, then choose numerically within the same scope so selection is
 		// stable across enumeration order changes. Private addresses remain valid
 		// fallbacks for internal DNS use.
-		if candidate.Is4() {
+		if candidate.Is4() && families.IPv4 {
 			if preferAddress(candidate, selected4) {
 				selected4 = candidate
 			}
-		} else if preferAddress(candidate, selected6) {
+		} else if candidate.Is6() && families.IPv6 && preferAddress(candidate, selected6) {
 			selected6 = candidate
 		}
 	}

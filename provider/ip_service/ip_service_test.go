@@ -3,6 +3,7 @@ package ip_service
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -117,7 +118,7 @@ func TestGetIPsCancelsInFlightRequest(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() {
-		_, err := service.GetIPs(ctx)
+		_, err := service.GetIPs(ctx, provider.FamilyRequest{IPv4: true})
 		done <- err
 	}()
 
@@ -136,6 +137,64 @@ func TestGetIPsCancelsInFlightRequest(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("IP service request did not return after context cancellation")
 	}
+}
+
+func TestGetIPsRequestsOnlySelectedFamilies(t *testing.T) {
+	tests := []struct {
+		name      string
+		families  provider.FamilyRequest
+		wantIPv4  string
+		wantIPv6  string
+		wantCalls [2]int
+	}{
+		{
+			name:      "IPv4 only",
+			families:  provider.FamilyRequest{IPv4: true},
+			wantIPv4:  "8.8.8.8",
+			wantCalls: [2]int{1, 0},
+		},
+		{
+			name:      "IPv6 only",
+			families:  provider.FamilyRequest{IPv6: true},
+			wantIPv6:  "2606:4700:4700::1111",
+			wantCalls: [2]int{0, 1},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			calls := [2]int{}
+			client4 := createClient("tcp4")
+			client4.SetTransport(ipResponseTransport(&calls[0], "8.8.8.8"))
+			client6 := createClient("tcp6")
+			client6.SetTransport(ipResponseTransport(&calls[1], "2606:4700:4700::1111"))
+			names := ServiceNames{"ip.fm"}
+			service := &IpService{client4: client4, client6: client6, names: &names}
+
+			result, err := service.GetIPs(context.Background(), tt.families)
+			if err != nil {
+				t.Fatalf("get IPs: %v", err)
+			}
+			if result.IPv4 != tt.wantIPv4 || result.IPv6 != tt.wantIPv6 {
+				t.Fatalf("result = %+v, want IPv4=%q IPv6=%q", result, tt.wantIPv4, tt.wantIPv6)
+			}
+			if calls != tt.wantCalls {
+				t.Fatalf("request calls = %v, want %v", calls, tt.wantCalls)
+			}
+		})
+	}
+}
+
+func ipResponseTransport(calls *int, body string) http.RoundTripper {
+	return roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		*calls = *calls + 1
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader(body)),
+			Request:    request,
+		}, nil
+	})
 }
 
 type testConfig struct {

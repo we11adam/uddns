@@ -11,8 +11,13 @@ type IpResult struct {
 	IPv6 string
 }
 
+type FamilyRequest struct {
+	IPv4 bool
+	IPv6 bool
+}
+
 type Provider interface {
-	GetIPs(context.Context) (*IpResult, error)
+	GetIPs(context.Context, FamilyRequest) (*IpResult, error)
 }
 
 type ConfigReader = registry.ConfigReader
