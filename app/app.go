@@ -250,8 +250,11 @@ func (a *App) runJob(ctx context.Context, job *Job) {
 		} else {
 			verified = true
 			currentIPResult = filterFamilies(currentIPResult, job.Families)
+			job.initializeAppliedFromCurrent(ipResult, currentIPResult)
+			ipv4Changed = ipResult.IPv4 != "" && ipResult.IPv4 != job.lastAppliedIPv4
+			ipv6Changed = ipResult.IPv6 != "" && ipResult.IPv6 != job.lastAppliedIPv6
 			recordChanged = currentRecordsNeedUpdate(ipResult, currentIPResult)
-			updateNeeded = updateNeeded || recordChanged
+			updateNeeded = ipv4Changed || ipv6Changed || recordChanged
 		}
 	}
 
@@ -348,6 +351,18 @@ func isBackoffFailure(status string) bool {
 		return true
 	default:
 		return false
+	}
+}
+
+func (job *Job) initializeAppliedFromCurrent(desired, current *provider.IpResult) {
+	if desired == nil || current == nil {
+		return
+	}
+	if job.lastAppliedIPv4 == "" && desired.IPv4 != "" && desired.IPv4 == current.IPv4 {
+		job.lastAppliedIPv4 = desired.IPv4
+	}
+	if job.lastAppliedIPv6 == "" && desired.IPv6 != "" && desired.IPv6 == current.IPv6 {
+		job.lastAppliedIPv6 = desired.IPv6
 	}
 }
 

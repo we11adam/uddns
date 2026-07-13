@@ -474,6 +474,72 @@ func TestRunOnceUpdatesWhenCurrentRecordDrifts(t *testing.T) {
 	}
 }
 
+func TestRunOnceInitializesAppliedIPWhenCurrentRecordMatches(t *testing.T) {
+	tests := []struct {
+		name   string
+		verify VerifyMode
+	}{
+		{name: "auto", verify: VerifyAuto},
+		{name: "strict updater api", verify: VerifyUpdaterAPI},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10"}}
+			u := &recordReadingUpdater{current: &provider.IpResult{IPv4: "192.0.2.10"}}
+			n := &recordingNotifier{}
+			job := NewJob("default", "test-provider", p, "test-updater", u, "home.example.com", "example.com", AllFamilies(), tt.verify)
+			a := NewApp([]Job{job}, "test-notifier", n, time.Second)
+
+			a.runOnce(context.Background())
+
+			if u.calls != 0 {
+				t.Fatalf("expected matching current record to skip initial update, got %d calls", u.calls)
+			}
+			if a.jobs[0].lastAppliedIPv4 != "192.0.2.10" {
+				t.Fatalf("expected matching current record to initialize applied IPv4, got %q", a.jobs[0].lastAppliedIPv4)
+			}
+			if len(n.notifications) != 1 || n.notifications[0].Message != "IPv4 address changed to 192.0.2.10" {
+				t.Fatalf("expected only the existing first-observation notification, got %+v", n.notifications)
+			}
+		})
+	}
+}
+
+func TestRunOnceInitialCurrentSingleFamilyDriftTriggersUpdate(t *testing.T) {
+	p := &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10", IPv6: "2001:db8::1"}}
+	u := &recordReadingUpdater{current: &provider.IpResult{IPv4: "192.0.2.10", IPv6: "2001:db8::2"}}
+	n := &recordingNotifier{}
+	job := NewJob("default", "test-provider", p, "test-updater", u, "home.example.com", "example.com", AllFamilies(), VerifyAuto)
+	a := NewApp([]Job{job}, "test-notifier", n, time.Second)
+
+	a.runOnce(context.Background())
+
+	if u.calls != 1 {
+		t.Fatalf("expected one drifting family to trigger update, got %d calls", u.calls)
+	}
+	if u.last == nil || u.last.IPv4 != "192.0.2.10" || u.last.IPv6 != "2001:db8::1" {
+		t.Fatalf("expected updater to receive both desired families, got %#v", u.last)
+	}
+}
+
+func TestRunOnceInitialEmptyCurrentRecordTriggersUpdate(t *testing.T) {
+	p := &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10"}}
+	u := &recordReadingUpdater{current: &provider.IpResult{}}
+	n := &recordingNotifier{}
+	job := NewJob("default", "test-provider", p, "test-updater", u, "home.example.com", "example.com", AllFamilies(), VerifyAuto)
+	a := NewApp([]Job{job}, "test-notifier", n, time.Second)
+
+	a.runOnce(context.Background())
+
+	if u.calls != 1 {
+		t.Fatalf("expected empty current record to trigger update, got %d calls", u.calls)
+	}
+	if a.jobs[0].lastAppliedIPv4 != "192.0.2.10" {
+		t.Fatalf("expected successful update to set applied IPv4, got %q", a.jobs[0].lastAppliedIPv4)
+	}
+}
+
 func TestRunOnceAutoUpdatesChangedIPWhenRecordReadFails(t *testing.T) {
 	p := &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10"}}
 	u := &recordReadingUpdater{err: errors.New("verify failed")}
