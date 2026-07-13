@@ -290,10 +290,10 @@ func (w *calendarRotatingWriter) rotateLocked(now time.Time) error {
 
 	name := w.logName(date)
 	info, err := w.root.Lstat(name)
-	if err == nil && info.Mode()&os.ModeSymlink != 0 {
+	if err == nil && !info.Mode().IsRegular() {
 		w.file = nil
 		w.currentDate = ""
-		return fmt.Errorf("refusing to open symbolic link as log file: %s", w.logPath(date))
+		return fmt.Errorf("refusing to open non-regular log file: %s", w.logPath(date))
 	}
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		w.file = nil
