@@ -28,6 +28,10 @@ builds:
 checksum:
   name_template: 'checksums.txt'
 
+sboms:
+  - id: archives
+    artifacts: archive
+
 release:
   extra_files:
     - glob: ./install.sh
