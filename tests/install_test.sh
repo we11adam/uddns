@@ -79,4 +79,49 @@ for field in OWNER REPO INSTALL_DIR CONFIG_FILE SERVICE_INTERVAL LOG_DIR LOG_RET
 	expect_rejected "$field" "$carriage_return_value"
 done
 
+calls_file="$test_dir/run-as-root-calls"
+unit_exists=0
+systemd_unit_exists() {
+	[ "$unit_exists" -eq 1 ]
+}
+is_tty_available() {
+	return 1
+}
+warn_config_write_permission() {
+	:
+}
+config_file_available_to_service() {
+	return 0
+}
+run_as_root() {
+	printf '%s\n' "$*" >>"$calls_file"
+}
+assert_systemctl_calls() {
+	expected="$1"
+	actual="$(sed -n '/^systemctl /p' "$calls_file")"
+	if [ "$actual" != "$expected" ]; then
+		printf 'unexpected systemctl calls:\n%s\n' "$actual" >&2
+		exit 1
+	fi
+}
+
+safe_inputs
+CONFIG_FILE_SET=1
+tmpdir="$test_dir"
+
+: >"$calls_file"
+unit_exists=0
+install_systemd_service >/dev/null 2>&1
+assert_systemctl_calls "$(printf '%s\n' \
+	'systemctl daemon-reload' \
+	'systemctl enable --now uddns-test@blue_1.service')"
+
+: >"$calls_file"
+unit_exists=1
+install_systemd_service >/dev/null 2>&1
+assert_systemctl_calls "$(printf '%s\n' \
+	'systemctl daemon-reload' \
+	'systemctl enable uddns-test@blue_1.service' \
+	'systemctl restart uddns-test@blue_1.service')"
+
 printf 'install.sh input validation tests passed\n'

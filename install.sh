@@ -596,8 +596,14 @@ EOF
 	run_as_root systemctl daemon-reload
 
 	if config_file_available_to_service "$CONFIG_FILE"; then
-		run_as_root systemctl enable --now "${SERVICE_NAME}.service"
-		log "systemd service enabled and started: ${SERVICE_NAME}.service"
+		if [ "$update_service" -eq 1 ]; then
+			run_as_root systemctl enable "${SERVICE_NAME}.service"
+			run_as_root systemctl restart "${SERVICE_NAME}.service"
+			log "systemd service enabled and restarted: ${SERVICE_NAME}.service"
+		else
+			run_as_root systemctl enable --now "${SERVICE_NAME}.service"
+			log "systemd service enabled and started: ${SERVICE_NAME}.service"
+		fi
 	else
 		run_as_root systemctl enable "${SERVICE_NAME}.service"
 		log "systemd service enabled but not started because ${CONFIG_FILE} is not readable"
