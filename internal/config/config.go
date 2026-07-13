@@ -42,12 +42,21 @@ func Load(providedPath string) (*Config, error) {
 }
 
 func FindFile(providedPath string) (string, error) {
-	if providedPath != "" && isReadable(providedPath) {
-		return providedPath, nil
+	if providedPath != "" {
+		if isReadable(providedPath) {
+			return providedPath, nil
+		}
+		return "", fmt.Errorf("provided config file is not readable: %s", providedPath)
+	}
+
+	if envPath := os.Getenv("UDDNS_CONFIG"); envPath != "" {
+		if isReadable(envPath) {
+			return envPath, nil
+		}
+		return "", fmt.Errorf("UDDNS_CONFIG file is not readable: %s", envPath)
 	}
 
 	locations := []string{
-		os.Getenv("UDDNS_CONFIG"),
 		"./uddns.yaml",
 		os.Getenv("HOME") + "/.config/uddns.yaml",
 		"/etc/uddns.yaml",
@@ -123,8 +132,12 @@ func (c *Config) Interval() (time.Duration, string, error) {
 }
 
 func isReadable(p string) bool {
-	if _, err := os.Stat(p); err == nil {
-		return true
+	file, err := os.Open(p)
+	if err != nil {
+		return false
 	}
-	return false
+	defer file.Close()
+
+	info, err := file.Stat()
+	return err == nil && info.Mode().IsRegular()
 }

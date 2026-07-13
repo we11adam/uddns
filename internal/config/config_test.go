@@ -23,6 +23,32 @@ func TestFindFileUsesProvidedReadablePath(t *testing.T) {
 	}
 }
 
+func TestFindFileRejectsUnreadableProvidedPath(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "uddns.yaml"), []byte("providers: {}\n"), 0644); err != nil {
+		t.Fatalf("write fallback config: %v", err)
+	}
+	t.Chdir(dir)
+
+	missing := filepath.Join(dir, "missing.yaml")
+	if _, err := FindFile(missing); err == nil {
+		t.Fatal("expected unreadable provided path to return an error")
+	}
+}
+
+func TestFindFileRejectsUnreadableEnvironmentPath(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "uddns.yaml"), []byte("providers: {}\n"), 0644); err != nil {
+		t.Fatalf("write fallback config: %v", err)
+	}
+	t.Chdir(dir)
+	t.Setenv("UDDNS_CONFIG", filepath.Join(dir, "missing.yaml"))
+
+	if _, err := FindFile(""); err == nil {
+		t.Fatal("expected unreadable UDDNS_CONFIG path to return an error")
+	}
+}
+
 func TestIntervalUsesDefault(t *testing.T) {
 	t.Setenv("UDDNS_INTERVAL", "")
 	cfg := &Config{}
