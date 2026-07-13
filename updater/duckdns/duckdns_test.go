@@ -84,6 +84,48 @@ func TestUpdateIPRetriesTransientFailures(t *testing.T) {
 	}
 }
 
+func TestUpdateIPRequiresHTTP200AndOKBody(t *testing.T) {
+	tests := []struct {
+		name         string
+		status       int
+		body         string
+		wantErr      bool
+		wantAttempts int32
+	}{
+		{name: "HTTP 200 and OK", status: http.StatusOK, body: "OK", wantAttempts: 1},
+		{name: "HTTP 500 and OK", status: http.StatusInternalServerError, body: "OK", wantErr: true, wantAttempts: int32(restyretry.MaxRetries + 1)},
+		{name: "HTTP 200 and KO", status: http.StatusOK, body: "KO", wantErr: true, wantAttempts: 1},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var attempts atomic.Int32
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				attempts.Add(1)
+				w.WriteHeader(tt.status)
+				_, _ = io.WriteString(w, tt.body)
+			}))
+			defer server.Close()
+
+			const token = "duck-secret-token"
+			duckDNS := mustNewDuckDNS(t, &Config{Domain: "home", Token: token})
+			duckDNS.httpclient.SetBaseURL(server.URL).
+				SetRetryWaitTime(time.Millisecond).
+				SetRetryMaxWaitTime(2 * time.Millisecond)
+			err := duckDNS.updateIP(context.Background(), "192.0.2.1")
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("update error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if err != nil {
+				assertTokenRedacted(t, err.Error(), token)
+			}
+			if got := attempts.Load(); got != tt.wantAttempts {
+				t.Fatalf("attempts = %d, want %d", got, tt.wantAttempts)
+			}
+		})
+	}
+}
+
 func TestUpdateIPDoesNotRetryPermanentClientError(t *testing.T) {
 	var attempts atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
