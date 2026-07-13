@@ -82,6 +82,16 @@ reject_line_breaks() {
 	esac
 }
 
+require_absolute_path() {
+	input_name="$1"
+	input_value="$2"
+
+	case "$input_value" in
+		/*) ;;
+		*) fail "${input_name} must be an absolute path" ;;
+	esac
+}
+
 validate_systemd_inputs() {
 	validate_service_name
 	reject_line_breaks OWNER "$OWNER"
@@ -91,6 +101,11 @@ validate_systemd_inputs() {
 	reject_line_breaks UDDNS_INTERVAL "$SERVICE_INTERVAL"
 	reject_line_breaks UDDNS_LOG_DIR "$LOG_DIR"
 	reject_line_breaks UDDNS_LOG_RETENTION_DAYS "$LOG_RETENTION_DAYS"
+	require_absolute_path INSTALL_DIR "$INSTALL_DIR"
+	require_absolute_path UDDNS_CONFIG "$CONFIG_FILE"
+	if [ -n "$LOG_DIR" ]; then
+		require_absolute_path UDDNS_LOG_DIR "$LOG_DIR"
+	fi
 }
 
 need_cmd() {

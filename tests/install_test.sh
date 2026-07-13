@@ -71,6 +71,19 @@ expect_rejected() {
 	fi
 }
 
+expect_path_rejected() {
+	field="$1"
+	value="$2"
+	if (
+		safe_inputs
+		set_input "$field" "$value"
+		validate_systemd_inputs
+	) >/dev/null 2>&1; then
+		printf 'expected %s to reject non-absolute path: %s\n' "$field" "$value" >&2
+		exit 1
+	fi
+}
+
 safe_inputs
 validate_systemd_inputs
 
@@ -99,6 +112,20 @@ for field in OWNER REPO INSTALL_DIR CONFIG_FILE SERVICE_INTERVAL LOG_DIR LOG_RET
 	expect_rejected "$field" "$line_feed_value"
 	expect_rejected "$field" "$carriage_return_value"
 done
+
+for field in INSTALL_DIR CONFIG_FILE LOG_DIR; do
+	for path in 'relative/path' '.' './relative' '..' '../relative'; do
+		expect_path_rejected "$field" "$path"
+	done
+done
+
+safe_inputs
+INSTALL_DIR='/opt/UD DNS/bin'
+CONFIG_FILE='/etc/UD DNS/config file.yaml'
+LOG_DIR='/var/log/UD DNS'
+validate_systemd_inputs
+LOG_DIR=''
+validate_systemd_inputs
 
 run_as_root_test_dir="$test_dir/run-as-root"
 mkdir -p "$run_as_root_test_dir"
