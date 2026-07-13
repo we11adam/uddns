@@ -110,9 +110,18 @@ func New(config *Config) (*Cloudflare, error) {
 }
 
 func newHTTPClient(proxy *url.URL) *http.Client {
-	transport := http.DefaultTransport.(*http.Transport).Clone()
-	if proxy != nil {
-		transport.Proxy = http.ProxyURL(proxy)
+	var transport http.RoundTripper = http.DefaultTransport
+	if defaultTransport, ok := http.DefaultTransport.(*http.Transport); ok {
+		clone := defaultTransport.Clone()
+		if proxy != nil {
+			clone.Proxy = http.ProxyURL(proxy)
+		}
+		transport = clone
+	} else if proxy != nil {
+		transport = &http.Transport{Proxy: http.ProxyURL(proxy)}
+	}
+	if transport == nil {
+		transport = &http.Transport{}
 	}
 	return &http.Client{
 		Transport: retryResponseBodyClosingTransport{base: transport},

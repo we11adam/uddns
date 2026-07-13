@@ -45,6 +45,34 @@ func TestHTTPClientHasRequestTimeout(t *testing.T) {
 	}
 }
 
+func TestHTTPClientSupportsCustomDefaultTransport(t *testing.T) {
+	original := http.DefaultTransport
+	t.Cleanup(func() { http.DefaultTransport = original })
+
+	custom := roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusNoContent,
+			Body:       http.NoBody,
+			Request:    request,
+		}, nil
+	})
+	http.DefaultTransport = custom
+
+	client := newHTTPClient(nil)
+	request, err := http.NewRequest(http.MethodGet, "https://example.com", nil)
+	if err != nil {
+		t.Fatalf("create request: %v", err)
+	}
+	response, err := client.Do(request)
+	if err != nil {
+		t.Fatalf("custom default transport request: %v", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusNoContent {
+		t.Fatalf("status = %d, want %d", response.StatusCode, http.StatusNoContent)
+	}
+}
+
 func TestRetryResponseTransportClosesRetryableResponseBody(t *testing.T) {
 	for _, statusCode := range []int{http.StatusTooManyRequests, http.StatusInternalServerError, http.StatusServiceUnavailable} {
 		t.Run(http.StatusText(statusCode), func(t *testing.T) {
