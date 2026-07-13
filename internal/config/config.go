@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"runtime"
 	"strings"
 	"time"
 
@@ -35,6 +36,9 @@ func Load(providedPath string) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := validateFilePermissions(path); err != nil {
+		return nil, err
+	}
 
 	v := viper.New()
 	v.SetConfigFile(path)
@@ -43,6 +47,21 @@ func Load(providedPath string) (*Config, error) {
 	}
 
 	return &Config{path: path, v: v}, nil
+}
+
+func validateFilePermissions(path string) error {
+	if runtime.GOOS == "windows" {
+		return nil
+	}
+
+	info, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("failed to inspect config file %s: %w", path, err)
+	}
+	if permissions := info.Mode().Perm(); permissions&0077 != 0 {
+		return fmt.Errorf("config file %s permissions %04o expose credentials; use 0600", path, permissions)
+	}
+	return nil
 }
 
 func FindFile(providedPath string) (string, error) {

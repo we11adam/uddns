@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -46,6 +47,21 @@ func TestFindFileRejectsUnreadableEnvironmentPath(t *testing.T) {
 
 	if _, err := FindFile(""); err == nil {
 		t.Fatal("expected unreadable UDDNS_CONFIG path to return an error")
+	}
+}
+
+func TestLoadRejectsConfigExposedToOtherUsers(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows does not expose Unix permission bits")
+	}
+
+	path := filepath.Join(t.TempDir(), "uddns.yaml")
+	if err := os.WriteFile(path, []byte("providers: {}\n"), 0644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	if _, err := Load(path); err == nil {
+		t.Fatal("expected exposed config permissions to be rejected")
 	}
 }
 
@@ -198,7 +214,7 @@ func writeConfigFile(t *testing.T, content string) string {
 	t.Helper()
 
 	path := filepath.Join(t.TempDir(), "uddns.yaml")
-	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
 	return path
