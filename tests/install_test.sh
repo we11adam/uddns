@@ -100,6 +100,102 @@ for field in OWNER REPO INSTALL_DIR CONFIG_FILE SERVICE_INTERVAL LOG_DIR LOG_RET
 	expect_rejected "$field" "$carriage_return_value"
 done
 
+run_as_root_test_dir="$test_dir/run-as-root"
+mkdir -p "$run_as_root_test_dir"
+
+(
+	calls="$run_as_root_test_dir/non-root-success"
+	id() {
+		printf '1000\n'
+	}
+	fake_command() {
+		printf 'command:%s\n' "$*" >>"$calls"
+	}
+	sudo() {
+		printf 'sudo:%s\n' "$*" >>"$calls"
+		"$@"
+	}
+
+	run_as_root fake_command success
+	expected="$(printf '%s\n' 'sudo:fake_command success' 'command:success')"
+	actual="$(cat "$calls")"
+	if [ "$actual" != "$expected" ]; then
+		printf 'non-root command was not executed exactly once through sudo:\n%s\n' "$actual" >&2
+		exit 1
+	fi
+)
+
+(
+	calls="$run_as_root_test_dir/non-root-failure"
+	id() {
+		printf '1000\n'
+	}
+	fake_command() {
+		printf 'command:%s\n' "$*" >>"$calls"
+		return 42
+	}
+	sudo() {
+		printf 'sudo:%s\n' "$*" >>"$calls"
+		"$@"
+	}
+
+	status=0
+	run_as_root fake_command failure || status="$?"
+	if [ "$status" -ne 42 ]; then
+		printf 'run_as_root swallowed command failure status: %s\n' "$status" >&2
+		exit 1
+	fi
+	expected="$(printf '%s\n' 'sudo:fake_command failure' 'command:failure')"
+	actual="$(cat "$calls")"
+	if [ "$actual" != "$expected" ]; then
+		printf 'failed non-root command was executed more than once:\n%s\n' "$actual" >&2
+		exit 1
+	fi
+)
+
+(
+	calls="$run_as_root_test_dir/root-success"
+	id() {
+		printf '0\n'
+	}
+	fake_command() {
+		printf 'command:%s\n' "$*" >>"$calls"
+	}
+	sudo() {
+		printf 'sudo:%s\n' "$*" >>"$calls"
+		return 1
+	}
+
+	run_as_root fake_command success
+	actual="$(cat "$calls")"
+	if [ "$actual" != 'command:success' ]; then
+		printf 'root command was not executed exactly once directly:\n%s\n' "$actual" >&2
+		exit 1
+	fi
+)
+
+(
+	calls="$run_as_root_test_dir/no-sudo"
+	no_sudo_path="$run_as_root_test_dir/empty-path"
+	mkdir -p "$no_sudo_path"
+	PATH="$no_sudo_path"
+	id() {
+		printf '1000\n'
+	}
+	fake_command() {
+		printf 'command:%s\n' "$*" >>"$calls"
+	}
+
+	if (run_as_root fake_command unavailable) >/dev/null 2>&1; then
+		printf 'non-root command without sudo unexpectedly succeeded\n' >&2
+		exit 1
+	fi
+	if [ -e "$calls" ]; then
+		printf 'non-root command ran without sudo\n' >&2
+		exit 1
+	fi
+)
+
 config_test_dir="$test_dir/config-availability"
 missing_config="$config_test_dir/missing.yaml"
 directory_config="$config_test_dir/directory.yaml"

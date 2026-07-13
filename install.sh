@@ -100,8 +100,6 @@ need_cmd() {
 run_as_root() {
 	if [ "$(id -u)" -eq 0 ]; then
 		"$@"
-	elif "$@" 2>/dev/null; then
-		return 0
 	elif command -v sudo >/dev/null 2>&1; then
 		sudo "$@"
 	else
