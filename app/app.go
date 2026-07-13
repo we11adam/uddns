@@ -230,14 +230,26 @@ func (a *App) runJob(ctx context.Context, job *Job) {
 	if job.shouldReadCurrentRecords() {
 		currentIPResult, err = job.currentRecordIPs(ctx)
 		if err != nil {
-			status = "verify_error"
-			slog.Error("failed to verify current DNS records", job.logAttrs("verify", job.Verify, "error", err)...)
-			return
+			if job.Verify == VerifyUpdaterAPI {
+				status = "verify_error"
+				slog.Error("failed to verify current DNS records", job.logAttrs("verify", job.Verify, "error", err)...)
+				return
+			}
+			slog.Warn(
+				"failed to verify current DNS records; continuing with provider result",
+				job.logAttrs(
+					"verify", job.Verify,
+					"provider_ip_changed", updateNeeded,
+					"error", err,
+				)...,
+			)
+			currentIPResult = nil
+		} else {
+			verified = true
+			currentIPResult = filterFamilies(currentIPResult, job.Families)
+			recordChanged = currentRecordsNeedUpdate(ipResult, currentIPResult)
+			updateNeeded = updateNeeded || recordChanged
 		}
-		verified = true
-		currentIPResult = filterFamilies(currentIPResult, job.Families)
-		recordChanged = currentRecordsNeedUpdate(ipResult, currentIPResult)
-		updateNeeded = updateNeeded || recordChanged
 	}
 
 	logIPCheck := slog.Debug

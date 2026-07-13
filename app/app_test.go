@@ -409,18 +409,69 @@ func TestRunOnceUpdatesWhenCurrentRecordDrifts(t *testing.T) {
 	}
 }
 
-func TestRunOnceSkipsUpdateWhenRecordReadFails(t *testing.T) {
+func TestRunOnceAutoUpdatesChangedIPWhenRecordReadFails(t *testing.T) {
 	p := &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10"}}
 	u := &recordReadingUpdater{err: errors.New("verify failed")}
 	n := &recordingNotifier{}
-	job := NewJob("default", "test-provider", p, "test-updater", u, "home.example.com", "example.com", AllFamilies(), VerifyUpdaterAPI)
+	job := NewJob("default", "test-provider", p, "test-updater", u, "home.example.com", "example.com", AllFamilies(), VerifyAuto)
+	job.lastAppliedIPv4 = "192.0.2.9"
+	job.lastNotifiedIPv4 = "192.0.2.9"
+	a := NewApp([]Job{job}, "test-notifier", n, time.Second)
+
+	a.runOnce(context.Background())
+
+	if u.calls != 1 {
+		t.Fatalf("expected changed provider IP to update despite auto verify failure, got %d calls", u.calls)
+	}
+	if a.jobs[0].lastAppliedIPv4 != "192.0.2.10" {
+		t.Fatalf("expected changed IP to be applied, got %q", a.jobs[0].lastAppliedIPv4)
+	}
+	if a.jobs[0].failureCount != 0 {
+		t.Fatalf("expected successful update to avoid verify backoff, got %d failures", a.jobs[0].failureCount)
+	}
+}
+
+func TestRunOnceAutoSkipsUnchangedIPWhenRecordReadFails(t *testing.T) {
+	p := &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10"}}
+	u := &recordReadingUpdater{err: errors.New("verify failed")}
+	n := &recordingNotifier{}
+	job := NewJob("default", "test-provider", p, "test-updater", u, "home.example.com", "example.com", AllFamilies(), VerifyAuto)
 	job.lastAppliedIPv4 = "192.0.2.10"
+	job.lastNotifiedIPv4 = "192.0.2.10"
 	a := NewApp([]Job{job}, "test-notifier", n, time.Second)
 
 	a.runOnce(context.Background())
 
 	if u.calls != 0 {
-		t.Fatalf("expected verify failure to skip update, got %d calls", u.calls)
+		t.Fatalf("expected unchanged provider IP not to update after auto verify failure, got %d calls", u.calls)
+	}
+	if a.jobs[0].failureCount != 0 {
+		t.Fatalf("expected best-effort auto verify failure not to back off, got %d failures", a.jobs[0].failureCount)
+	}
+	if len(n.notifications) != 0 {
+		t.Fatalf("expected no notifications for unchanged IP, got %d", len(n.notifications))
+	}
+}
+
+func TestRunOnceStrictVerifyBlocksChangedIPWhenRecordReadFails(t *testing.T) {
+	p := &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10"}}
+	u := &recordReadingUpdater{err: errors.New("verify failed")}
+	n := &recordingNotifier{}
+	job := NewJob("default", "test-provider", p, "test-updater", u, "home.example.com", "example.com", AllFamilies(), VerifyUpdaterAPI)
+	job.lastAppliedIPv4 = "192.0.2.9"
+	job.lastNotifiedIPv4 = "192.0.2.9"
+	a := NewApp([]Job{job}, "test-notifier", n, time.Second)
+
+	a.runOnce(context.Background())
+
+	if u.calls != 0 {
+		t.Fatalf("expected strict verify failure to block changed IP update, got %d calls", u.calls)
+	}
+	if a.jobs[0].failureCount != 1 {
+		t.Fatalf("expected strict verify failure to back off, got %d failures", a.jobs[0].failureCount)
+	}
+	if len(n.notifications) != 0 {
+		t.Fatalf("expected strict verify failure before notifications, got %d", len(n.notifications))
 	}
 }
 
