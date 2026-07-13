@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -208,6 +209,7 @@ type calendarRotatingWriter struct {
 	now           func() time.Time
 	currentDate   string
 	file          *os.File
+	root          *os.Root
 }
 
 func newCalendarRotatingWriter(dir, prefix string, retentionDays int) (*calendarRotatingWriter, error) {
@@ -218,17 +220,23 @@ func newCalendarRotatingWriterWithClock(dir, prefix string, retentionDays int, n
 	if err := os.MkdirAll(dir, logDirMode); err != nil {
 		return nil, err
 	}
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return nil, err
+	}
 
 	writer := &calendarRotatingWriter{
 		dir:           dir,
 		prefix:        prefix,
 		retentionDays: retentionDays,
 		now:           now,
+		root:          root,
 	}
 
 	writer.mu.Lock()
 	defer writer.mu.Unlock()
 	if err := writer.rotateLocked(now()); err != nil {
+		_ = root.Close()
 		return nil, err
 	}
 	return writer, nil
@@ -248,12 +256,15 @@ func (w *calendarRotatingWriter) Close() error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	if w.file == nil {
-		return nil
+	var err error
+	if w.file != nil {
+		err = w.file.Close()
+		w.file = nil
 	}
-
-	err := w.file.Close()
-	w.file = nil
+	if w.root != nil {
+		err = errors.Join(err, w.root.Close())
+		w.root = nil
+	}
 	return err
 }
 
@@ -267,7 +278,20 @@ func (w *calendarRotatingWriter) rotateLocked(now time.Time) error {
 		_ = w.file.Close()
 	}
 
-	file, err := os.OpenFile(w.logPath(date), os.O_CREATE|os.O_WRONLY|os.O_APPEND, logFileMode)
+	name := w.logName(date)
+	info, err := w.root.Lstat(name)
+	if err == nil && info.Mode()&os.ModeSymlink != 0 {
+		w.file = nil
+		w.currentDate = ""
+		return fmt.Errorf("refusing to open symbolic link as log file: %s", w.logPath(date))
+	}
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		w.file = nil
+		w.currentDate = ""
+		return err
+	}
+
+	file, err := w.root.OpenFile(name, os.O_CREATE|os.O_WRONLY|os.O_APPEND, logFileMode)
 	if err != nil {
 		w.file = nil
 		w.currentDate = ""
@@ -281,7 +305,11 @@ func (w *calendarRotatingWriter) rotateLocked(now time.Time) error {
 }
 
 func (w *calendarRotatingWriter) logPath(date string) string {
-	return filepath.Join(w.dir, w.prefix+"-"+date+".log")
+	return filepath.Join(w.dir, w.logName(date))
+}
+
+func (w *calendarRotatingWriter) logName(date string) string {
+	return w.prefix + "-" + date + ".log"
 }
 
 func (w *calendarRotatingWriter) cleanupOldLogs(now time.Time) {
@@ -290,7 +318,7 @@ func (w *calendarRotatingWriter) cleanupOldLogs(now time.Time) {
 	}
 
 	cutoff := dateOnly(now).AddDate(0, 0, -w.retentionDays+1)
-	entries, err := os.ReadDir(w.dir)
+	entries, err := fs.ReadDir(w.root.FS(), ".")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "uddns: failed to read log directory for cleanup: dir=%s error=%v\n", w.dir, err)
 		return
@@ -307,7 +335,7 @@ func (w *calendarRotatingWriter) cleanupOldLogs(now time.Time) {
 		}
 
 		path := filepath.Join(w.dir, entry.Name())
-		if err := os.Remove(path); err != nil {
+		if err := w.root.Remove(entry.Name()); err != nil {
 			fmt.Fprintf(os.Stderr, "uddns: failed to remove expired log file: path=%s error=%v\n", path, err)
 		}
 	}

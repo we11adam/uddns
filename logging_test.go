@@ -81,6 +81,68 @@ func TestCalendarRotatingWriterCreatesPrivateDirectoryAndLogFile(t *testing.T) {
 	}
 }
 
+func TestCalendarRotatingWriterRejectsCurrentLogSymlink(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(t.TempDir(), "target.log")
+	writeTestFile(t, target, "unchanged\n")
+	logPath := filepath.Join(dir, "uddns-2026-05-21.log")
+	if err := os.Symlink(target, logPath); err != nil {
+		t.Skipf("create log symlink: %v", err)
+	}
+
+	_, err := newCalendarRotatingWriterWithClock(dir, logFilePrefix, 2, func() time.Time {
+		return time.Date(2026, 5, 21, 10, 0, 0, 0, time.Local)
+	})
+	if err == nil {
+		t.Fatal("expected current log symlink to be rejected")
+	}
+
+	content, readErr := os.ReadFile(target)
+	if readErr != nil {
+		t.Fatalf("read symlink target: %v", readErr)
+	}
+	if string(content) != "unchanged\n" {
+		t.Fatalf("expected symlink target to remain unchanged, got %q", content)
+	}
+}
+
+func TestCalendarRotatingWriterCleanupRemainsInOpenedRoot(t *testing.T) {
+	baseDir := t.TempDir()
+	dir := filepath.Join(baseDir, "logs")
+	if err := os.Mkdir(dir, logDirMode); err != nil {
+		t.Fatalf("create log directory: %v", err)
+	}
+	writeTestFile(t, filepath.Join(dir, "uddns-2026-05-20.log"), "original\n")
+
+	now := time.Date(2026, 5, 21, 10, 0, 0, 0, time.Local)
+	writer, err := newCalendarRotatingWriterWithClock(dir, logFilePrefix, 2, func() time.Time {
+		return now
+	})
+	if err != nil {
+		t.Fatalf("newCalendarRotatingWriterWithClock returned error: %v", err)
+	}
+	defer writer.Close()
+
+	movedDir := filepath.Join(baseDir, "moved-logs")
+	if err := os.Rename(dir, movedDir); err != nil {
+		t.Skipf("rename open log directory: %v", err)
+	}
+	if err := os.Mkdir(dir, logDirMode); err != nil {
+		t.Fatalf("create replacement log directory: %v", err)
+	}
+	replacementLog := filepath.Join(dir, "uddns-2026-05-20.log")
+	writeTestFile(t, replacementLog, "replacement\n")
+
+	now = time.Date(2026, 5, 22, 1, 0, 0, 0, time.Local)
+	if _, err := writer.Write([]byte("tomorrow\n")); err != nil {
+		t.Fatalf("write rotated log: %v", err)
+	}
+
+	assertMissing(t, filepath.Join(movedDir, "uddns-2026-05-20.log"))
+	assertExists(t, replacementLog)
+	assertExists(t, filepath.Join(movedDir, "uddns-2026-05-22.log"))
+}
+
 func TestParseRotatedLogDate(t *testing.T) {
 	date, ok := parseRotatedLogDate("uddns-2026-05-21.log", logFilePrefix)
 	if !ok {
