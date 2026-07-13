@@ -11,6 +11,16 @@ import (
 
 type testConfig map[string]string
 
+type testService interface {
+	name() string
+}
+
+type testServiceImpl struct{}
+
+func (*testServiceImpl) name() string {
+	return "test"
+}
+
 func (c testConfig) GetString(key string) string {
 	return c[key]
 }
@@ -200,6 +210,79 @@ func TestRegistryGetStopsOnConfigurationError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), `thing "First" configuration error`) {
 		t.Fatalf("expected first config error, got %v", err)
+	}
+}
+
+func TestRegistryGetRejectsNilConstructorValue(t *testing.T) {
+	r := New[any]("thing", "things.use")
+	r.Register("NilThing", "things.nil_thing", func(ConfigReader) (any, error) {
+		return nil, nil
+	})
+
+	name, value, err := r.Get(testConfig{})
+	if err == nil {
+		t.Fatal("expected nil constructor value to return an error")
+	}
+	if name != "" || value != nil {
+		t.Fatalf("expected empty result, got %q/%#v", name, value)
+	}
+	if !strings.Contains(err.Error(), `thing "NilThing" configuration error: constructor returned nil without an error`) {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestRegistryRejectsTypedNilConstructorValue(t *testing.T) {
+	r := New[testService]("thing", "things.use")
+	r.Register("NilThing", "things.nil_thing", func(ConfigReader) (testService, error) {
+		var service *testServiceImpl
+		return service, nil
+	})
+
+	tests := []struct {
+		name       string
+		config     testConfig
+		lookup     func(testConfig) (string, testService, error)
+		wantPrefix string
+	}{
+		{
+			name:   "Get",
+			config: testConfig{},
+			lookup: func(config testConfig) (string, testService, error) {
+				return r.Get(config)
+			},
+			wantPrefix: `thing "NilThing" configuration error: constructor returned nil without an error`,
+		},
+		{
+			name:   "GetOptional",
+			config: testConfig{"things.nil_thing": "configured"},
+			lookup: func(config testConfig) (string, testService, error) {
+				return r.GetOptional(config, "Fallback", &testServiceImpl{})
+			},
+			wantPrefix: `thing "NilThing" configuration error: constructor returned nil without an error`,
+		},
+		{
+			name:   "selected",
+			config: testConfig{"things.use": "nil_thing"},
+			lookup: func(config testConfig) (string, testService, error) {
+				return r.Get(config)
+			},
+			wantPrefix: `selected thing "nil_thing" configuration error: constructor returned nil without an error`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			name, value, err := tt.lookup(tt.config)
+			if err == nil {
+				t.Fatal("expected typed-nil constructor value to return an error")
+			}
+			if name != "" || value != nil {
+				t.Fatalf("expected empty result, got %q/%#v", name, value)
+			}
+			if !strings.Contains(err.Error(), tt.wantPrefix) {
+				t.Fatalf("unexpected error: %v", err)
+			}
+		})
 	}
 }
 

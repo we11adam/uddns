@@ -3,11 +3,15 @@ package registry
 import (
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"sync"
 )
 
-var ErrNotConfigured = errors.New("not configured")
+var (
+	ErrNotConfigured       = errors.New("not configured")
+	errNilConstructorValue = errors.New("constructor returned nil without an error")
+)
 
 type ConfigReader interface {
 	GetString(key string) string
@@ -73,7 +77,7 @@ func (r *Registry[T]) Get(config ConfigReader) (string, T, error) {
 
 	var zero T
 	for _, entry := range entries {
-		value, err := entry.New(config)
+		value, err := construct(entry, config)
 		if err == nil {
 			return entry.Name, value, nil
 		}
@@ -99,7 +103,7 @@ func (r *Registry[T]) GetOptional(config ConfigReader, fallbackName string, fall
 			continue
 		}
 
-		value, err := entry.New(config)
+		value, err := construct(entry, config)
 		if err == nil {
 			return entry.Name, value, nil
 		}
@@ -119,7 +123,7 @@ func (r *Registry[T]) getSelected(config ConfigReader, selector string, entries 
 			continue
 		}
 
-		value, err := entry.New(config)
+		value, err := construct(entry, config)
 		if err == nil {
 			return entry.Name, value, nil
 		}
@@ -136,6 +140,29 @@ func (r *Registry[T]) snapshot() []Entry[T] {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return append([]Entry[T](nil), r.entries...)
+}
+
+func construct[T any](entry Entry[T], config ConfigReader) (T, error) {
+	value, err := entry.New(config)
+	if err == nil && isNil(value) {
+		var zero T
+		return zero, errNilConstructorValue
+	}
+	return value, err
+}
+
+func isNil[T any](value T) bool {
+	reflected := reflect.ValueOf(value)
+	if !reflected.IsValid() {
+		return true
+	}
+
+	switch reflected.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice, reflect.UnsafePointer:
+		return reflected.IsNil()
+	default:
+		return false
+	}
 }
 
 func configKeys[T any](entries []Entry[T]) []string {
