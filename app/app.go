@@ -474,13 +474,14 @@ func (job *Job) currentRecordIPs(ctx context.Context) (*provider.IpResult, error
 	if current == nil {
 		current = &provider.IpResult{}
 	}
-	if current.IPv4 != "" && !provider.IsValidIPv4(current.IPv4) {
-		return nil, fmt.Errorf("verify returned invalid IPv4 address: %s", current.IPv4)
+	normalized := *current
+	if normalized.IPv4 == "" && normalized.IPv6 == "" {
+		return &normalized, nil
 	}
-	if current.IPv6 != "" && !provider.IsValidIPv6(current.IPv6) {
-		return nil, fmt.Errorf("verify returned invalid IPv6 address: %s", current.IPv6)
+	if err := normalized.Validate(); err != nil {
+		return nil, fmt.Errorf("verify returned invalid IP result: %w", err)
 	}
-	return current, nil
+	return &normalized, nil
 }
 
 func currentRecordsNeedUpdate(desired, current *provider.IpResult) bool {

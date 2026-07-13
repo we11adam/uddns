@@ -665,6 +665,43 @@ func TestRunOnceInitializesAppliedIPWhenCurrentRecordMatches(t *testing.T) {
 	}
 }
 
+func TestRunOnceCanonicalizesCurrentIPv6BeforeComparison(t *testing.T) {
+	const expandedIPv6 = "2001:0DB8:0000:0000:0000:0000:0000:0001"
+	p := &staticProvider{result: &provider.IpResult{IPv6: "2001:db8::1"}}
+	current := &provider.IpResult{IPv6: expandedIPv6}
+	u := &recordReadingUpdater{current: current}
+	job := NewJob("default", "test-provider", p, "test-updater", u, "home.example.com", "example.com", Families{IPv6: true}, VerifyUpdaterAPI)
+	a := NewApp([]Job{job}, "test-notifier", &recordingNotifier{}, time.Second)
+
+	a.runOnce(context.Background())
+
+	if u.calls != 0 {
+		t.Fatalf("equivalent canonical IPv6 record should not be updated, got %d calls", u.calls)
+	}
+	if a.jobs[0].lastAppliedIPv6 != "2001:db8::1" {
+		t.Fatalf("applied IPv6 = %q, want canonical form", a.jobs[0].lastAppliedIPv6)
+	}
+	if current.IPv6 != expandedIPv6 {
+		t.Fatalf("updater-owned current result was mutated to %q", current.IPv6)
+	}
+}
+
+func TestRunOnceStrictVerifyRejectsInvalidCurrentRecord(t *testing.T) {
+	p := &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10"}}
+	u := &recordReadingUpdater{current: &provider.IpResult{IPv4: "192.0.2.999"}}
+	job := NewJob("default", "test-provider", p, "test-updater", u, "home.example.com", "example.com", Families{IPv4: true}, VerifyUpdaterAPI)
+	a := NewApp([]Job{job}, "test-notifier", &recordingNotifier{}, time.Second)
+
+	a.runOnce(context.Background())
+
+	if u.calls != 0 {
+		t.Fatalf("invalid current record should block strict verification, got %d updates", u.calls)
+	}
+	if a.jobs[0].failureCount != 1 {
+		t.Fatalf("invalid current record should be a verify failure, got %d failures", a.jobs[0].failureCount)
+	}
+}
+
 func TestRunOnceInitialCurrentSingleFamilyDriftTriggersUpdate(t *testing.T) {
 	p := &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10", IPv6: "2001:db8::1"}}
 	u := &recordReadingUpdater{current: &provider.IpResult{IPv4: "192.0.2.10", IPv6: "2001:db8::2"}}
