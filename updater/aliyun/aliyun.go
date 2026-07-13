@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/aliyun/alibaba-cloud-sdk-go/sdk"
+	"github.com/aliyun/alibaba-cloud-sdk-go/sdk/auth/credentials"
+	"github.com/aliyun/alibaba-cloud-sdk-go/sdk/requests"
 	"github.com/aliyun/alibaba-cloud-sdk-go/services/alidns"
 	"github.com/we11adam/uddns/internal/dnsname"
 	"github.com/we11adam/uddns/provider"
@@ -75,7 +78,9 @@ func New(config *Config) (*Aliyun, error) {
 		slog.Debug("region ID not set, using default", "updater", "aliyun", "region_id", config.RegionID)
 	}
 
-	client, err := alidns.NewClientWithAccessKey(config.RegionID, config.AccessKeyID, config.AccessKeySecret)
+	sdkConfig := sdk.NewConfig().WithScheme(requests.HTTPS)
+	credential := credentials.NewAccessKeyCredential(config.AccessKeyID, config.AccessKeySecret)
+	client, err := alidns.NewClientWithOptions(config.RegionID, sdkConfig, credential)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Aliyun API client: %w", err)
 	}
