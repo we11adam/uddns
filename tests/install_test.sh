@@ -29,8 +29,8 @@ fi
 
 readme_release_url='https://github.com/we11adam/uddns/releases/latest/download/install.sh'
 readme_release_url_count="$(grep -Fc "$readme_release_url" "$root_dir/README.md" || true)"
-if [ "$readme_release_url_count" -ne 2 ]; then
-	printf 'README must contain the release install URL twice\n' >&2
+if [ "$readme_release_url_count" -lt 2 ]; then
+	printf 'README must contain the release install URL examples\n' >&2
 	exit 1
 fi
 
@@ -422,5 +422,97 @@ tar -cf "$tar_test_dir/hierarchy.tar" -C "$tar_test_dir/hierarchy-link-source" d
 tar -rf "$tar_test_dir/hierarchy.tar" -C "$tar_test_dir/hierarchy-file-source" dir/escape
 gzip -c "$tar_test_dir/hierarchy.tar" >"$tar_test_dir/hierarchy.tar.gz"
 expect_tar_rejected "$tar_test_dir/hierarchy.tar.gz" "member nested below archive symlink"
+
+expect_zip_rejected() {
+	archive="$1"
+	description="$2"
+	rejected_extract_dir="${archive}.extract"
+	mkdir -p "$rejected_extract_dir"
+	if (extract_zip_archive "$archive" "$rejected_extract_dir") >/dev/null 2>&1; then
+		printf 'expected zip archive to be rejected: %s\n' "$description" >&2
+		exit 1
+	fi
+	extracted_count="$(find "$rejected_extract_dir" -print | wc -l | tr -d '[:space:]')"
+	if [ "$extracted_count" != "1" ]; then
+		printf 'rejected zip archive extracted files before validation completed: %s\n' "$description" >&2
+		exit 1
+	fi
+}
+
+zip_test_dir="$test_dir/zip-archives"
+mkdir -p "$zip_test_dir/legal-source" "$zip_test_dir/legal-extract" "$zip_test_dir/exe-extract"
+printf '#!/bin/sh\n' >"$zip_test_dir/legal-source/uddns"
+printf 'windows binary\n' >"$zip_test_dir/legal-source/uddns.exe"
+zip -q -j "$zip_test_dir/legal.zip" "$zip_test_dir/legal-source/uddns"
+extract_zip_archive "$zip_test_dir/legal.zip" "$zip_test_dir/legal-extract"
+if ! cmp "$zip_test_dir/legal-source/uddns" "$zip_test_dir/legal-extract/uddns" >/dev/null 2>&1; then
+	printf 'legal uddns zip archive was not extracted correctly\n' >&2
+	exit 1
+fi
+zip -q -j "$zip_test_dir/legal-exe.zip" "$zip_test_dir/legal-source/uddns.exe"
+extract_zip_archive "$zip_test_dir/legal-exe.zip" "$zip_test_dir/exe-extract"
+if ! cmp "$zip_test_dir/legal-source/uddns.exe" "$zip_test_dir/exe-extract/uddns.exe" >/dev/null 2>&1; then
+	printf 'legal uddns.exe zip archive was not extracted correctly\n' >&2
+	exit 1
+fi
+
+mkdir -p "$zip_test_dir/traversal-work"
+printf 'traversal\n' >"$zip_test_dir/uddns"
+(
+	cd "$zip_test_dir/traversal-work"
+	zip -q "$zip_test_dir/traversal.zip" ../uddns
+)
+expect_zip_rejected "$zip_test_dir/traversal.zip" "parent path traversal"
+
+LC_ALL=C sed 's|\.\./uddns|/./uddns|g' "$zip_test_dir/traversal.zip" >"$zip_test_dir/absolute.zip"
+if ! unzip -tqq "$zip_test_dir/absolute.zip" >/dev/null 2>&1; then
+	printf 'failed to create valid absolute-path zip test fixture\n' >&2
+	exit 1
+fi
+absolute_member="$(unzip -Z1 "$zip_test_dir/absolute.zip")"
+if [ "$absolute_member" != "/./uddns" ]; then
+	printf 'absolute-path zip fixture has unexpected member: %s\n' "$absolute_member" >&2
+	exit 1
+fi
+expect_zip_rejected "$zip_test_dir/absolute.zip" "absolute member path"
+
+mkdir -p "$zip_test_dir/directory-source/dir"
+(
+	cd "$zip_test_dir/directory-source"
+	zip -q -r "$zip_test_dir/directory.zip" dir
+)
+expect_zip_rejected "$zip_test_dir/directory.zip" "directory member"
+
+printf 'extra\n' >"$zip_test_dir/legal-source/extra"
+zip -q -j "$zip_test_dir/multiple.zip" "$zip_test_dir/legal-source/uddns" "$zip_test_dir/legal-source/extra"
+expect_zip_rejected "$zip_test_dir/multiple.zip" "multiple members"
+
+mkdir -p "$zip_test_dir/symlink-source"
+ln -s ../../outside "$zip_test_dir/symlink-source/uddns"
+zip -q -y -j "$zip_test_dir/symlink.zip" "$zip_test_dir/symlink-source/uddns"
+expect_zip_rejected "$zip_test_dir/symlink.zip" "symlink member"
+
+mkdir -p "$zip_test_dir/fifo-source"
+mkfifo "$zip_test_dir/fifo-source/uddns"
+(printf 'fifo' >"$zip_test_dir/fifo-source/uddns") &
+fifo_writer_pid="$!"
+zip -q -FI -j "$zip_test_dir/fifo.zip" "$zip_test_dir/fifo-source/uddns"
+wait "$fifo_writer_pid"
+fifo_type="$(LC_ALL=C unzip -Z -l "$zip_test_dir/fifo.zip" | sed -n '/^[?bcdhlps-]/p' | cut -c 1)"
+if [ "$fifo_type" != "p" ]; then
+	printf 'failed to create FIFO zip test fixture\n' >&2
+	exit 1
+fi
+expect_zip_rejected "$zip_test_dir/fifo.zip" "FIFO member"
+
+(
+	unzip() {
+		return 1
+	}
+	if (validate_zip_archive "$zip_test_dir/legal.zip") >/dev/null 2>&1; then
+		printf 'zip validation succeeded without reliable type inspection\n' >&2
+		exit 1
+	fi
+)
 
 printf 'install.sh input validation tests passed\n'

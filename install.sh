@@ -512,6 +512,50 @@ extract_tar_archive() {
 	tar -xzf "$archive" -C "$extract_dir"
 }
 
+validate_zip_archive() {
+	archive="$1"
+	members="${archive}.members"
+	verbose="${archive}.verbose"
+	entries="${archive}.entries"
+
+	if ! unzip -Z1 "$archive" >"$members"; then
+		fail "cannot safely inspect zip archive members"
+	fi
+
+	member_count="$(wc -l <"$members" | tr -d '[:space:]')"
+	[ "$member_count" = "1" ] || fail "release zip archive must contain exactly one file"
+	member="$(sed -n '1p' "$members")"
+
+	case "$member" in
+		/*) fail "release zip archive contains an absolute path" ;;
+		.. | ../* | */.. | */../*) fail "release zip archive contains a parent path" ;;
+	esac
+
+	case "$member" in
+		"$REPO" | "${REPO}.exe") ;;
+		*) fail "release zip archive must contain only ${REPO} or ${REPO}.exe" ;;
+	esac
+
+	if ! LC_ALL=C unzip -Z -l "$archive" >"$verbose"; then
+		fail "cannot safely inspect zip archive entry types"
+	fi
+	sed -n '/^[?bcdhlps-]/p' "$verbose" >"$entries"
+	entry_count="$(wc -l <"$entries" | tr -d '[:space:]')"
+	[ "$entry_count" = "1" ] || fail "cannot reliably identify zip archive entry type"
+	entry_type="$(cut -c 1 "$entries")"
+	[ "$entry_type" = "-" ] || fail "release zip archive entry must be a regular file; links and special files are not allowed"
+	entry_name="$(awk '{print $NF}' "$entries")"
+	[ "$entry_name" = "$member" ] || fail "zip archive type metadata does not match its member"
+}
+
+extract_zip_archive() {
+	archive="$1"
+	extract_dir="$2"
+
+	validate_zip_archive "$archive"
+	unzip -q "$archive" -d "$extract_dir"
+}
+
 download_release() {
 	tmpdir="$1"
 	os="$2"
@@ -549,7 +593,7 @@ download_release() {
 			;;
 		*.zip)
 			need_cmd unzip
-			unzip -q "$archive" -d "$extract_dir"
+			extract_zip_archive "$archive" "$extract_dir"
 			;;
 		*)
 			fail "unsupported archive type: $asset_url"
