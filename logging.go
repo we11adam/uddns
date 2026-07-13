@@ -51,7 +51,7 @@ func configureLoggerFromConfig(v logConfigReader) {
 	config := resolveLogConfig(v)
 	level, levelOK := parseLogLevel(config.level.value)
 	handlers := []slog.Handler{
-		tint.NewHandler(os.Stdout, &tint.Options{
+		tint.NewTextHandler(os.Stdout, &tint.Options{
 			NoColor:    !isatty.IsTerminal(os.Stdout.Fd()),
 			Level:      level,
 			TimeFormat: time.DateTime,
