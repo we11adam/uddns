@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"math/rand/v2"
 	"strings"
 	"time"
 
@@ -12,11 +13,25 @@ import (
 	"github.com/we11adam/uddns/updater"
 )
 
+const maxJobBackoff = 30 * time.Minute
+
+type clock interface {
+	Now() time.Time
+}
+
+type systemClock struct{}
+
+func (systemClock) Now() time.Time {
+	return time.Now()
+}
+
 type App struct {
 	jobs         []Job
 	notifierName string
 	notifier     notifier.Notifier
 	interval     time.Duration
+	clock        clock
+	jitter       func() float64
 }
 
 type Job struct {
@@ -31,6 +46,8 @@ type Job struct {
 	Verify       VerifyMode
 	lastIPv4     string
 	lastIPv6     string
+	failureCount int
+	retryAfter   time.Time
 }
 
 type VerifyMode string
@@ -83,6 +100,8 @@ func NewApp(jobs []Job, notifierName string, n notifier.Notifier, interval time.
 		notifierName: notifierName,
 		notifier:     n,
 		interval:     interval,
+		clock:        systemClock{},
+		jitter:       rand.Float64,
 	}
 }
 
@@ -120,7 +139,20 @@ func (a *App) runOnce(ctx context.Context) {
 		if ctx.Err() != nil {
 			return
 		}
-		a.runJob(ctx, &a.jobs[i])
+		now := a.clock.Now()
+		job := &a.jobs[i]
+		if now.Before(job.retryAfter) {
+			slog.Debug(
+				"skipping job during failure backoff",
+				job.logAttrs(
+					"failure_count", job.failureCount,
+					"retry_after", job.retryAfter,
+					"remaining", job.retryAfter.Sub(now),
+				)...,
+			)
+			continue
+		}
+		a.runJob(ctx, job)
 	}
 }
 
@@ -129,12 +161,23 @@ func (a *App) runJob(ctx context.Context, job *Job) {
 	status := "ok"
 	updated := false
 	defer func() {
+		if isBackoffFailure(status) {
+			// Shutdown cancellation is not an operational job failure and should
+			// not affect the next run of the same App.
+			if ctx.Err() == nil {
+				job.recordFailure(a.clock.Now(), a.interval, jobBackoffCap(a.interval), a.jitter())
+			}
+		} else if status == "ok" || status == "unchanged" {
+			job.resetBackoff()
+		}
 		slog.Debug(
 			"update cycle finished",
 			job.logAttrs(
 				"status", status,
 				"updated", updated,
 				"duration", time.Since(startedAt),
+				"failure_count", job.failureCount,
+				"retry_after", job.retryAfter,
 			)...,
 		)
 	}()
@@ -259,6 +302,62 @@ func (a *App) runJob(ctx context.Context, job *Job) {
 		)...,
 	)
 	a.notify(ctx, "update_success", job, notifier.Notification{Message: jobNotificationMessage(job, fmt.Sprintf("DNS records updated for %s", notificationIPSummary(ipResult)))})
+}
+
+func isBackoffFailure(status string) bool {
+	switch status {
+	case "provider_error", "verify_error", "updater_error", "family_unavailable":
+		return true
+	default:
+		return false
+	}
+}
+
+func (job *Job) recordFailure(now time.Time, base, max time.Duration, jitter float64) {
+	job.failureCount++
+	job.retryAfter = now.Add(cappedExponentialBackoff(base, max, job.failureCount, jitter))
+}
+
+func (job *Job) resetBackoff() {
+	job.failureCount = 0
+	job.retryAfter = time.Time{}
+}
+
+func jobBackoffCap(interval time.Duration) time.Duration {
+	if interval > maxJobBackoff {
+		return interval
+	}
+	return maxJobBackoff
+}
+
+// cappedExponentialBackoff returns an equal-jitter delay in the range
+// [exponential/2, exponential], where exponential grows from base and never
+// exceeds max. jitter is clamped to [0, 1] to keep the helper deterministic
+// and safe for injected test sources.
+func cappedExponentialBackoff(base, max time.Duration, failures int, jitter float64) time.Duration {
+	if base <= 0 || failures <= 0 {
+		return 0
+	}
+	if max <= 0 {
+		max = base
+	}
+
+	delay := min(base, max)
+	for i := 1; i < failures && delay < max; i++ {
+		if delay > max/2 {
+			delay = max
+		} else {
+			delay *= 2
+		}
+	}
+	if jitter < 0 {
+		jitter = 0
+	} else if jitter > 1 {
+		jitter = 1
+	}
+
+	half := delay / 2
+	return half + time.Duration(float64(delay-half)*jitter)
 }
 
 func filterFamilies(ipResult *provider.IpResult, families Families) *provider.IpResult {

@@ -14,10 +14,24 @@ import (
 type staticProvider struct {
 	result *provider.IpResult
 	err    error
+	calls  int
 }
 
 func (p *staticProvider) GetIPs(_ context.Context) (*provider.IpResult, error) {
+	p.calls++
 	return p.result, p.err
+}
+
+type fakeClock struct {
+	now time.Time
+}
+
+func (c *fakeClock) Now() time.Time {
+	return c.now
+}
+
+func (c *fakeClock) Advance(duration time.Duration) {
+	c.now = c.now.Add(duration)
 }
 
 type recordingUpdater struct {
@@ -202,6 +216,9 @@ func TestRunCancelsInFlightProvider(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("app did not return after canceling an in-flight provider call")
 	}
+	if a.jobs[0].failureCount != 0 {
+		t.Fatalf("expected shutdown cancellation not to affect backoff, got %d failures", a.jobs[0].failureCount)
+	}
 }
 
 func TestRunOnceFiltersRequestedFamilies(t *testing.T) {
@@ -267,6 +284,151 @@ func TestRunOnceSkipsUpdateWhenRecordReadFails(t *testing.T) {
 
 	if u.calls != 0 {
 		t.Fatalf("expected verify failure to skip update, got %d calls", u.calls)
+	}
+}
+
+func TestCappedExponentialBackoffGrowsAndCaps(t *testing.T) {
+	base := 10 * time.Second
+	max := time.Minute
+	tests := []struct {
+		failures int
+		want     time.Duration
+	}{
+		{failures: 1, want: 10 * time.Second},
+		{failures: 2, want: 20 * time.Second},
+		{failures: 3, want: 40 * time.Second},
+		{failures: 4, want: time.Minute},
+		{failures: 5, want: time.Minute},
+	}
+
+	for _, tt := range tests {
+		if got := cappedExponentialBackoff(base, max, tt.failures, 1); got != tt.want {
+			t.Fatalf("failure %d: expected %s, got %s", tt.failures, tt.want, got)
+		}
+	}
+}
+
+func TestCappedExponentialBackoffAppliesEqualJitter(t *testing.T) {
+	base := 10 * time.Second
+	tests := []struct {
+		jitter float64
+		want   time.Duration
+	}{
+		{jitter: -1, want: 5 * time.Second},
+		{jitter: 0, want: 5 * time.Second},
+		{jitter: 0.5, want: 7500 * time.Millisecond},
+		{jitter: 1, want: 10 * time.Second},
+		{jitter: 2, want: 10 * time.Second},
+	}
+
+	for _, tt := range tests {
+		if got := cappedExponentialBackoff(base, time.Minute, 1, tt.jitter); got != tt.want {
+			t.Fatalf("jitter %.1f: expected %s, got %s", tt.jitter, tt.want, got)
+		}
+	}
+}
+
+func TestRunOnceBacksOffFailureStatuses(t *testing.T) {
+	tests := []struct {
+		name string
+		job  func() Job
+	}{
+		{
+			name: "provider",
+			job: func() Job {
+				return NewJob("provider", "test-provider", &staticProvider{err: errors.New("provider failed")}, "test-updater", &recordingUpdater{}, "", "", AllFamilies(), VerifyOff)
+			},
+		},
+		{
+			name: "verify",
+			job: func() Job {
+				return NewJob("verify", "test-provider", &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10"}}, "test-updater", &recordReadingUpdater{err: errors.New("verify failed")}, "", "", AllFamilies(), VerifyUpdaterAPI)
+			},
+		},
+		{
+			name: "updater",
+			job: func() Job {
+				return NewJob("updater", "test-provider", &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10"}}, "test-updater", &recordingUpdater{err: errors.New("update failed")}, "", "", AllFamilies(), VerifyOff)
+			},
+		},
+		{
+			name: "family unavailable",
+			job: func() Job {
+				return NewJob("family", "test-provider", &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10"}}, "test-updater", &recordingUpdater{}, "", "", Families{IPv6: true}, VerifyOff)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			now := time.Unix(1_700_000_000, 0)
+			clock := &fakeClock{now: now}
+			a := NewApp([]Job{tt.job()}, "test-notifier", &recordingNotifier{}, time.Second)
+			a.clock = clock
+			a.jitter = func() float64 { return 1 }
+
+			a.runOnce(context.Background())
+
+			if a.jobs[0].failureCount != 1 {
+				t.Fatalf("expected one failure, got %d", a.jobs[0].failureCount)
+			}
+			if want := now.Add(time.Second); !a.jobs[0].retryAfter.Equal(want) {
+				t.Fatalf("expected retry at %s, got %s", want, a.jobs[0].retryAfter)
+			}
+		})
+	}
+}
+
+func TestRunOnceBackoffDoesNotBlockOtherJobs(t *testing.T) {
+	failingProvider := &staticProvider{err: errors.New("provider failed")}
+	healthyProvider := &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10"}}
+	jobs := []Job{
+		NewJob("failing", "test-provider", failingProvider, "test-updater", &recordingUpdater{}, "", "", AllFamilies(), VerifyOff),
+		NewJob("healthy", "test-provider", healthyProvider, "test-updater", &recordingUpdater{}, "", "", AllFamilies(), VerifyOff),
+	}
+	a := NewApp(jobs, "test-notifier", &recordingNotifier{}, time.Second)
+	clock := &fakeClock{now: time.Unix(1_700_000_000, 0)}
+	a.clock = clock
+	a.jitter = func() float64 { return 1 }
+
+	a.runOnce(context.Background())
+	clock.Advance(500 * time.Millisecond)
+	a.runOnce(context.Background())
+
+	if failingProvider.calls != 1 {
+		t.Fatalf("expected backed-off provider to be called once, got %d", failingProvider.calls)
+	}
+	if healthyProvider.calls != 2 {
+		t.Fatalf("expected healthy provider to run during another job's backoff, got %d calls", healthyProvider.calls)
+	}
+}
+
+func TestRunOnceSuccessAndUnchangedResetBackoff(t *testing.T) {
+	tests := []struct {
+		name     string
+		lastIPv4 string
+	}{
+		{name: "success"},
+		{name: "unchanged", lastIPv4: "192.0.2.10"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			clock := &fakeClock{now: time.Unix(1_700_000_000, 0)}
+			job := NewJob(tt.name, "test-provider", &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10"}}, "test-updater", &recordingUpdater{}, "", "", AllFamilies(), VerifyOff)
+			job.lastIPv4 = tt.lastIPv4
+			job.failureCount = 3
+			job.retryAfter = clock.Now()
+			a := NewApp([]Job{job}, "test-notifier", &recordingNotifier{}, time.Second)
+			a.clock = clock
+			a.jitter = func() float64 { return 1 }
+
+			a.runOnce(context.Background())
+
+			if a.jobs[0].failureCount != 0 || !a.jobs[0].retryAfter.IsZero() {
+				t.Fatalf("expected backoff reset, got failures=%d retry_after=%s", a.jobs[0].failureCount, a.jobs[0].retryAfter)
+			}
+		})
 	}
 }
 
