@@ -2,9 +2,11 @@ package cloudflare
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
@@ -123,6 +125,76 @@ func TestNewValidatesProxyURLWithoutExposingCredentials(t *testing.T) {
 		Proxy:    "https://user:proxy-secret@proxy.example:8443/",
 	}); err != nil {
 		t.Fatalf("expected valid authenticated proxy URL: %v", err)
+	}
+}
+
+func TestDuplicateDNSRecordsAreReconciledAndMixedValuesTriggerRepair(t *testing.T) {
+	updated := make(map[string]string)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch request.Method {
+		case http.MethodGet:
+			if request.URL.Path != "/zones/zone-id/dns_records" {
+				t.Errorf("unexpected list path: %s", request.URL.Path)
+			}
+			_, _ = io.WriteString(w, `{
+				"success": true,
+				"errors": [],
+				"messages": [],
+				"result": [
+					{"id":"current","type":"A","name":"home.example.com","content":"192.0.2.10","ttl":120,"proxied":false},
+					{"id":"stale-one","type":"A","name":"home.example.com","content":"192.0.2.11","ttl":300,"proxied":false},
+					{"id":"stale-two","type":"A","name":"home.example.com","content":"192.0.2.12","ttl":1,"proxied":true}
+				],
+				"result_info":{"page":1,"per_page":100,"count":3,"total_count":3,"total_pages":1}
+			}`)
+		case http.MethodPatch:
+			recordID := strings.TrimPrefix(request.URL.Path, "/zones/zone-id/dns_records/")
+			var body struct {
+				Content string `json:"content"`
+			}
+			if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
+				t.Errorf("decode update request: %v", err)
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			updated[recordID] = body.Content
+			_, _ = io.WriteString(w, `{"success":true,"errors":[],"messages":[],"result":{"id":"`+recordID+`"}}`)
+		default:
+			t.Errorf("unexpected request: %s %s", request.Method, request.URL.Path)
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	}))
+	defer server.Close()
+
+	api, err := cloudflareapi.NewWithAPIToken("token", cloudflareapi.HTTPClient(server.Client()))
+	if err != nil {
+		t.Fatalf("create Cloudflare API client: %v", err)
+	}
+	api.BaseURL = server.URL
+	cloudflare := &Cloudflare{
+		config: &Config{Domain: "home.example.com"},
+		client: api,
+		zoneID: "zone-id",
+	}
+
+	const desired = "192.0.2.10"
+	if err := cloudflare.updateDNSRecord(context.Background(), recordTypeA, desired); err != nil {
+		t.Fatalf("update duplicate records: %v", err)
+	}
+	if len(updated) != 2 || updated["stale-one"] != desired || updated["stale-two"] != desired {
+		t.Fatalf("updated records = %#v, want both stale records", updated)
+	}
+	if _, ok := updated["current"]; ok {
+		t.Fatal("already-current record was updated")
+	}
+
+	current, err := cloudflare.currentDNSRecord(context.Background(), recordTypeA)
+	if err != nil {
+		t.Fatalf("read duplicate records: %v", err)
+	}
+	if current != "" {
+		t.Fatalf("mixed duplicate values returned %q; want empty value to trigger repair", current)
 	}
 }
 

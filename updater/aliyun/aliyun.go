@@ -18,6 +18,7 @@ const (
 	defaultRegionID = "cn-hangzhou"
 	connectTimeout  = 5 * time.Second
 	readTimeout     = 10 * time.Second
+	recordPageSize  = 100
 	recordTypeA     = "A"
 	recordTypeAAAA  = "AAAA"
 )
@@ -154,36 +155,34 @@ func (a *Aliyun) updateDNSRecord(ctx context.Context, recordType, ip string) err
 		return fmt.Errorf("invalid Aliyun DNS record: %w", err)
 	}
 
-	request := (&alidns.DescribeSubDomainRecordsRequest{}).
-		SetSubDomain(domain).
-		SetType(recordType)
-	response, err := a.client.DescribeSubDomainRecordsWithContext(ctx, request, a.runtime)
+	records, err := a.listDNSRecords(ctx, recordType)
 	if err != nil {
 		return fmt.Errorf("failed to get DNS records: %w", err)
 	}
 
-	records := responseRecords(response)
-	if responseTotalCount(response) > 0 && len(records) > 0 && records[0] != nil {
-		existingRecord := records[0]
-		existingValue := dara.StringValue(existingRecord.Value)
-		recordID := dara.StringValue(existingRecord.RecordId)
-
-		if existingValue == ip {
-			slog.Debug("skipping current DNS record", "updater", "aliyun", "record", domain, "record_type", recordType, "ip", ip)
-			return nil
+	if len(records) > 0 {
+		updated := false
+		for _, existingRecord := range records {
+			existingValue := dara.StringValue(existingRecord.Value)
+			if existingValue == ip {
+				continue
+			}
+			recordID := dara.StringValue(existingRecord.RecordId)
+			updateRequest := (&alidns.UpdateDomainRecordRequest{}).
+				SetRecordId(recordID).
+				SetRR(rr).
+				SetType(recordType).
+				SetValue(ip)
+			_, err := a.client.UpdateDomainRecordWithContext(ctx, updateRequest, a.runtime)
+			if err != nil {
+				return fmt.Errorf("failed to update DNS record %s: %w", recordID, err)
+			}
+			updated = true
+			slog.Info("updated DNS record", "updater", "aliyun", "record", domain, "record_type", recordType, "ip", ip, "record_id", recordID)
 		}
-
-		updateRequest := (&alidns.UpdateDomainRecordRequest{}).
-			SetRecordId(recordID).
-			SetRR(rr).
-			SetType(recordType).
-			SetValue(ip)
-		_, err := a.client.UpdateDomainRecordWithContext(ctx, updateRequest, a.runtime)
-		if err != nil {
-			return fmt.Errorf("failed to update DNS record: %w", err)
+		if !updated {
+			slog.Debug("skipping current DNS records", "updater", "aliyun", "record", domain, "record_type", recordType, "ip", ip)
 		}
-
-		slog.Info("updated DNS record", "updater", "aliyun", "record", domain, "record_type", recordType, "ip", ip, "record_id", recordID)
 	} else {
 		addRequest := (&alidns.AddDomainRecordRequest{}).
 			SetDomainName(domainName).
@@ -206,19 +205,51 @@ func (a *Aliyun) updateDNSRecord(ctx context.Context, recordType, ip string) err
 }
 
 func (a *Aliyun) currentDNSRecord(ctx context.Context, recordType string) (string, error) {
-	request := (&alidns.DescribeSubDomainRecordsRequest{}).
-		SetSubDomain(a.config.Domain).
-		SetType(recordType)
-	response, err := a.client.DescribeSubDomainRecordsWithContext(ctx, request, a.runtime)
+	records, err := a.listDNSRecords(ctx, recordType)
 	if err != nil {
 		return "", fmt.Errorf("failed to get DNS records: %w", err)
 	}
-	records := responseRecords(response)
-	if responseTotalCount(response) == 0 || len(records) == 0 || records[0] == nil {
+	if len(records) == 0 {
 		return "", nil
 	}
 
-	return dara.StringValue(records[0].Value), nil
+	value := dara.StringValue(records[0].Value)
+	for _, record := range records[1:] {
+		if dara.StringValue(record.Value) != value {
+			return "", nil
+		}
+	}
+	return value, nil
+}
+
+func (a *Aliyun) listDNSRecords(ctx context.Context, recordType string) ([]*alidns.DescribeSubDomainRecordsResponseBodyDomainRecordsRecord, error) {
+	var records []*alidns.DescribeSubDomainRecordsResponseBodyDomainRecordsRecord
+	var fetched int64
+
+	for page := int64(1); ; page++ {
+		request := (&alidns.DescribeSubDomainRecordsRequest{}).
+			SetSubDomain(a.config.Domain).
+			SetType(recordType).
+			SetPageNumber(page).
+			SetPageSize(recordPageSize)
+		response, err := a.client.DescribeSubDomainRecordsWithContext(ctx, request, a.runtime)
+		if err != nil {
+			return nil, err
+		}
+
+		pageRecords := responseRecords(response)
+		fetched += int64(len(pageRecords))
+		for _, record := range pageRecords {
+			if record != nil {
+				records = append(records, record)
+			}
+		}
+
+		total := responseTotalCount(response)
+		if len(pageRecords) == 0 || int64(len(pageRecords)) < recordPageSize || (total > 0 && total <= fetched) {
+			return records, nil
+		}
+	}
 }
 
 func responseRecords(response *alidns.DescribeSubDomainRecordsResponse) []*alidns.DescribeSubDomainRecordsResponseBodyDomainRecordsRecord {

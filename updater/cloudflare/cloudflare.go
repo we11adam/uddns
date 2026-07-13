@@ -231,27 +231,31 @@ func (c *Cloudflare) updateDNSRecord(ctx context.Context, recordType, ip string)
 	}
 
 	if len(dnsRecords) > 0 {
-		record := dnsRecords[0]
+		updated := false
+		for _, record := range dnsRecords {
+			if record.Content == ip {
+				continue
+			}
 
-		if record.Content == ip {
-			slog.Debug("skipping current DNS record", "updater", "cloudflare", "record", domain, "record_type", recordType, "ip", ip)
-			return nil
-		}
+			updateParams := cloudflare.UpdateDNSRecordParams{
+				ID:      record.ID,
+				Type:    recordType,
+				Name:    domain,
+				Content: ip,
+				TTL:     record.TTL,
+				Proxied: record.Proxied,
+			}
 
-		updateParams := cloudflare.UpdateDNSRecordParams{
-			ID:      record.ID,
-			Type:    recordType,
-			Name:    domain,
-			Content: ip,
-			TTL:     record.TTL,
-			Proxied: record.Proxied,
+			_, err := c.client.UpdateDNSRecord(ctx, cloudflare.ZoneIdentifier(c.zoneID), updateParams)
+			if err != nil {
+				return fmt.Errorf("failed to update Cloudflare DNS record %s: %w", record.ID, err)
+			}
+			updated = true
+			slog.Info("updated DNS record", "updater", "cloudflare", "record", domain, "record_type", recordType, "ip", ip, "record_id", record.ID)
 		}
-
-		_, err := c.client.UpdateDNSRecord(ctx, cloudflare.ZoneIdentifier(c.zoneID), updateParams)
-		if err != nil {
-			return fmt.Errorf("failed to update Cloudflare DNS record: %w", err)
+		if !updated {
+			slog.Debug("skipping current DNS records", "updater", "cloudflare", "record", domain, "record_type", recordType, "ip", ip)
 		}
-		slog.Info("updated DNS record", "updater", "cloudflare", "record", domain, "record_type", recordType, "ip", ip)
 	} else {
 		createParams := cloudflare.CreateDNSRecordParams{
 			Type:    recordType,
@@ -283,7 +287,13 @@ func (c *Cloudflare) currentDNSRecord(ctx context.Context, recordType string) (s
 		return "", nil
 	}
 
-	return dnsRecords[0].Content, nil
+	value := dnsRecords[0].Content
+	for _, record := range dnsRecords[1:] {
+		if record.Content != value {
+			return "", nil
+		}
+	}
+	return value, nil
 }
 
 func proxyLogValue(proxy *url.URL) string {
