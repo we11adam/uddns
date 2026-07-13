@@ -39,6 +39,53 @@ func TestRegistryGetUsesRegistrationOrder(t *testing.T) {
 	}
 }
 
+func TestRegistryRegisterRejectsAliasCollisions(t *testing.T) {
+	tests := []struct {
+		name              string
+		existingName      string
+		existingConfigKey string
+		newName           string
+		newConfigKey      string
+	}{
+		{
+			name:              "new config basename matches existing name",
+			existingName:      "Legacy",
+			existingConfigKey: "things.first",
+			newName:           "Second",
+			newConfigKey:      "things.legacy",
+		},
+		{
+			name:              "new config basename matches existing config basename",
+			existingName:      "FirstThing",
+			existingConfigKey: "things.first",
+			newName:           "SecondThing",
+			newConfigKey:      "other.first",
+		},
+		{
+			name:              "new config basename matches normalized existing config key",
+			existingName:      "First",
+			existingConfigKey: "things.first",
+			newName:           "Second",
+			newConfigKey:      "other.things-first",
+		},
+	}
+
+	constructor := func(ConfigReader) (string, error) { return "value", nil }
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := New[string]("thing", "things.use")
+			r.Register(tt.existingName, tt.existingConfigKey, constructor)
+
+			defer func() {
+				if recovered := recover(); recovered == nil {
+					t.Fatal("expected alias collision to panic")
+				}
+			}()
+			r.Register(tt.newName, tt.newConfigKey, constructor)
+		})
+	}
+}
+
 func TestRegistryGetStopsOnConfigurationError(t *testing.T) {
 	r := New[string]("thing", "things.use")
 	configErr := errors.New("bad config")

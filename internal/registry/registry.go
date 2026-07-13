@@ -46,17 +46,18 @@ func (r *Registry[T]) Register(name, configKey string, constructor Constructor[T
 		panic("registry entry constructor cannot be nil")
 	}
 
-	for _, entry := range r.entries {
-		if matches(entry, name) || matches(entry, configKey) {
+	entry := Entry[T]{
+		Name:      name,
+		ConfigKey: configKey,
+		New:       constructor,
+	}
+	for _, existing := range r.entries {
+		if aliasesOverlap(existing, entry) {
 			panic(fmt.Sprintf("%s registry entry already registered: %s", r.kind, name))
 		}
 	}
 
-	r.entries = append(r.entries, Entry[T]{
-		Name:      name,
-		ConfigKey: configKey,
-		New:       constructor,
-	})
+	r.entries = append(r.entries, entry)
 }
 
 func (r *Registry[T]) Get(config ConfigReader) (string, T, error) {
@@ -143,9 +144,25 @@ func (r *Registry[T]) names() []string {
 
 func matches[T any](entry Entry[T], selector string) bool {
 	normalized := normalize(selector)
-	return normalized == normalize(entry.Name) ||
-		normalized == normalize(entry.ConfigKey) ||
-		normalized == normalize(configName(entry.ConfigKey))
+	for _, alias := range aliases(entry) {
+		if normalized == normalize(alias) {
+			return true
+		}
+	}
+	return false
+}
+
+func aliasesOverlap[T any](left, right Entry[T]) bool {
+	for _, alias := range aliases(right) {
+		if matches(left, alias) {
+			return true
+		}
+	}
+	return false
+}
+
+func aliases[T any](entry Entry[T]) []string {
+	return []string{entry.Name, entry.ConfigKey, configName(entry.ConfigKey)}
 }
 
 func configName(configKey string) string {
