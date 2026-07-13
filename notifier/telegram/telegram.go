@@ -1,6 +1,7 @@
 package telegram
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"github.com/go-resty/resty/v2"
@@ -13,6 +14,12 @@ type Telegram struct {
 	ChatID string `mapstructure:"chat_id"`
 	Proxy  string `mapstructure:"proxy"`
 	hc     *resty.Client
+}
+
+type apiResponse struct {
+	OK          bool   `json:"ok"`
+	ErrorCode   int    `json:"error_code"`
+	Description string `json:"description"`
 }
 
 func init() {
@@ -43,9 +50,33 @@ func init() {
 }
 
 func (t *Telegram) Notify(notification notifier.Notification) error {
-	_, err := t.hc.R().SetBody(map[string]any{
+	resp, err := t.hc.R().SetBody(map[string]any{
 		"chat_id": t.ChatID,
 		"text":    notification.Message,
 	}).Post("")
-	return redact.Error(err, t.Token)
+	if err != nil {
+		return redact.Error(err, t.Token)
+	}
+
+	apiResp := apiResponse{}
+	decodeErr := json.Unmarshal(resp.Body(), &apiResp)
+	if !resp.IsSuccess() {
+		return t.apiError(resp.StatusCode(), apiResp)
+	}
+	if decodeErr != nil {
+		return redact.Error(fmt.Errorf("failed to decode Telegram API response: %w", decodeErr), t.Token)
+	}
+	if !apiResp.OK {
+		return t.apiError(resp.StatusCode(), apiResp)
+	}
+
+	return nil
+}
+
+func (t *Telegram) apiError(statusCode int, response apiResponse) error {
+	description := redact.String(response.Description, t.Token)
+	if description == "" {
+		return fmt.Errorf("Telegram API request failed: HTTP status %d, error code %d", statusCode, response.ErrorCode)
+	}
+	return fmt.Errorf("Telegram API request failed: HTTP status %d, error code %d, description %q", statusCode, response.ErrorCode, description)
 }
