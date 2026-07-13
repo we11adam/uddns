@@ -4,13 +4,14 @@ project_name: uddns
 
 before:
   hooks:
-    - go mod tidy
+    - go mod tidy -diff
+    - go mod verify
 
 builds:
   -
     id: default
     binary: uddns
-    flags: [-trimpath]
+    flags: [-trimpath, -mod=readonly]
     ldflags:
       - -s -w -X main.version={{ .Version }}
     env:
