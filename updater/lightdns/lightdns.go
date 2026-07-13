@@ -2,8 +2,12 @@ package lightdns
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+	"net"
+	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/go-resty/resty/v2"
@@ -23,7 +27,13 @@ type LightDNS struct {
 	config     *Config
 }
 
-const responseBodyLimit = 64 << 10
+const (
+	requestTimeout    = 10 * time.Second
+	responseBodyLimit = 64 << 10
+	maxUpdateRetries  = 3
+	retryWaitTime     = 100 * time.Millisecond
+	retryMaxWaitTime  = 2 * time.Second
+)
 
 func init() {
 	updater.Register("LightDNS", "updaters.lightdns", func(v updater.ConfigReader) (updater.Updater, error) {
@@ -54,8 +64,12 @@ func New(cfg *Config) (*LightDNS, error) {
 	normalizedConfig := *cfg
 	normalizedConfig.Domain = domain
 
-	httpclient := resty.New().SetTimeout(10 * time.Second).
+	httpclient := resty.New().SetTimeout(requestTimeout).
 		SetResponseBodyLimit(responseBodyLimit).
+		SetRetryCount(maxUpdateRetries).
+		SetRetryWaitTime(retryWaitTime).
+		SetRetryMaxWaitTime(retryMaxWaitTime).
+		AddRetryCondition(shouldRetryUpdate).
 		SetBaseURL("https://api.lightdns.io")
 	return &LightDNS{
 		httpclient: httpclient,
@@ -82,8 +96,11 @@ func (c *LightDNS) Update(ctx context.Context, ips *provider.IpResult) error {
 }
 
 func (c *LightDNS) updateIP(ctx context.Context, ip string) error {
+	requestCtx, cancel := context.WithTimeout(ctx, requestTimeout)
+	defer cancel()
+
 	resp, err := c.httpclient.R().
-		SetContext(ctx).
+		SetContext(requestCtx).
 		SetQueryParams(map[string]string{
 			"domain": c.config.Domain,
 			"key":    c.config.Key,
@@ -103,4 +120,20 @@ func (c *LightDNS) updateIP(ctx context.Context, ip string) error {
 	slog.Info("updated DNS record", "updater", "lightdns", "record", c.config.Domain, "ip", ip)
 
 	return nil
+}
+
+func shouldRetryUpdate(response *resty.Response, err error) bool {
+	if err != nil {
+		var urlErr *url.Error
+		if errors.As(err, &urlErr) {
+			return true
+		}
+		var netErr net.Error
+		return errors.As(err, &netErr)
+	}
+	if response == nil {
+		return false
+	}
+	status := response.StatusCode()
+	return status == http.StatusTooManyRequests || status >= http.StatusInternalServerError
 }
