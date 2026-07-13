@@ -2,18 +2,17 @@ package ip_service
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
 	"net/netip"
-	"net/url"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/go-resty/resty/v2"
+	"github.com/we11adam/uddns/internal/restyretry"
 	"github.com/we11adam/uddns/provider"
 )
 
@@ -28,9 +27,6 @@ const (
 	maxServiceRedirects = 3
 	responseBodyLimit   = 4 << 10
 	requestTimeout      = 5 * time.Second
-	maxServiceRetries   = 3
-	retryWaitTime       = 100 * time.Millisecond
-	retryMaxWaitTime    = 2 * time.Second
 )
 
 var (
@@ -114,10 +110,7 @@ func createClient(network string) *resty.Client {
 	httpClient.SetTransport(transport)
 	httpClient.SetTimeout(requestTimeout)
 	httpClient.SetResponseBodyLimit(responseBodyLimit)
-	httpClient.SetRetryCount(maxServiceRetries)
-	httpClient.SetRetryWaitTime(retryWaitTime)
-	httpClient.SetRetryMaxWaitTime(retryMaxWaitTime)
-	httpClient.AddRetryCondition(shouldRetryServiceRequest)
+	restyretry.ConfigureTransient(httpClient)
 	httpClient.SetRedirectPolicy(sameOriginHTTPSRedirectPolicy(maxServiceRedirects))
 	httpClient.RemoveProxy().SetHeaders(map[string]string{"User-Agent": "curl/8.6.0"})
 	return httpClient
@@ -206,22 +199,6 @@ func (i *IpService) getIP(ctx context.Context, client *resty.Client, family stri
 		return ip, nil
 	}
 	return "", fmt.Errorf("failed to get IP address from all services")
-}
-
-func shouldRetryServiceRequest(response *resty.Response, err error) bool {
-	if err != nil {
-		var urlErr *url.Error
-		if errors.As(err, &urlErr) {
-			return true
-		}
-		var netErr net.Error
-		return errors.As(err, &netErr)
-	}
-	if response == nil {
-		return false
-	}
-	status := response.StatusCode()
-	return status == http.StatusTooManyRequests || status >= http.StatusInternalServerError
 }
 
 func isValidIPFamily(ip, family string) bool {

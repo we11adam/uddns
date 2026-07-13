@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-resty/resty/v2"
+	"github.com/we11adam/uddns/internal/restyretry"
 )
 
 type roundTripFunc func(*http.Request) (*http.Response, error)
@@ -81,33 +81,6 @@ func TestUpdateIPRetriesTransientFailures(t *testing.T) {
 	}
 	if got := attempts.Load(); got != 3 {
 		t.Fatalf("attempts = %d, want 3", got)
-	}
-}
-
-func TestShouldRetryUpdate(t *testing.T) {
-	response := func(status int) *resty.Response {
-		return &resty.Response{RawResponse: &http.Response{StatusCode: status}}
-	}
-	tests := []struct {
-		name     string
-		response *resty.Response
-		err      error
-		want     bool
-	}{
-		{name: "network error", err: &url.Error{Op: "Get", URL: "https://example.com", Err: errors.New("connection reset")}, want: true},
-		{name: "generic error", err: errors.New("request configuration failed")},
-		{name: "rate limit", response: response(http.StatusTooManyRequests), want: true},
-		{name: "server error", response: response(http.StatusServiceUnavailable), want: true},
-		{name: "request timeout response", response: response(http.StatusRequestTimeout)},
-		{name: "bad request", response: response(http.StatusBadRequest)},
-		{name: "success", response: response(http.StatusOK)},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := shouldRetryUpdate(tt.response, tt.err); got != tt.want {
-				t.Fatalf("shouldRetryUpdate() = %v, want %v", got, tt.want)
-			}
-		})
 	}
 }
 
@@ -207,8 +180,11 @@ func TestNewNormalizesAndValidatesDomain(t *testing.T) {
 	if duckDNS.httpclient.ResponseBodyLimit != responseBodyLimit {
 		t.Fatalf("response body limit = %d, want %d", duckDNS.httpclient.ResponseBodyLimit, responseBodyLimit)
 	}
-	if duckDNS.httpclient.RetryCount != maxUpdateRetries {
-		t.Fatalf("retry count = %d, want %d", duckDNS.httpclient.RetryCount, maxUpdateRetries)
+	if duckDNS.httpclient.GetClient().Timeout != requestTimeout {
+		t.Fatalf("request timeout = %s, want %s", duckDNS.httpclient.GetClient().Timeout, requestTimeout)
+	}
+	if duckDNS.httpclient.RetryCount != restyretry.MaxRetries {
+		t.Fatalf("retry count = %d, want %d", duckDNS.httpclient.RetryCount, restyretry.MaxRetries)
 	}
 
 	for _, domain := range []string{

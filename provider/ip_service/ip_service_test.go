@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-resty/resty/v2"
+	"github.com/we11adam/uddns/internal/restyretry"
 	"github.com/we11adam/uddns/provider"
 )
 
@@ -110,8 +110,8 @@ func TestServiceClientLimitsResponseBodies(t *testing.T) {
 
 func TestServiceClientRetryPolicy(t *testing.T) {
 	client := createClient("tcp4")
-	if client.RetryCount != maxServiceRetries {
-		t.Fatalf("retry count = %d, want %d", client.RetryCount, maxServiceRetries)
+	if client.RetryCount != restyretry.MaxRetries {
+		t.Fatalf("retry count = %d, want %d", client.RetryCount, restyretry.MaxRetries)
 	}
 	if client.GetClient().Timeout != requestTimeout {
 		t.Fatalf("request timeout = %s, want %s", client.GetClient().Timeout, requestTimeout)
@@ -206,33 +206,6 @@ func TestGetIPsStopsRetriesWhenContextIsCanceled(t *testing.T) {
 	}
 	if got := attempts.Load(); got != 1 {
 		t.Fatalf("attempts = %d, want 1", got)
-	}
-}
-
-func TestShouldRetryServiceRequest(t *testing.T) {
-	response := func(status int) *resty.Response {
-		return &resty.Response{RawResponse: &http.Response{StatusCode: status}}
-	}
-	tests := []struct {
-		name     string
-		response *resty.Response
-		err      error
-		want     bool
-	}{
-		{name: "network error", err: &url.Error{Op: "Get", URL: "https://example.com", Err: errors.New("connection reset")}, want: true},
-		{name: "generic error", err: errors.New("request configuration failed")},
-		{name: "rate limit", response: response(http.StatusTooManyRequests), want: true},
-		{name: "server error", response: response(http.StatusServiceUnavailable), want: true},
-		{name: "request timeout response", response: response(http.StatusRequestTimeout)},
-		{name: "bad request", response: response(http.StatusBadRequest)},
-		{name: "success", response: response(http.StatusOK)},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := shouldRetryServiceRequest(tt.response, tt.err); got != tt.want {
-				t.Fatalf("shouldRetryServiceRequest() = %v, want %v", got, tt.want)
-			}
-		})
 	}
 }
 

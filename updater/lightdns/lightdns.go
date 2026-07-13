@@ -2,17 +2,14 @@ package lightdns
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
-	"net"
-	"net/http"
-	"net/url"
 	"time"
 
 	"github.com/go-resty/resty/v2"
 	"github.com/we11adam/uddns/internal/dnsname"
 	"github.com/we11adam/uddns/internal/redact"
+	"github.com/we11adam/uddns/internal/restyretry"
 	"github.com/we11adam/uddns/provider"
 	"github.com/we11adam/uddns/updater"
 )
@@ -30,9 +27,6 @@ type LightDNS struct {
 const (
 	requestTimeout    = 10 * time.Second
 	responseBodyLimit = 64 << 10
-	maxUpdateRetries  = 3
-	retryWaitTime     = 100 * time.Millisecond
-	retryMaxWaitTime  = 2 * time.Second
 )
 
 func init() {
@@ -66,11 +60,8 @@ func New(cfg *Config) (*LightDNS, error) {
 
 	httpclient := resty.New().SetTimeout(requestTimeout).
 		SetResponseBodyLimit(responseBodyLimit).
-		SetRetryCount(maxUpdateRetries).
-		SetRetryWaitTime(retryWaitTime).
-		SetRetryMaxWaitTime(retryMaxWaitTime).
-		AddRetryCondition(shouldRetryUpdate).
 		SetBaseURL("https://api.lightdns.io")
+	restyretry.ConfigureTransient(httpclient)
 	return &LightDNS{
 		httpclient: httpclient,
 		config:     &normalizedConfig,
@@ -120,20 +111,4 @@ func (c *LightDNS) updateIP(ctx context.Context, ip string) error {
 	slog.Info("updated DNS record", "updater", "lightdns", "record", c.config.Domain, "ip", ip)
 
 	return nil
-}
-
-func shouldRetryUpdate(response *resty.Response, err error) bool {
-	if err != nil {
-		var urlErr *url.Error
-		if errors.As(err, &urlErr) {
-			return true
-		}
-		var netErr net.Error
-		return errors.As(err, &netErr)
-	}
-	if response == nil {
-		return false
-	}
-	status := response.StatusCode()
-	return status == http.StatusTooManyRequests || status >= http.StatusInternalServerError
 }
