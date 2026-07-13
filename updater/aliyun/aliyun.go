@@ -56,6 +56,9 @@ func init() {
 }
 
 func New(config *Config) (*Aliyun, error) {
+	if config == nil {
+		return nil, fmt.Errorf("Aliyun config is nil")
+	}
 	if config.AccessKeyID == "" {
 		return nil, fmt.Errorf("Aliyun access key ID is not set in the configuration")
 	}

@@ -37,6 +37,12 @@ func TestServicesUseHTTPS(t *testing.T) {
 	}
 }
 
+func TestNewRejectsNilServiceNames(t *testing.T) {
+	if _, err := New(nil); err == nil {
+		t.Fatal("expected nil service names to be rejected")
+	}
+}
+
 func TestServiceRedirectPolicy(t *testing.T) {
 	parseURL := func(rawURL string) *url.URL {
 		t.Helper()

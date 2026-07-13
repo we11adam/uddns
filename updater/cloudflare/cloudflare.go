@@ -58,6 +58,9 @@ func init() {
 }
 
 func New(config *Config) (*Cloudflare, error) {
+	if config == nil {
+		return nil, fmt.Errorf("Cloudflare config is nil")
+	}
 	if config.Domain == "" {
 		return nil, fmt.Errorf("Cloudflare domain is not set in the configuration")
 	}

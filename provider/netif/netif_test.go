@@ -9,6 +9,12 @@ import (
 
 var allFamilies = provider.FamilyRequest{IPv4: true, IPv6: true}
 
+func TestNewRejectsNilConfig(t *testing.T) {
+	if _, err := New(nil); err == nil {
+		t.Fatal("expected nil config to be rejected")
+	}
+}
+
 func TestSelectPublishableIPs(t *testing.T) {
 	addrs := []net.Addr{
 		ipNet("127.0.0.1/8"),

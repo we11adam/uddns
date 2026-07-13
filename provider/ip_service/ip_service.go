@@ -89,6 +89,9 @@ func init() {
 }
 
 func New(names *ServiceNames) (*IpService, error) {
+	if names == nil {
+		return nil, fmt.Errorf("IP service names are nil")
+	}
 	client4 := createClient("tcp4")
 	client6 := createClient("tcp6")
 

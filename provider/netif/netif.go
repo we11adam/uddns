@@ -36,6 +36,9 @@ func init() {
 }
 
 func New(cfg *Config) (*Netif, error) {
+	if cfg == nil {
+		return nil, fmt.Errorf("network interface config is nil")
+	}
 	iface, err := net.InterfaceByName(cfg.Name)
 	if err != nil {
 		return nil, err

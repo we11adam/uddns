@@ -45,6 +45,12 @@ func TestHTTPClientHasRequestTimeout(t *testing.T) {
 	}
 }
 
+func TestNewRejectsNilConfig(t *testing.T) {
+	if _, err := New(nil); err == nil {
+		t.Fatal("expected nil config to be rejected")
+	}
+}
+
 func TestHTTPClientSupportsCustomDefaultTransport(t *testing.T) {
 	original := http.DefaultTransport
 	t.Cleanup(func() { http.DefaultTransport = original })
