@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"time"
 
 	"github.com/cloudflare/cloudflare-go"
 	"github.com/we11adam/uddns/internal/dnsname"
@@ -17,6 +18,7 @@ const (
 	defaultTTL     = 60
 	recordTypeA    = "A"
 	recordTypeAAAA = "AAAA"
+	requestTimeout = 15 * time.Second
 )
 
 type Config struct {
@@ -69,10 +71,8 @@ func New(config *Config) (*Cloudflare, error) {
 		return nil, fmt.Errorf("invalid Cloudflare DNS record: %w", err)
 	}
 
-	var (
-		api        *cloudflare.API
-		httpClient *http.Client
-	)
+	var api *cloudflare.API
+	httpClient := newHTTPClient(nil)
 
 	if config.Proxy != "" {
 		proxy, err := url.Parse(config.Proxy)
@@ -80,11 +80,7 @@ func New(config *Config) (*Cloudflare, error) {
 			return nil, fmt.Errorf("failed to parse Cloudflare proxy URL: %w", err)
 		}
 		slog.Info("using proxy", "updater", "cloudflare", "proxy", proxyLogValue(proxy))
-		httpClient = &http.Client{
-			Transport: &http.Transport{
-				Proxy: http.ProxyURL(proxy),
-			},
-		}
+		httpClient = newHTTPClient(proxy)
 	}
 
 	if config.APIToken != "" {
@@ -105,6 +101,14 @@ func New(config *Config) (*Cloudflare, error) {
 		config: config,
 		client: api,
 	}, nil
+}
+
+func newHTTPClient(proxy *url.URL) *http.Client {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	if proxy != nil {
+		transport.Proxy = http.ProxyURL(proxy)
+	}
+	return &http.Client{Transport: transport, Timeout: requestTimeout}
 }
 
 func (c *Cloudflare) Update(ips *provider.IpResult) error {
