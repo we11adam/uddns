@@ -1,11 +1,26 @@
 package ip_service
 
 import (
+	"net/url"
 	"strings"
 	"testing"
 
 	"github.com/we11adam/uddns/provider"
 )
+
+func TestServicesUseHTTPS(t *testing.T) {
+	for name, serviceURL := range SERVICES {
+		t.Run(name, func(t *testing.T) {
+			parsed, err := url.Parse(serviceURL)
+			if err != nil {
+				t.Fatalf("parse service URL %q: %v", serviceURL, err)
+			}
+			if parsed.Scheme != "https" {
+				t.Fatalf("service URL %q must use HTTPS", serviceURL)
+			}
+		})
+	}
+}
 
 type testConfig struct {
 	services ServiceNames

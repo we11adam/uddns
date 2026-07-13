@@ -16,9 +16,9 @@ import (
 
 var SERVICES = map[string]string{
 	"ip.fm":       "https://ip.fm/myip",
-	"ip.sb":       "http://ip.sb",
-	"ifconfig.me": "http://ifconfig.me",
-	"3322.org":    "http://members.3322.org/dyndns/getip",
+	"ip.sb":       "https://ip.sb",
+	"ifconfig.me": "https://ifconfig.me",
+	"3322.org":    "https://members.3322.org/dyndns/getip",
 }
 
 type ServiceNames []string
