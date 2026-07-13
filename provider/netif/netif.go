@@ -3,6 +3,7 @@ package netif
 import (
 	"fmt"
 	"net"
+	"net/netip"
 
 	"github.com/we11adam/uddns/provider"
 )
@@ -49,21 +50,73 @@ func (n *Netif) GetIPs() (*provider.IpResult, error) {
 		return nil, err
 	}
 
-	result := &provider.IpResult{}
-
-	for _, addr := range addrs {
-		if ipnet, ok := addr.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
-			if ipv4 := ipnet.IP.To4(); ipv4 != nil {
-				result.IPv4 = ipv4.String()
-			} else if ipnet.IP.To16() != nil {
-				result.IPv6 = ipnet.IP.String()
-			}
-		}
-	}
+	result := selectPublishableIPs(addrs)
 
 	if result.IPv4 == "" && result.IPv6 == "" {
 		return nil, fmt.Errorf("no IP address found on network interface %s", n.iface.Name)
 	}
 
 	return result, nil
+}
+
+func selectPublishableIPs(addrs []net.Addr) *provider.IpResult {
+	var selected4, selected6 netip.Addr
+
+	for _, addr := range addrs {
+		candidate, ok := addressIP(addr)
+		if !ok || !candidate.IsGlobalUnicast() {
+			continue
+		}
+
+		// Interface.Addrs does not expose temporary-address flags. Prefer public
+		// addresses, then choose numerically within the same scope so selection is
+		// stable across enumeration order changes. Private addresses remain valid
+		// fallbacks for internal DNS use.
+		if candidate.Is4() {
+			if preferAddress(candidate, selected4) {
+				selected4 = candidate
+			}
+		} else if preferAddress(candidate, selected6) {
+			selected6 = candidate
+		}
+	}
+
+	result := &provider.IpResult{}
+	if selected4.IsValid() {
+		result.IPv4 = selected4.String()
+	}
+	if selected6.IsValid() {
+		result.IPv6 = selected6.String()
+	}
+	return result
+}
+
+func preferAddress(candidate, current netip.Addr) bool {
+	if !current.IsValid() {
+		return true
+	}
+	if candidate.IsPrivate() != current.IsPrivate() {
+		return !candidate.IsPrivate()
+	}
+	return candidate.Less(current)
+}
+
+func addressIP(addr net.Addr) (netip.Addr, bool) {
+	var ip net.IP
+	switch addr := addr.(type) {
+	case *net.IPNet:
+		if addr != nil {
+			ip = addr.IP
+		}
+	case *net.IPAddr:
+		if addr != nil {
+			ip = addr.IP
+		}
+	}
+
+	parsed, ok := netip.AddrFromSlice(ip)
+	if !ok {
+		return netip.Addr{}, false
+	}
+	return parsed.Unmap(), true
 }
