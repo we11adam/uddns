@@ -20,6 +20,13 @@ func (f failingTransport) RoundTrip(_ *http.Request) (*http.Response, error) {
 	return nil, errors.New(f.message)
 }
 
+func TestHTTPClientTimeout(t *testing.T) {
+	client := newHTTPClient("token", "")
+	if got := client.GetClient().Timeout; got != requestTimeout {
+		t.Fatalf("expected Telegram request timeout %s, got %s", requestTimeout, got)
+	}
+}
+
 func TestNotifyRedactsTokenFromTransportError(t *testing.T) {
 	token := "telegram+/token =secret"
 	telegram := &Telegram{

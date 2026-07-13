@@ -3,11 +3,14 @@ package telegram
 import (
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/go-resty/resty/v2"
 	"github.com/we11adam/uddns/internal/redact"
 	"github.com/we11adam/uddns/notifier"
 )
+
+const requestTimeout = 10 * time.Second
 
 type Telegram struct {
 	Token  string `mapstructure:"token"`
@@ -38,15 +41,21 @@ func init() {
 			return nil, fmt.Errorf("missing required fields")
 		}
 
-		telegram.hc = resty.New()
-		telegram.hc.SetHeader("Content-Type", "application/json").
-			SetBaseURL("https://api.telegram.org/bot" + telegram.Token + "/sendMessage")
-		if telegram.Proxy != "" {
-			telegram.hc.SetProxy(telegram.Proxy)
-		}
+		telegram.hc = newHTTPClient(telegram.Token, telegram.Proxy)
 
 		return &telegram, nil
 	})
+}
+
+func newHTTPClient(token, proxy string) *resty.Client {
+	client := resty.New().
+		SetTimeout(requestTimeout).
+		SetHeader("Content-Type", "application/json").
+		SetBaseURL("https://api.telegram.org/bot" + token + "/sendMessage")
+	if proxy != "" {
+		client.SetProxy(proxy)
+	}
+	return client
 }
 
 func (t *Telegram) Notify(notification notifier.Notification) error {
