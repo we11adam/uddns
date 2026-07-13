@@ -220,6 +220,13 @@ func newCalendarRotatingWriterWithClock(dir, prefix string, retentionDays int, n
 	if err := os.MkdirAll(dir, logDirMode); err != nil {
 		return nil, err
 	}
+	info, err := os.Lstat(dir)
+	if err != nil {
+		return nil, err
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return nil, fmt.Errorf("refusing to use symbolic link as log directory: %s", dir)
+	}
 	if err := os.Chmod(dir, logDirMode); err != nil {
 		return nil, err
 	}

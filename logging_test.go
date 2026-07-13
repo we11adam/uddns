@@ -107,6 +107,21 @@ func TestCalendarRotatingWriterRestrictsExistingDirectory(t *testing.T) {
 	}
 }
 
+func TestCalendarRotatingWriterRejectsLogDirectorySymlink(t *testing.T) {
+	target := t.TempDir()
+	dir := filepath.Join(t.TempDir(), "logs")
+	if err := os.Symlink(target, dir); err != nil {
+		t.Skipf("create log directory symlink: %v", err)
+	}
+
+	_, err := newCalendarRotatingWriterWithClock(dir, logFilePrefix, 2, func() time.Time {
+		return time.Date(2026, 5, 21, 10, 0, 0, 0, time.Local)
+	})
+	if err == nil {
+		t.Fatal("expected log directory symlink to be rejected")
+	}
+}
+
 func TestCalendarRotatingWriterRejectsCurrentLogSymlink(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(t.TempDir(), "target.log")
