@@ -676,7 +676,8 @@ install_systemd_service() {
 	ensure_service_user
 	warn_config_write_permission "$CONFIG_FILE" "$needs_config_write"
 
-	cat >"$unit_file" <<EOF
+	{
+		cat <<EOF
 [Unit]
 Description=UDDNS dynamic DNS updater
 Documentation=https://github.com/${OWNER}/${REPO}
@@ -689,18 +690,18 @@ User=${SERVICE_USER}
 Group=${SERVICE_USER}
 EOF
 
-	printf 'LoadCredential=%s\n' "$(systemd_quote "${SERVICE_CREDENTIAL}:${CONFIG_FILE}")" >>"$unit_file"
-	printf 'Environment="UDDNS_CONFIG=%%d/%s"\n' "$SERVICE_CREDENTIAL" >>"$unit_file"
-	systemd_env_line UDDNS_INTERVAL "$SERVICE_INTERVAL" >>"$unit_file"
+		printf 'LoadCredential=%s\n' "$(systemd_quote "${SERVICE_CREDENTIAL}:${CONFIG_FILE}")"
+		printf 'Environment="UDDNS_CONFIG=%%d/%s"\n' "$SERVICE_CREDENTIAL"
+		systemd_env_line UDDNS_INTERVAL "$SERVICE_INTERVAL"
 
-	if [ -n "$LOG_DIR" ]; then
-		systemd_env_line UDDNS_LOG_DIR "$LOG_DIR" >>"$unit_file"
-	fi
-	if [ -n "$LOG_RETENTION_DAYS" ]; then
-		systemd_env_line UDDNS_LOG_RETENTION_DAYS "$LOG_RETENTION_DAYS" >>"$unit_file"
-	fi
+		if [ -n "$LOG_DIR" ]; then
+			systemd_env_line UDDNS_LOG_DIR "$LOG_DIR"
+		fi
+		if [ -n "$LOG_RETENTION_DAYS" ]; then
+			systemd_env_line UDDNS_LOG_RETENTION_DAYS "$LOG_RETENTION_DAYS"
+		fi
 
-	cat >>"$unit_file" <<EOF
+		cat <<EOF
 ExecStart=$(systemd_quote "$binary_path")
 Restart=on-failure
 RestartSec=10s
@@ -726,15 +727,16 @@ LogsDirectoryMode=0700
 UMask=0077
 EOF
 
-	if [ -n "$LOG_DIR" ]; then
-		printf 'ReadWritePaths=%s\n' "$(systemd_quote "$LOG_DIR")" >>"$unit_file"
-	fi
+		if [ -n "$LOG_DIR" ]; then
+			printf 'ReadWritePaths=%s\n' "$(systemd_quote "$LOG_DIR")"
+		fi
 
-	cat >>"$unit_file" <<EOF
+		cat <<EOF
 
 [Install]
 WantedBy=multi-user.target
 EOF
+	} >"$unit_file"
 
 	if [ "$update_service" -eq 1 ]; then
 		log "Updating systemd unit at ${unit_path}"
