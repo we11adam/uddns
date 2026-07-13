@@ -129,6 +129,47 @@ func TestRunOnceSkipsUnchangedIP(t *testing.T) {
 	}
 }
 
+func TestRunOncePreservesCachedFamilyWhenProviderReturnsPartialResult(t *testing.T) {
+	p := &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10", IPv6: "2001:db8::1"}}
+	u := &recordingUpdater{}
+	n := &recordingNotifier{}
+	a := newTestApp(p, u, n, AllFamilies())
+
+	a.runOnce(context.Background())
+	p.result = &provider.IpResult{IPv4: "192.0.2.11"}
+	a.runOnce(context.Background())
+
+	if u.calls != 2 {
+		t.Fatalf("expected dual-stack and IPv4-only updates, got %d calls", u.calls)
+	}
+	if a.jobs[0].lastAppliedIPv4 != "192.0.2.11" {
+		t.Fatalf("expected cached IPv4 to advance, got %q", a.jobs[0].lastAppliedIPv4)
+	}
+	if a.jobs[0].lastNotifiedIPv4 != "192.0.2.11" {
+		t.Fatalf("expected notified IPv4 cache to advance, got %q", a.jobs[0].lastNotifiedIPv4)
+	}
+	if a.jobs[0].lastAppliedIPv6 != "2001:db8::1" {
+		t.Fatalf("expected cached IPv6 to be preserved, got %q", a.jobs[0].lastAppliedIPv6)
+	}
+	if a.jobs[0].lastNotifiedIPv6 != "2001:db8::1" {
+		t.Fatalf("expected notified IPv6 cache to be preserved, got %q", a.jobs[0].lastNotifiedIPv6)
+	}
+	if u.last == nil || u.last.IPv4 != "192.0.2.11" || u.last.IPv6 != "" {
+		t.Fatalf("expected second update to contain only IPv4, got %#v", u.last)
+	}
+
+	notifications := len(n.notifications)
+	p.result = &provider.IpResult{IPv4: "192.0.2.11", IPv6: "2001:db8::1"}
+	a.runOnce(context.Background())
+
+	if u.calls != 2 {
+		t.Fatalf("expected restored identical IPv6 not to trigger an update, got %d calls", u.calls)
+	}
+	if len(n.notifications) != notifications {
+		t.Fatalf("expected restored identical IPv6 not to trigger a notification, got %d new notifications", len(n.notifications)-notifications)
+	}
+}
+
 func TestRunOnceDoesNotAdvanceLastIPWhenUpdateFails(t *testing.T) {
 	updateErr := errors.New("update failed")
 	p := &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10"}}

@@ -324,8 +324,12 @@ func (a *App) runJob(ctx context.Context, job *Job) {
 	}
 
 	updated = true
-	job.lastAppliedIPv4 = ipResult.IPv4
-	job.lastAppliedIPv6 = ipResult.IPv6
+	if ipResult.IPv4 != "" {
+		job.lastAppliedIPv4 = ipResult.IPv4
+	}
+	if ipResult.IPv6 != "" {
+		job.lastAppliedIPv6 = ipResult.IPv6
+	}
 	job.lastNotifiedUpdateFailure = ""
 
 	slog.Info(
