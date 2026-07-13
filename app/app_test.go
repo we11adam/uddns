@@ -114,6 +114,22 @@ func TestRunOnceUpdatesDNSWhenIPChanges(t *testing.T) {
 	}
 }
 
+func TestNewAppUsesNoopForNilNotifier(t *testing.T) {
+	p := &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10"}}
+	u := &recordingUpdater{}
+	job := NewJob("default", "test-provider", p, "test-updater", u, "", "", AllFamilies(), VerifyOff)
+	a := NewApp([]Job{job}, "", nil, 30*time.Second)
+
+	a.runOnce(context.Background())
+
+	if u.calls != 1 {
+		t.Fatalf("expected update with no-op notifier, got %d calls", u.calls)
+	}
+	if _, ok := a.notifier.(*notifier.Noop); !ok {
+		t.Fatalf("expected nil notifier to become Noop, got %T", a.notifier)
+	}
+}
+
 func TestRunOnceSkipsUnchangedIP(t *testing.T) {
 	p := &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10"}}
 	u := &recordingUpdater{}

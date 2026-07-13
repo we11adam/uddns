@@ -103,6 +103,12 @@ func NewApp(jobs []Job, notifierName string, n notifier.Notifier, interval time.
 	if interval <= 0 {
 		interval = 30 * time.Second
 	}
+	if n == nil {
+		n = &notifier.Noop{}
+		if notifierName == "" {
+			notifierName = "No-op"
+		}
+	}
 	return &App{
 		jobs:         jobs,
 		notifierName: notifierName,
