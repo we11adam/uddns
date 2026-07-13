@@ -6,7 +6,6 @@ require (
 	github.com/aliyun/alibaba-cloud-sdk-go v1.63.107
 	github.com/cloudflare/cloudflare-go v0.117.0
 	github.com/go-resty/resty/v2 v2.17.2
-	github.com/joho/godotenv v1.5.1
 	github.com/lmittmann/tint v1.1.3
 	github.com/mattn/go-isatty v0.0.22
 	github.com/spf13/viper v1.21.0
