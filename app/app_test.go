@@ -59,10 +59,16 @@ func (u *recordReadingUpdater) Current(_ context.Context) (*provider.IpResult, e
 type recordingNotifier struct {
 	notifications []notifier.Notification
 	err           error
+	errs          []error
 }
 
 func (n *recordingNotifier) Notify(_ context.Context, notification notifier.Notification) error {
 	n.notifications = append(n.notifications, notification)
+	if len(n.errs) > 0 {
+		err := n.errs[0]
+		n.errs = n.errs[1:]
+		return err
+	}
 	return n.err
 }
 
@@ -90,8 +96,8 @@ func TestRunOnceUpdatesDNSWhenIPChanges(t *testing.T) {
 	if u.last == nil || u.last.IPv4 != "192.0.2.10" {
 		t.Fatalf("expected updater to receive IPv4 192.0.2.10, got %#v", u.last)
 	}
-	if a.jobs[0].lastIPv4 != "192.0.2.10" {
-		t.Fatalf("expected lastIPv4 to be updated, got %q", a.jobs[0].lastIPv4)
+	if a.jobs[0].lastAppliedIPv4 != "192.0.2.10" {
+		t.Fatalf("expected lastAppliedIPv4 to be updated, got %q", a.jobs[0].lastAppliedIPv4)
 	}
 	if len(n.notifications) != 2 {
 		t.Fatalf("expected IP change and update success notifications, got %d", len(n.notifications))
@@ -133,14 +139,144 @@ func TestRunOnceDoesNotAdvanceLastIPWhenUpdateFails(t *testing.T) {
 	if u.calls != 1 {
 		t.Fatalf("expected updater to be called once, got %d", u.calls)
 	}
-	if a.jobs[0].lastIPv4 != "" {
-		t.Fatalf("expected lastIPv4 to remain empty after failed update, got %q", a.jobs[0].lastIPv4)
+	if a.jobs[0].lastAppliedIPv4 != "" {
+		t.Fatalf("expected lastAppliedIPv4 to remain empty after failed update, got %q", a.jobs[0].lastAppliedIPv4)
 	}
 	if len(n.notifications) != 2 {
 		t.Fatalf("expected IP change and update failure notifications, got %d", len(n.notifications))
 	}
 	if n.notifications[1].Message != "DNS update failed for IPv4 192.0.2.10: update failed" {
 		t.Fatalf("expected update failure notification message, got %q", n.notifications[1].Message)
+	}
+}
+
+func TestRunOnceDeduplicatesRepeatedUpdateFailures(t *testing.T) {
+	p := &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10"}}
+	u := &recordingUpdater{err: errors.New("update failed")}
+	n := &recordingNotifier{}
+	a := newTestApp(p, u, n, AllFamilies())
+	clock := &fakeClock{now: time.Unix(1_700_000_000, 0)}
+	a.clock = clock
+	a.jitter = func() float64 { return 1 }
+
+	for attempt := 0; attempt < 3; attempt++ {
+		a.runOnce(context.Background())
+		if attempt < 2 {
+			clock.now = a.jobs[0].retryAfter
+		}
+	}
+
+	if u.calls != 3 {
+		t.Fatalf("expected three update attempts, got %d", u.calls)
+	}
+	if len(n.notifications) != 2 {
+		t.Fatalf("expected one IP change and one failure notification, got %d attempts", len(n.notifications))
+	}
+	if n.notifications[0].Message != "IPv4 address changed to 192.0.2.10" {
+		t.Fatalf("unexpected IP change notification: %q", n.notifications[0].Message)
+	}
+	if n.notifications[1].Message != "DNS update failed for IPv4 192.0.2.10: update failed" {
+		t.Fatalf("unexpected failure notification: %q", n.notifications[1].Message)
+	}
+}
+
+func TestRunOnceNotifiesWhenUpdateErrorChanges(t *testing.T) {
+	p := &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10"}}
+	u := &recordingUpdater{err: errors.New("first error")}
+	n := &recordingNotifier{}
+	a := newTestApp(p, u, n, AllFamilies())
+	clock := &fakeClock{now: time.Unix(1_700_000_000, 0)}
+	a.clock = clock
+	a.jitter = func() float64 { return 1 }
+
+	a.runOnce(context.Background())
+	clock.now = a.jobs[0].retryAfter
+	u.err = errors.New("second error")
+	a.runOnce(context.Background())
+	clock.now = a.jobs[0].retryAfter
+	u.err = errors.New("second error")
+	a.runOnce(context.Background())
+
+	if len(n.notifications) != 3 {
+		t.Fatalf("expected IP change and two distinct failure notifications, got %d", len(n.notifications))
+	}
+	if got := n.notifications[2].Message; got != "DNS update failed for IPv4 192.0.2.10: second error" {
+		t.Fatalf("unexpected changed-error notification: %q", got)
+	}
+}
+
+func TestRunOnceSuccessfulUpdateClearsFailureDeduplication(t *testing.T) {
+	updateErr := errors.New("update failed")
+	p := &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10"}}
+	u := &recordReadingUpdater{current: &provider.IpResult{IPv4: "192.0.2.9"}}
+	u.recordingUpdater.err = updateErr
+	n := &recordingNotifier{}
+	job := NewJob("default", "test-provider", p, "test-updater", u, "", "", AllFamilies(), VerifyAuto)
+	a := NewApp([]Job{job}, "test-notifier", n, time.Second)
+	clock := &fakeClock{now: time.Unix(1_700_000_000, 0)}
+	a.clock = clock
+	a.jitter = func() float64 { return 1 }
+
+	a.runOnce(context.Background())
+	clock.now = a.jobs[0].retryAfter
+	u.recordingUpdater.err = nil
+	a.runOnce(context.Background())
+	u.recordingUpdater.err = updateErr
+	a.runOnce(context.Background())
+
+	if u.calls != 3 {
+		t.Fatalf("expected failure, success, and repeated failure update attempts, got %d", u.calls)
+	}
+	if len(n.notifications) != 4 {
+		t.Fatalf("expected IP change, failure, success, and post-success failure notifications, got %d", len(n.notifications))
+	}
+	if got := n.notifications[3].Message; got != "DNS update failed for IPv4 192.0.2.10: update failed" {
+		t.Fatalf("unexpected post-success failure notification: %q", got)
+	}
+}
+
+func TestRunOnceRetriesNotificationsThatWereNotDelivered(t *testing.T) {
+	notifyErr := errors.New("notification failed")
+	tests := []struct {
+		name         string
+		notifierErrs []error
+		wantRetry    string
+	}{
+		{
+			name:         "IP change",
+			notifierErrs: []error{notifyErr, nil},
+			wantRetry:    "IPv4 address changed to 192.0.2.10",
+		},
+		{
+			name:         "update failure",
+			notifierErrs: []error{nil, notifyErr},
+			wantRetry:    "DNS update failed for IPv4 192.0.2.10: update failed",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10"}}
+			u := &recordingUpdater{err: errors.New("update failed")}
+			n := &recordingNotifier{errs: append([]error(nil), tt.notifierErrs...)}
+			a := newTestApp(p, u, n, AllFamilies())
+			clock := &fakeClock{now: time.Unix(1_700_000_000, 0)}
+			a.clock = clock
+			a.jitter = func() float64 { return 1 }
+
+			a.runOnce(context.Background())
+			clock.now = a.jobs[0].retryAfter
+			a.runOnce(context.Background())
+			clock.now = a.jobs[0].retryAfter
+			a.runOnce(context.Background())
+
+			if len(n.notifications) != 3 {
+				t.Fatalf("expected one failed delivery, its retry, and the other notification, got %d attempts", len(n.notifications))
+			}
+			if got := n.notifications[2].Message; got != tt.wantRetry {
+				t.Fatalf("expected retry %q, got %q", tt.wantRetry, got)
+			}
+		})
 	}
 }
 
@@ -259,7 +395,8 @@ func TestRunOnceUpdatesWhenCurrentRecordDrifts(t *testing.T) {
 	u := &recordReadingUpdater{current: &provider.IpResult{IPv4: "192.0.2.9"}}
 	n := &recordingNotifier{}
 	job := NewJob("default", "test-provider", p, "test-updater", u, "home.example.com", "example.com", AllFamilies(), VerifyUpdaterAPI)
-	job.lastIPv4 = "192.0.2.10"
+	job.lastAppliedIPv4 = "192.0.2.10"
+	job.lastNotifiedIPv4 = "192.0.2.10"
 	a := NewApp([]Job{job}, "test-notifier", n, time.Second)
 
 	a.runOnce(context.Background())
@@ -277,7 +414,7 @@ func TestRunOnceSkipsUpdateWhenRecordReadFails(t *testing.T) {
 	u := &recordReadingUpdater{err: errors.New("verify failed")}
 	n := &recordingNotifier{}
 	job := NewJob("default", "test-provider", p, "test-updater", u, "home.example.com", "example.com", AllFamilies(), VerifyUpdaterAPI)
-	job.lastIPv4 = "192.0.2.10"
+	job.lastAppliedIPv4 = "192.0.2.10"
 	a := NewApp([]Job{job}, "test-notifier", n, time.Second)
 
 	a.runOnce(context.Background())
@@ -416,7 +553,8 @@ func TestRunOnceSuccessAndUnchangedResetBackoff(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			clock := &fakeClock{now: time.Unix(1_700_000_000, 0)}
 			job := NewJob(tt.name, "test-provider", &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10"}}, "test-updater", &recordingUpdater{}, "", "", AllFamilies(), VerifyOff)
-			job.lastIPv4 = tt.lastIPv4
+			job.lastAppliedIPv4 = tt.lastIPv4
+			job.lastNotifiedIPv4 = tt.lastIPv4
 			job.failureCount = 3
 			job.retryAfter = clock.Now()
 			a := NewApp([]Job{job}, "test-notifier", &recordingNotifier{}, time.Second)

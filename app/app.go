@@ -35,19 +35,22 @@ type App struct {
 }
 
 type Job struct {
-	Name         string
-	ProviderName string
-	Provider     provider.Provider
-	UpdaterName  string
-	Updater      updater.Updater
-	Record       string
-	Zone         string
-	Families     Families
-	Verify       VerifyMode
-	lastIPv4     string
-	lastIPv6     string
-	failureCount int
-	retryAfter   time.Time
+	Name                      string
+	ProviderName              string
+	Provider                  provider.Provider
+	UpdaterName               string
+	Updater                   updater.Updater
+	Record                    string
+	Zone                      string
+	Families                  Families
+	Verify                    VerifyMode
+	lastAppliedIPv4           string
+	lastAppliedIPv6           string
+	lastNotifiedIPv4          string
+	lastNotifiedIPv6          string
+	lastNotifiedUpdateFailure string
+	failureCount              int
+	retryAfter                time.Time
 }
 
 type VerifyMode string
@@ -185,8 +188,10 @@ func (a *App) runJob(ctx context.Context, job *Job) {
 	slog.Debug(
 		"update cycle started",
 		job.logAttrs(
-			"last_ipv4", job.lastIPv4,
-			"last_ipv6", job.lastIPv6,
+			"last_applied_ipv4", job.lastAppliedIPv4,
+			"last_applied_ipv6", job.lastAppliedIPv6,
+			"last_notified_ipv4", job.lastNotifiedIPv4,
+			"last_notified_ipv6", job.lastNotifiedIPv6,
 		)...,
 	)
 
@@ -213,8 +218,10 @@ func (a *App) runJob(ctx context.Context, job *Job) {
 		return
 	}
 
-	ipv4Changed := ipResult.IPv4 != "" && ipResult.IPv4 != job.lastIPv4
-	ipv6Changed := ipResult.IPv6 != "" && ipResult.IPv6 != job.lastIPv6
+	ipv4Changed := ipResult.IPv4 != "" && ipResult.IPv4 != job.lastAppliedIPv4
+	ipv6Changed := ipResult.IPv6 != "" && ipResult.IPv6 != job.lastAppliedIPv6
+	ipv4NotificationNeeded := ipResult.IPv4 != "" && ipResult.IPv4 != job.lastNotifiedIPv4
+	ipv6NotificationNeeded := ipResult.IPv6 != "" && ipResult.IPv6 != job.lastNotifiedIPv6
 	updateNeeded := ipv4Changed || ipv6Changed
 	verified := false
 	recordChanged := false
@@ -241,11 +248,15 @@ func (a *App) runJob(ctx context.Context, job *Job) {
 		"completed IP check",
 		job.logAttrs(
 			"ipv4", ipResult.IPv4,
-			"last_ipv4", job.lastIPv4,
+			"last_applied_ipv4", job.lastAppliedIPv4,
 			"ipv4_changed", ipv4Changed,
+			"last_notified_ipv4", job.lastNotifiedIPv4,
+			"ipv4_notification_needed", ipv4NotificationNeeded,
 			"ipv6", ipResult.IPv6,
-			"last_ipv6", job.lastIPv6,
+			"last_applied_ipv6", job.lastAppliedIPv6,
 			"ipv6_changed", ipv6Changed,
+			"last_notified_ipv6", job.lastNotifiedIPv6,
+			"ipv6_notification_needed", ipv6NotificationNeeded,
 			"verify", job.Verify,
 			"verified", verified,
 			"current_ipv4", ipResultValue(currentIPResult, "ipv4"),
@@ -255,17 +266,21 @@ func (a *App) runJob(ctx context.Context, job *Job) {
 		)...,
 	)
 
+	if ipv4NotificationNeeded {
+		if a.notify(ctx, "ip_change", job, notifier.Notification{Message: jobNotificationMessage(job, fmt.Sprintf("IPv4 address changed to %s", ipResult.IPv4))}) {
+			job.lastNotifiedIPv4 = ipResult.IPv4
+		}
+	}
+
+	if ipv6NotificationNeeded {
+		if a.notify(ctx, "ip_change", job, notifier.Notification{Message: jobNotificationMessage(job, fmt.Sprintf("IPv6 address changed to %s", ipResult.IPv6))}) {
+			job.lastNotifiedIPv6 = ipResult.IPv6
+		}
+	}
+
 	if !updateNeeded {
 		status = "unchanged"
 		return
-	}
-
-	if ipv4Changed {
-		a.notify(ctx, "ip_change", job, notifier.Notification{Message: jobNotificationMessage(job, fmt.Sprintf("IPv4 address changed to %s", ipResult.IPv4))})
-	}
-
-	if ipv6Changed {
-		a.notify(ctx, "ip_change", job, notifier.Notification{Message: jobNotificationMessage(job, fmt.Sprintf("IPv6 address changed to %s", ipResult.IPv6))})
 	}
 
 	slog.Debug(
@@ -286,13 +301,17 @@ func (a *App) runJob(ctx context.Context, job *Job) {
 				"error", err,
 			)...,
 		)
-		a.notify(ctx, "update_failure", job, notifier.Notification{Message: jobNotificationMessage(job, fmt.Sprintf("DNS update failed for %s: %s", notificationIPSummary(ipResult), err))})
+		failureNotification := notifier.Notification{Message: jobNotificationMessage(job, fmt.Sprintf("DNS update failed for %s: %s", notificationIPSummary(ipResult), err))}
+		if failureNotification.Message != job.lastNotifiedUpdateFailure && a.notify(ctx, "update_failure", job, failureNotification) {
+			job.lastNotifiedUpdateFailure = failureNotification.Message
+		}
 		return
 	}
 
 	updated = true
-	job.lastIPv4 = ipResult.IPv4
-	job.lastIPv6 = ipResult.IPv6
+	job.lastAppliedIPv4 = ipResult.IPv4
+	job.lastAppliedIPv6 = ipResult.IPv6
+	job.lastNotifiedUpdateFailure = ""
 
 	slog.Info(
 		"updated DNS records",
@@ -476,7 +495,7 @@ func (job *Job) logAttrs(args ...any) []any {
 	return append(attrs, args...)
 }
 
-func (a *App) notify(ctx context.Context, reason string, job *Job, notification notifier.Notification) {
+func (a *App) notify(ctx context.Context, reason string, job *Job, notification notifier.Notification) bool {
 	if err := a.notifier.Notify(ctx, notification); err != nil {
 		slog.Error(
 			"failed to send notification",
@@ -486,7 +505,9 @@ func (a *App) notify(ctx context.Context, reason string, job *Job, notification 
 				"error", err,
 			)...,
 		)
+		return false
 	}
+	return true
 }
 
 func notificationIPSummary(ipResult *provider.IpResult) string {
