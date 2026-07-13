@@ -226,11 +226,6 @@ func (a *App) runJob(ctx context.Context, job *Job) {
 		slog.Error("provider returned invalid IP result", job.logAttrs("error", err)...)
 		return
 	}
-	if ipResult.IPv4 == "" && ipResult.IPv6 == "" {
-		status = "family_unavailable"
-		slog.Warn("provider returned no requested IP addresses", job.logAttrs("families", job.Families.String())...)
-		return
-	}
 
 	ipv4Changed := ipResult.IPv4 != "" && ipResult.IPv4 != job.lastAppliedIPv4
 	ipv6Changed := ipResult.IPv6 != "" && ipResult.IPv6 != job.lastAppliedIPv6
@@ -364,7 +359,7 @@ func (a *App) runJob(ctx context.Context, job *Job) {
 
 func isBackoffFailure(status string) bool {
 	switch status {
-	case "provider_error", "verify_error", "updater_error", "family_unavailable":
+	case "provider_error", "verify_error", "updater_error":
 		return true
 	default:
 		return false
