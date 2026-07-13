@@ -257,9 +257,7 @@ func jobOverrides(job config.Job) (map[string]any, error) {
 		"providers.use":       strings.TrimSpace(job.Provider),
 		"updaters.use":        strings.TrimSpace(job.Updater),
 		configKey + ".domain": record,
-	}
-	if zone != "" {
-		overrides[configKey+".zone"] = zone
+		configKey + ".zone":   zone,
 	}
 	return overrides, nil
 }

@@ -198,6 +198,21 @@ func TestJobOverridesOnlySelectedUpdater(t *testing.T) {
 	}
 }
 
+func TestJobOverridesClearInheritedZone(t *testing.T) {
+	overrides, err := jobOverrides(config.Job{
+		Provider: "ip_service",
+		Updater:  "cloudflare",
+		Record:   "home.example.com",
+	})
+	if err != nil {
+		t.Fatalf("jobOverrides returned an error: %v", err)
+	}
+	zone, ok := overrides["updaters.cloudflare.zone"]
+	if !ok || zone != "" {
+		t.Fatalf("expected an explicit empty zone override, got %#v, %v", zone, ok)
+	}
+}
+
 func TestRunConfigCheckSupportsUpdaterAPIVerify(t *testing.T) {
 	t.Setenv("UDDNS_INTERVAL", "")
 	path := writeTempConfig(t, `
