@@ -43,6 +43,9 @@ jobs:
       - name: Check installer syntax
         run: sh -n install.sh
 
+      - name: Test installer input validation
+        run: sh tests/install_test.sh
+
       - name: Install shellcheck
         run: sudo apt-get update && sudo apt-get install -y shellcheck
 

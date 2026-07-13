@@ -53,6 +53,44 @@ fail() {
 	exit 1
 }
 
+validate_service_name() {
+	case "$SERVICE_NAME" in
+		[A-Za-z0-9]*) ;;
+		*) fail "invalid SERVICE_NAME: must start with an ASCII letter or digit" ;;
+	esac
+
+	case "$SERVICE_NAME" in
+		*[!A-Za-z0-9_.@:-]*)
+			fail "invalid SERVICE_NAME: allowed characters are ASCII letters, digits, _, ., @, :, and -"
+			;;
+	esac
+}
+
+reject_line_breaks() {
+	input_name="$1"
+	input_value="$2"
+	line_feed='
+'
+	carriage_return="$(printf '\r')"
+
+	case "$input_value" in
+		*"$line_feed"* | *"$carriage_return"*)
+			fail "${input_name} must not contain CR or LF characters"
+			;;
+	esac
+}
+
+validate_systemd_inputs() {
+	validate_service_name
+	reject_line_breaks OWNER "$OWNER"
+	reject_line_breaks REPO "$REPO"
+	reject_line_breaks INSTALL_DIR "$INSTALL_DIR"
+	reject_line_breaks UDDNS_CONFIG "$CONFIG_FILE"
+	reject_line_breaks UDDNS_INTERVAL "$SERVICE_INTERVAL"
+	reject_line_breaks UDDNS_LOG_DIR "$LOG_DIR"
+	reject_line_breaks UDDNS_LOG_RETENTION_DAYS "$LOG_RETENTION_DAYS"
+}
+
 need_cmd() {
 	command -v "$1" >/dev/null 2>&1 || fail "required command not found: $1"
 }
@@ -499,6 +537,7 @@ install_systemd_service() {
 	if [ "$update_service" -eq 0 ] && [ "$CONFIG_FILE" = "/etc/uddns.yaml" ] && is_tty_available; then
 		CONFIG_FILE="$(prompt_text "Config file path for the systemd service" "$CONFIG_FILE")"
 	fi
+	validate_systemd_inputs
 	warn_config_write_permission "$CONFIG_FILE" "$needs_config_write"
 
 	cat >"$unit_file" <<EOF
@@ -567,6 +606,8 @@ EOF
 }
 
 parse_args "$@"
+
+validate_systemd_inputs
 
 upgrade_install=0
 if upgrade_install_exists; then
