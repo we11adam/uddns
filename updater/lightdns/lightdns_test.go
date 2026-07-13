@@ -79,6 +79,9 @@ func TestNewNormalizesAndValidatesDomain(t *testing.T) {
 	if lightDNS.config.Domain != "home.example.com" {
 		t.Fatalf("domain = %q, want %q", lightDNS.config.Domain, "home.example.com")
 	}
+	if lightDNS.httpclient.ResponseBodyLimit != responseBodyLimit {
+		t.Fatalf("response body limit = %d, want %d", lightDNS.httpclient.ResponseBodyLimit, responseBodyLimit)
+	}
 
 	for _, domain := range []string{
 		"",

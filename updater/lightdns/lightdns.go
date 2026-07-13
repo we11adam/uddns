@@ -23,6 +23,8 @@ type LightDNS struct {
 	config     *Config
 }
 
+const responseBodyLimit = 64 << 10
+
 func init() {
 	updater.Register("LightDNS", "updaters.lightdns", func(v updater.ConfigReader) (updater.Updater, error) {
 		if !v.IsSet("updaters.lightdns") {
@@ -53,6 +55,7 @@ func New(cfg *Config) (*LightDNS, error) {
 	normalizedConfig.Domain = domain
 
 	httpclient := resty.New().SetTimeout(10 * time.Second).
+		SetResponseBodyLimit(responseBodyLimit).
 		SetBaseURL("https://api.lightdns.io")
 	return &LightDNS{
 		httpclient: httpclient,

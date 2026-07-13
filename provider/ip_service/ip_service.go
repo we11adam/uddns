@@ -22,7 +22,10 @@ var SERVICES = map[string]string{
 	"3322.org":    "https://members.3322.org/dyndns/getip",
 }
 
-const maxServiceRedirects = 3
+const (
+	maxServiceRedirects = 3
+	responseBodyLimit   = 4 << 10
+)
 
 var (
 	publicIPv6Prefix  = netip.MustParsePrefix("2000::/3")
@@ -104,6 +107,7 @@ func createClient(network string) *resty.Client {
 	}
 	httpClient.SetTransport(transport)
 	httpClient.SetTimeout(5 * time.Second)
+	httpClient.SetResponseBodyLimit(responseBodyLimit)
 	httpClient.SetRedirectPolicy(sameOriginHTTPSRedirectPolicy(maxServiceRedirects))
 	httpClient.RemoveProxy().SetHeaders(map[string]string{"User-Agent": "curl/8.6.0"})
 	return httpClient

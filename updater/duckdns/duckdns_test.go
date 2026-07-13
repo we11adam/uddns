@@ -79,6 +79,9 @@ func TestNewNormalizesAndValidatesDomain(t *testing.T) {
 	if duckDNS.config.Domain != "home.duckdns.org" {
 		t.Fatalf("domain = %q, want %q", duckDNS.config.Domain, "home.duckdns.org")
 	}
+	if duckDNS.httpclient.ResponseBodyLimit != responseBodyLimit {
+		t.Fatalf("response body limit = %d, want %d", duckDNS.httpclient.ResponseBodyLimit, responseBodyLimit)
+	}
 
 	for _, domain := range []string{
 		"",

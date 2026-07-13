@@ -97,6 +97,13 @@ func TestServiceRedirectPolicy(t *testing.T) {
 	}
 }
 
+func TestServiceClientLimitsResponseBodies(t *testing.T) {
+	client := createClient("tcp4")
+	if client.ResponseBodyLimit != responseBodyLimit {
+		t.Fatalf("response body limit = %d, want %d", client.ResponseBodyLimit, responseBodyLimit)
+	}
+}
+
 func TestGetIPsCancelsInFlightRequest(t *testing.T) {
 	requestStarted := make(chan struct{})
 	client := createClient("tcp4")

@@ -11,7 +11,10 @@ import (
 	"github.com/we11adam/uddns/notifier"
 )
 
-const requestTimeout = 10 * time.Second
+const (
+	requestTimeout    = 10 * time.Second
+	responseBodyLimit = 256 << 10
+)
 
 type Telegram struct {
 	Token  string `mapstructure:"token"`
@@ -51,6 +54,7 @@ func init() {
 func newHTTPClient(token, proxy string) *resty.Client {
 	client := resty.New().
 		SetTimeout(requestTimeout).
+		SetResponseBodyLimit(responseBodyLimit).
 		SetHeader("Content-Type", "application/json").
 		SetBaseURL("https://api.telegram.org/bot" + token + "/sendMessage")
 	if proxy != "" {

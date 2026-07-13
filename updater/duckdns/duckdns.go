@@ -23,6 +23,8 @@ type DuckDNS struct {
 	config     *Config
 }
 
+const responseBodyLimit = 64 << 10
+
 func init() {
 	updater.Register("DuckDNS", "updaters.duckdns", func(v updater.ConfigReader) (updater.Updater, error) {
 		if !v.IsSet("updaters.duckdns") {
@@ -53,6 +55,7 @@ func New(cfg *Config) (*DuckDNS, error) {
 	normalizedConfig.Domain = domain
 
 	httpclient := resty.New().SetTimeout(10 * time.Second).
+		SetResponseBodyLimit(responseBodyLimit).
 		SetBaseURL("https://www.duckdns.org")
 	return &DuckDNS{
 		httpclient: httpclient,

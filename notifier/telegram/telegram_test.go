@@ -27,6 +27,9 @@ func TestHTTPClientTimeout(t *testing.T) {
 	if got := client.GetClient().Timeout; got != requestTimeout {
 		t.Fatalf("expected Telegram request timeout %s, got %s", requestTimeout, got)
 	}
+	if client.ResponseBodyLimit != responseBodyLimit {
+		t.Fatalf("expected Telegram response body limit %d, got %d", responseBodyLimit, client.ResponseBodyLimit)
+	}
 }
 
 func TestNotifyRedactsTokenFromTransportError(t *testing.T) {
