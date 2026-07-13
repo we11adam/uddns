@@ -13,6 +13,27 @@ fi
 sed '/^parse_args "\$@"$/,$d' "$root_dir/install.sh" >"$test_dir/install-functions.sh"
 . "$test_dir/install-functions.sh"
 
+for file in "$root_dir/install.sh" "$root_dir/README.md"; do
+	if grep -Eq 'raw\.githubusercontent\.com/.*/master/install\.sh|/master/install\.sh' "$file"; then
+		printf 'mutable master install URL remains in %s\n' "$file" >&2
+		exit 1
+	fi
+done
+
+install_release_url='https://github.com/${OWNER}/${REPO}/releases/latest/download/install.sh'
+install_release_url_count="$(grep -Fc "$install_release_url" "$root_dir/install.sh" || true)"
+if [ "$install_release_url_count" -ne 2 ]; then
+	printf 'install.sh usage must contain the release install URL twice\n' >&2
+	exit 1
+fi
+
+readme_release_url='https://github.com/we11adam/uddns/releases/latest/download/install.sh'
+readme_release_url_count="$(grep -Fc "$readme_release_url" "$root_dir/README.md" || true)"
+if [ "$readme_release_url_count" -ne 2 ]; then
+	printf 'README must contain the release install URL twice\n' >&2
+	exit 1
+fi
+
 safe_inputs() {
 	SERVICE_NAME="uddns-test@blue_1"
 	OWNER="example owner"

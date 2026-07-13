@@ -22,14 +22,14 @@ notifications when the IP address or update status changes.
 Install the latest release with curl:
 
 ```shell
-curl -fsSL https://raw.githubusercontent.com/we11adam/uddns/master/install.sh | sh
+curl -fsSL https://github.com/we11adam/uddns/releases/latest/download/install.sh | sh
 ```
 
 The installer detects systemd and asks whether to install UDDNS as a systemd
 service. For non-interactive systemd installation:
 
 ```shell
-curl -fsSL https://raw.githubusercontent.com/we11adam/uddns/master/install.sh | sh -s -- --systemd --config /etc/uddns.yaml
+curl -fsSL https://github.com/we11adam/uddns/releases/latest/download/install.sh | sh -s -- --systemd --config /etc/uddns.yaml
 ```
 
 Useful installer options:

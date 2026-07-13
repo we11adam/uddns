@@ -25,8 +25,8 @@ usage() {
 Install UDDNS from GitHub releases.
 
 Usage:
-  curl -fsSL https://raw.githubusercontent.com/${OWNER}/${REPO}/master/install.sh | sh
-  curl -fsSL https://raw.githubusercontent.com/${OWNER}/${REPO}/master/install.sh | sh -s -- [options]
+  curl -fsSL https://github.com/${OWNER}/${REPO}/releases/latest/download/install.sh | sh
+  curl -fsSL https://github.com/${OWNER}/${REPO}/releases/latest/download/install.sh | sh -s -- [options]
 
 Options:
   --version <tag>       Release tag to install instead of latest
