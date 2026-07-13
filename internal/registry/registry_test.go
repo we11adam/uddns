@@ -304,6 +304,23 @@ func TestRegistryGetUsesExplicitSelector(t *testing.T) {
 	}
 }
 
+func TestRegistryConfigKeyResolvesAliases(t *testing.T) {
+	r := New[string]("thing", "things.use")
+	r.Register("SecondThing", "things.second_thing", func(ConfigReader) (string, error) {
+		return "second", nil
+	})
+
+	for _, selector := range []string{"SecondThing", "second_thing", "things.second_thing", "second-thing"} {
+		configKey, ok := r.ConfigKey(selector)
+		if !ok || configKey != "things.second_thing" {
+			t.Fatalf("ConfigKey(%q) = %q, %v", selector, configKey, ok)
+		}
+	}
+	if configKey, ok := r.ConfigKey("missing"); ok || configKey != "" {
+		t.Fatalf("expected missing selector to return no config key, got %q, %v", configKey, ok)
+	}
+}
+
 func TestRegistryGetReportsSelectedButUnconfigured(t *testing.T) {
 	r := New[string]("thing", "things.use")
 	r.Register("First", "things.first", func(ConfigReader) (string, error) {

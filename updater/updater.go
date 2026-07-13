@@ -30,3 +30,10 @@ func Register(name, configKey string, constructor constructor) {
 func GetUpdater(config ConfigReader) (string, Updater, error) {
 	return updaters.Get(config)
 }
+
+// ConfigKey returns the registered configuration root for an updater selector.
+// Updater job records use the common "domain" and optional "zone" fields below
+// this root.
+func ConfigKey(selector string) (string, bool) {
+	return updaters.ConfigKey(selector)
+}

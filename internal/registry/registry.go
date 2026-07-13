@@ -116,6 +116,15 @@ func (r *Registry[T]) GetOptional(config ConfigReader, fallbackName string, fall
 	return fallbackName, fallback, nil
 }
 
+func (r *Registry[T]) ConfigKey(selector string) (string, bool) {
+	for _, entry := range r.snapshot() {
+		if matches(entry, selector) {
+			return entry.ConfigKey, true
+		}
+	}
+	return "", false
+}
+
 func (r *Registry[T]) getSelected(config ConfigReader, selector string, entries []Entry[T]) (string, T, error) {
 	var zero T
 	for _, entry := range entries {

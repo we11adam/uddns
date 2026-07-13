@@ -217,7 +217,11 @@ func loadConfiguredJob(cfg *config.Config, jobConfig config.Job, index int) (app
 		return app.Job{}, fmt.Errorf("job %q verify error: %w", name, err)
 	}
 
-	jobReader := cfg.WithOverrides(jobOverrides(jobConfig))
+	overrides, err := jobOverrides(jobConfig)
+	if err != nil {
+		return app.Job{}, fmt.Errorf("job %q updater error: %w", name, err)
+	}
+	jobReader := cfg.WithOverrides(overrides)
 	providerName, p, err := provider.GetProvider(jobReader)
 	if err != nil {
 		return app.Job{}, fmt.Errorf("job %q provider error: %w", name, err)
@@ -235,36 +239,29 @@ func loadConfiguredJob(cfg *config.Config, jobConfig config.Job, index int) (app
 }
 
 func defaultJobRecord(cfg *config.Config, updaterName string) (string, string) {
-	switch strings.ToLower(strings.TrimSpace(updaterName)) {
-	case "cloudflare":
-		return strings.TrimSpace(cfg.GetString("updaters.cloudflare.domain")), strings.TrimSpace(cfg.GetString("updaters.cloudflare.zone"))
-	case "aliyun":
-		return strings.TrimSpace(cfg.GetString("updaters.aliyun.domain")), strings.TrimSpace(cfg.GetString("updaters.aliyun.zone"))
-	case "duckdns":
-		return strings.TrimSpace(cfg.GetString("updaters.duckdns.domain")), ""
-	case "lightdns":
-		return strings.TrimSpace(cfg.GetString("updaters.lightdns.domain")), ""
-	default:
+	configKey, ok := updater.ConfigKey(updaterName)
+	if !ok {
 		return "", ""
 	}
+	return strings.TrimSpace(cfg.GetString(configKey + ".domain")), strings.TrimSpace(cfg.GetString(configKey + ".zone"))
 }
 
-func jobOverrides(job config.Job) map[string]any {
+func jobOverrides(job config.Job) (map[string]any, error) {
 	record := strings.TrimSpace(job.Record)
 	zone := strings.TrimSpace(job.Zone)
+	configKey, ok := updater.ConfigKey(job.Updater)
+	if !ok {
+		return nil, fmt.Errorf("unknown updater %q", strings.TrimSpace(job.Updater))
+	}
 	overrides := map[string]any{
-		"providers.use":              strings.TrimSpace(job.Provider),
-		"updaters.use":               strings.TrimSpace(job.Updater),
-		"updaters.cloudflare.domain": record,
-		"updaters.aliyun.domain":     record,
-		"updaters.duckdns.domain":    record,
-		"updaters.lightdns.domain":   record,
+		"providers.use":       strings.TrimSpace(job.Provider),
+		"updaters.use":        strings.TrimSpace(job.Updater),
+		configKey + ".domain": record,
 	}
 	if zone != "" {
-		overrides["updaters.cloudflare.zone"] = zone
-		overrides["updaters.aliyun.zone"] = zone
+		overrides[configKey+".zone"] = zone
 	}
-	return overrides
+	return overrides, nil
 }
 
 func parseFamilies(values []string) (app.Families, error) {

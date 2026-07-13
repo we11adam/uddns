@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/spf13/viper"
+	"github.com/we11adam/uddns/internal/config"
 )
 
 func TestParseLogLevel(t *testing.T) {
@@ -171,6 +172,29 @@ jobs:
 	code := run([]string{"config", "check", "-c", path})
 	if code != 0 {
 		t.Fatalf("expected jobs config check to succeed, got exit code %d", code)
+	}
+}
+
+func TestJobOverridesOnlySelectedUpdater(t *testing.T) {
+	overrides, err := jobOverrides(config.Job{
+		Provider: "ip_service",
+		Updater:  "duckdns",
+		Record:   "home",
+		Zone:     "ignored.example",
+	})
+	if err != nil {
+		t.Fatalf("jobOverrides returned an error: %v", err)
+	}
+	if got := overrides["updaters.duckdns.domain"]; got != "home" {
+		t.Fatalf("expected selected updater record override, got %#v", got)
+	}
+	if got := overrides["updaters.duckdns.zone"]; got != "ignored.example" {
+		t.Fatalf("expected selected updater zone override, got %#v", got)
+	}
+	for _, key := range []string{"updaters.cloudflare.domain", "updaters.aliyun.domain", "updaters.lightdns.domain"} {
+		if _, ok := overrides[key]; ok {
+			t.Fatalf("unexpected unrelated updater override %q", key)
+		}
 	}
 }
 
