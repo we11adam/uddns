@@ -208,6 +208,77 @@ func TestDuplicateDNSRecordsAreReconciledAndMixedValuesTriggerRepair(t *testing.
 	}
 }
 
+func TestCurrentRequestsOnlySelectedFamilies(t *testing.T) {
+	tests := []struct {
+		name     string
+		families provider.FamilyRequest
+		wantType string
+		wantIPv4 string
+		wantIPv6 string
+	}{
+		{
+			name:     "IPv4 only",
+			families: provider.FamilyRequest{IPv4: true},
+			wantType: recordTypeA,
+			wantIPv4: "192.0.2.10",
+		},
+		{
+			name:     "IPv6 only",
+			families: provider.FamilyRequest{IPv6: true},
+			wantType: recordTypeAAAA,
+			wantIPv6: "2001:db8::10",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var requestedTypes []string
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+				if request.URL.Path != "/zones/zone-id/dns_records" {
+					t.Errorf("unexpected path: %s", request.URL.Path)
+				}
+				recordType := request.URL.Query().Get("type")
+				requestedTypes = append(requestedTypes, recordType)
+				content := "192.0.2.10"
+				if recordType == recordTypeAAAA {
+					content = "2001:db8::10"
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = io.WriteString(w, `{
+					"success":true,
+					"errors":[],
+					"messages":[],
+					"result":[{"id":"record-id","type":"`+recordType+`","name":"home.example.com","content":"`+content+`"}],
+					"result_info":{"page":1,"per_page":100,"count":1,"total_count":1,"total_pages":1}
+				}`)
+			}))
+			defer server.Close()
+
+			api, err := cloudflareapi.NewWithAPIToken("token", cloudflareapi.HTTPClient(server.Client()))
+			if err != nil {
+				t.Fatalf("create Cloudflare API client: %v", err)
+			}
+			api.BaseURL = server.URL
+			cloudflare := &Cloudflare{
+				config: &Config{Domain: "home.example.com"},
+				client: api,
+				zoneID: "zone-id",
+			}
+
+			current, err := cloudflare.Current(context.Background(), tt.families)
+			if err != nil {
+				t.Fatalf("read current records: %v", err)
+			}
+			if len(requestedTypes) != 1 || requestedTypes[0] != tt.wantType {
+				t.Fatalf("requested record types = %v, want [%s]", requestedTypes, tt.wantType)
+			}
+			if current.IPv4 != tt.wantIPv4 || current.IPv6 != tt.wantIPv6 {
+				t.Fatalf("current records = %+v, want IPv4=%q IPv6=%q", current, tt.wantIPv4, tt.wantIPv6)
+			}
+		})
+	}
+}
+
 func TestZoneLookupUsesContext(t *testing.T) {
 	api, err := cloudflareapi.NewWithAPIToken("token", cloudflareapi.HTTPClient(&http.Client{}))
 	if err != nil {

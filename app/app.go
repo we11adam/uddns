@@ -464,7 +464,10 @@ func (job *Job) currentRecordIPs(ctx context.Context) (*provider.IpResult, error
 	if !ok {
 		return nil, fmt.Errorf("updater %s does not support verify mode %s", job.UpdaterName, VerifyUpdaterAPI)
 	}
-	current, err := reader.Current(ctx)
+	current, err := reader.Current(ctx, provider.FamilyRequest{
+		IPv4: job.Families.IPv4,
+		IPv6: job.Families.IPv6,
+	})
 	if err != nil {
 		return nil, err
 	}

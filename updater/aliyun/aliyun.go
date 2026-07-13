@@ -144,20 +144,27 @@ func (a *Aliyun) Update(ctx context.Context, ips *provider.IpResult) error {
 	return nil
 }
 
-func (a *Aliyun) Current(ctx context.Context) (*provider.IpResult, error) {
+func (a *Aliyun) Current(ctx context.Context, families provider.FamilyRequest) (*provider.IpResult, error) {
+	if !families.IPv4 && !families.IPv6 {
+		return nil, fmt.Errorf("no IP families requested")
+	}
 	result := &provider.IpResult{}
 
-	ipv4, err := a.currentDNSRecord(ctx, recordTypeA)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get Aliyun IPv4 record: %w", err)
+	if families.IPv4 {
+		ipv4, err := a.currentDNSRecord(ctx, recordTypeA)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get Aliyun IPv4 record: %w", err)
+		}
+		result.IPv4 = ipv4
 	}
-	result.IPv4 = ipv4
 
-	ipv6, err := a.currentDNSRecord(ctx, recordTypeAAAA)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get Aliyun IPv6 record: %w", err)
+	if families.IPv6 {
+		ipv6, err := a.currentDNSRecord(ctx, recordTypeAAAA)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get Aliyun IPv6 record: %w", err)
+		}
+		result.IPv6 = ipv6
 	}
-	result.IPv6 = ipv6
 
 	return result, nil
 }

@@ -12,7 +12,7 @@ type Updater interface {
 }
 
 type RecordReader interface {
-	Current(ctx context.Context) (*provider.IpResult, error)
+	Current(ctx context.Context, families provider.FamilyRequest) (*provider.IpResult, error)
 }
 
 type ConfigReader = registry.ConfigReader

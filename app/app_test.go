@@ -50,13 +50,19 @@ func (u *recordingUpdater) Update(_ context.Context, ips *provider.IpResult) err
 
 type recordReadingUpdater struct {
 	recordingUpdater
-	current      *provider.IpResult
-	err          error
-	currentCalls int
+	current        *provider.IpResult
+	err            error
+	read           func(provider.FamilyRequest) (*provider.IpResult, error)
+	currentCalls   int
+	currentRequest provider.FamilyRequest
 }
 
-func (u *recordReadingUpdater) Current(_ context.Context) (*provider.IpResult, error) {
+func (u *recordReadingUpdater) Current(_ context.Context, request provider.FamilyRequest) (*provider.IpResult, error) {
 	u.currentCalls++
+	u.currentRequest = request
+	if u.read != nil {
+		return u.read(request)
+	}
 	return u.current, u.err
 }
 
@@ -573,6 +579,32 @@ func TestRunOnceStrictVerifyPollsEveryInterval(t *testing.T) {
 
 	if u.currentCalls != 4 {
 		t.Fatalf("expected strict verify on every interval, got %d calls", u.currentCalls)
+	}
+}
+
+func TestRunOnceStrictVerifyRequestsOnlyConfiguredFamilies(t *testing.T) {
+	p := &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10"}}
+	u := &recordReadingUpdater{
+		read: func(request provider.FamilyRequest) (*provider.IpResult, error) {
+			if request.IPv6 {
+				return nil, errors.New("unrequested IPv6 lookup failed")
+			}
+			return &provider.IpResult{IPv4: "192.0.2.10"}, nil
+		},
+	}
+	job := NewJob("default", "test-provider", p, "test-updater", u, "", "", Families{IPv4: true}, VerifyUpdaterAPI)
+	a := NewApp([]Job{job}, "test-notifier", &recordingNotifier{}, 30*time.Second)
+
+	a.runOnce(context.Background())
+
+	if !u.currentRequest.IPv4 || u.currentRequest.IPv6 {
+		t.Fatalf("current record request = %+v, want IPv4 only", u.currentRequest)
+	}
+	if u.calls != 0 {
+		t.Fatalf("matching requested record should not be updated, got %d calls", u.calls)
+	}
+	if a.jobs[0].failureCount != 0 {
+		t.Fatalf("unrequested family should not fail strict verification, got %d failures", a.jobs[0].failureCount)
 	}
 }
 

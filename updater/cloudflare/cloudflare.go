@@ -170,23 +170,30 @@ func (c *Cloudflare) Update(ctx context.Context, ips *provider.IpResult) error {
 	return nil
 }
 
-func (c *Cloudflare) Current(ctx context.Context) (*provider.IpResult, error) {
+func (c *Cloudflare) Current(ctx context.Context, families provider.FamilyRequest) (*provider.IpResult, error) {
+	if !families.IPv4 && !families.IPv6 {
+		return nil, fmt.Errorf("no IP families requested")
+	}
 	if err := c.ensureZoneID(ctx); err != nil {
 		return nil, err
 	}
 	result := &provider.IpResult{}
 
-	ipv4, err := c.currentDNSRecord(ctx, recordTypeA)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get Cloudflare IPv4 record: %w", err)
+	if families.IPv4 {
+		ipv4, err := c.currentDNSRecord(ctx, recordTypeA)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get Cloudflare IPv4 record: %w", err)
+		}
+		result.IPv4 = ipv4
 	}
-	result.IPv4 = ipv4
 
-	ipv6, err := c.currentDNSRecord(ctx, recordTypeAAAA)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get Cloudflare IPv6 record: %w", err)
+	if families.IPv6 {
+		ipv6, err := c.currentDNSRecord(ctx, recordTypeAAAA)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get Cloudflare IPv6 record: %w", err)
+		}
+		result.IPv6 = ipv6
 	}
-	result.IPv6 = ipv6
 
 	return result, nil
 }

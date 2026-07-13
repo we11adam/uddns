@@ -96,7 +96,7 @@ func TestOperationsCheckContextBeforeRequest(t *testing.T) {
 	})
 
 	t.Run("Current", func(t *testing.T) {
-		_, err := aliyun.Current(ctx)
+		_, err := aliyun.Current(ctx, provider.FamilyRequest{IPv4: true})
 		if !errors.Is(err, context.Canceled) {
 			t.Fatalf("expected canceled read, got %v", err)
 		}
@@ -233,5 +233,91 @@ func TestDuplicateDNSRecordsAreReconciledAndMixedValuesTriggerRepair(t *testing.
 	}
 	if current != "" {
 		t.Fatalf("mixed duplicate values returned %q; want empty value to trigger repair", current)
+	}
+}
+
+func TestCurrentRequestsOnlySelectedFamilies(t *testing.T) {
+	tests := []struct {
+		name     string
+		families provider.FamilyRequest
+		wantType string
+		wantIPv4 string
+		wantIPv6 string
+	}{
+		{
+			name:     "IPv4 only",
+			families: provider.FamilyRequest{IPv4: true},
+			wantType: recordTypeA,
+			wantIPv4: "192.0.2.10",
+		},
+		{
+			name:     "IPv6 only",
+			families: provider.FamilyRequest{IPv6: true},
+			wantType: recordTypeAAAA,
+			wantIPv6: "2001:db8::10",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			aliyun, err := New(&Config{
+				AccessKeyID:     "access-key-id",
+				AccessKeySecret: "access-key-secret",
+				Domain:          "home.example.com",
+			})
+			if err != nil {
+				t.Fatalf("create Aliyun updater: %v", err)
+			}
+
+			var requestedTypes []string
+			aliyun.client.HttpClient = httpClientFunc(func(request *http.Request, _ *http.Transport) (*http.Response, error) {
+				parameters := request.URL.Query()
+				if request.Body != nil {
+					encoded, err := io.ReadAll(request.Body)
+					if err != nil {
+						return nil, err
+					}
+					bodyParameters, err := url.ParseQuery(string(encoded))
+					if err != nil {
+						return nil, err
+					}
+					for key, values := range bodyParameters {
+						for _, value := range values {
+							parameters.Add(key, value)
+						}
+					}
+				}
+
+				recordType := parameters.Get("Type")
+				requestedTypes = append(requestedTypes, recordType)
+				content := "192.0.2.10"
+				if recordType == recordTypeAAAA {
+					content = "2001:db8::10"
+				}
+				body := `{
+					"TotalCount":1,
+					"PageNumber":1,
+					"PageSize":100,
+					"DomainRecords":{"Record":[{"RecordId":"record-id","Value":"` + content + `"}]}
+				}`
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Header:     http.Header{"Content-Type": []string{"application/json"}},
+					Body:       io.NopCloser(strings.NewReader(body)),
+					Request:    request,
+				}, nil
+			})
+
+			current, err := aliyun.Current(context.Background(), tt.families)
+			if err != nil {
+				t.Fatalf("read current records: %v", err)
+			}
+			if len(requestedTypes) != 1 || requestedTypes[0] != tt.wantType {
+				t.Fatalf("requested record types = %v, want [%s]", requestedTypes, tt.wantType)
+			}
+			if current.IPv4 != tt.wantIPv4 || current.IPv6 != tt.wantIPv6 {
+				t.Fatalf("current records = %+v, want IPv4=%q IPv6=%q", current, tt.wantIPv4, tt.wantIPv6)
+			}
+		})
 	}
 }
