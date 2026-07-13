@@ -100,6 +100,59 @@ for field in OWNER REPO INSTALL_DIR CONFIG_FILE SERVICE_INTERVAL LOG_DIR LOG_RET
 	expect_rejected "$field" "$carriage_return_value"
 done
 
+config_test_dir="$test_dir/config-availability"
+missing_config="$config_test_dir/missing.yaml"
+directory_config="$config_test_dir/directory.yaml"
+fifo_config="$config_test_dir/fifo.yaml"
+readable_config="$config_test_dir/readable.yaml"
+unreadable_config="$config_test_dir/unreadable.yaml"
+mkdir -p "$directory_config"
+mkfifo "$fifo_config"
+printf 'jobs: []\n' >"$readable_config"
+printf 'jobs: []\n' >"$unreadable_config"
+chmod 000 "$unreadable_config"
+
+(
+	id() {
+		[ "$1" = "-u" ] || return 1
+		printf '1000\n'
+	}
+	sudo() {
+		[ "$1" = "-n" ] || return 1
+		shift
+		[ "$1" = "test" ] || return 1
+		shift
+		predicate="$1"
+		path="$2"
+		if [ "$path" = "$unreadable_config" ] && [ "$predicate" = "-r" ]; then
+			return 1
+		fi
+		test "$predicate" "$path"
+	}
+
+	if config_file_available_to_service "$missing_config"; then
+		printf 'missing config was considered available\n' >&2
+		exit 1
+	fi
+	if config_file_available_to_service "$directory_config"; then
+		printf 'directory config was considered available\n' >&2
+		exit 1
+	fi
+	if config_file_available_to_service "$fifo_config"; then
+		printf 'FIFO config was considered available\n' >&2
+		exit 1
+	fi
+	if ! config_file_available_to_service "$readable_config"; then
+		printf 'readable regular config was considered unavailable\n' >&2
+		exit 1
+	fi
+	if config_file_available_to_service "$unreadable_config"; then
+		printf 'unreadable config was considered available\n' >&2
+		exit 1
+	fi
+)
+chmod 0600 "$unreadable_config"
+
 calls_file="$test_dir/run-as-root-calls"
 unit_exists=0
 systemd_unit_exists() {

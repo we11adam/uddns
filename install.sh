@@ -141,9 +141,18 @@ can_write_path() {
 config_file_available_to_service() {
 	config_file="$1"
 
-	[ -r "$config_file" ] && return 0
-	[ -e "$config_file" ] && return 0
-	return 1
+	if [ "$(id -u)" -eq 0 ]; then
+		[ -f "$config_file" ] && [ -r "$config_file" ]
+		return
+	fi
+
+	if command -v sudo >/dev/null 2>&1; then
+		sudo -n test -f "$config_file" >/dev/null 2>&1 &&
+			sudo -n test -r "$config_file" >/dev/null 2>&1
+		return
+	fi
+
+	[ -f "$config_file" ] && [ -r "$config_file" ]
 }
 
 warn_config_write_permission() {
@@ -689,8 +698,8 @@ EOF
 		fi
 	else
 		run_as_root systemctl enable "${SERVICE_NAME}.service"
-		log "systemd service enabled but not started because ${CONFIG_FILE} is not readable"
-		log "Create the config file, then run: sudo systemctl start ${SERVICE_NAME}.service"
+		log "systemd service enabled but not started because ${CONFIG_FILE} is not a readable regular file for systemd"
+		log "Create a readable regular config file, then run: sudo systemctl start ${SERVICE_NAME}.service"
 	fi
 }
 
