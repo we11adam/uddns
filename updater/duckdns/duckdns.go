@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/go-resty/resty/v2"
+	"github.com/we11adam/uddns/internal/redact"
 	"github.com/we11adam/uddns/provider"
 	"github.com/we11adam/uddns/updater"
 )
@@ -74,13 +75,13 @@ func (c *DuckDNS) updateIP(ip string) error {
 		}).Get("/update")
 
 	if err != nil {
-		return err
+		return redact.Error(err, c.config.Token)
 	}
 
 	body := string(resp.Body())
 
 	if body != "OK" {
-		return fmt.Errorf("failed to update DuckDNS DNS record: %s", body)
+		return fmt.Errorf("failed to update DuckDNS DNS record: %s", redact.String(body, c.config.Token))
 	}
 
 	slog.Info("updated DNS record", "updater", "duckdns", "record", c.config.Domain, "ip", ip)

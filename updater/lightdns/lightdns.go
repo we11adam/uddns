@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/go-resty/resty/v2"
+	"github.com/we11adam/uddns/internal/redact"
 	"github.com/we11adam/uddns/provider"
 	"github.com/we11adam/uddns/updater"
 )
@@ -74,13 +75,13 @@ func (c *LightDNS) updateIP(ip string) error {
 		}).Get("/update")
 
 	if err != nil {
-		return err
+		return redact.Error(err, c.config.Key)
 	}
 
 	body := string(resp.Body())
 
 	if resp.StatusCode() != 200 {
-		return fmt.Errorf("failed to update LightDNS DNS record: %s", body)
+		return fmt.Errorf("failed to update LightDNS DNS record: %s", redact.String(body, c.config.Key))
 	}
 
 	slog.Info("updated DNS record", "updater", "lightdns", "record", c.config.Domain, "ip", ip)

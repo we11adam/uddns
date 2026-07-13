@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/go-resty/resty/v2"
+	"github.com/we11adam/uddns/internal/redact"
 	"github.com/we11adam/uddns/notifier"
 )
 
@@ -46,5 +47,5 @@ func (t *Telegram) Notify(notification notifier.Notification) error {
 		"chat_id": t.ChatID,
 		"text":    notification.Message,
 	}).Post("")
-	return err
+	return redact.Error(err, t.Token)
 }
