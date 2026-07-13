@@ -6,6 +6,12 @@ All notable changes to UDDNS are documented here, based on the Git commit histor
 
 No changes yet.
 
+## v1.7.1 - 2026-07-13
+
+### Fixed
+
+- Fixed release archives to contain only the platform executable, restoring compatibility with the installer's strict single-file archive validation.
+
 ## v1.7.0 - 2026-07-13
 
 ### Added

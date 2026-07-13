@@ -33,9 +33,9 @@ gh attestation verify install.sh --repo we11adam/uddns
 sh install.sh
 ```
 
-安装器仅通过 HTTPS 下载 release archive，校验 checksum，并在解压前验证 archive
-内容。每个 release archive 还会附带 SBOM 和 GitHub Actions 来源证明；手动下载后可用
-以下命令验证：
+官方发布归档仅包含对应平台的可执行文件。安装器仅通过 HTTPS 下载 release archive，
+校验 checksum，并在解压前验证 archive 内容。每个 release archive 还会附带 SBOM 和
+GitHub Actions 来源证明；手动下载后可用以下命令验证：
 
 ```shell
 gh attestation verify /path/to/archive --repo we11adam/uddns

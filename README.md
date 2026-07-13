@@ -35,10 +35,11 @@ gh attestation verify install.sh --repo we11adam/uddns
 sh install.sh
 ```
 
-The installer downloads release archives only over HTTPS, verifies their
-checksums, and validates archive contents before extraction. Each release
-archive also has an attached SBOM and a GitHub Actions provenance attestation;
-after downloading an archive manually, verify it with:
+Official release archives contain only the platform executable. The installer
+downloads them only over HTTPS, verifies their checksums, and validates archive
+contents before extraction. Each release archive also has an attached SBOM and
+a GitHub Actions provenance attestation; after downloading an archive manually,
+verify it with:
 
 ```shell
 gh attestation verify /path/to/archive --repo we11adam/uddns
