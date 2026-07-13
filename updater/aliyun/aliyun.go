@@ -4,13 +4,11 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"net/http"
 	"time"
 
-	"github.com/aliyun/alibaba-cloud-sdk-go/sdk"
-	"github.com/aliyun/alibaba-cloud-sdk-go/sdk/auth/credentials"
-	"github.com/aliyun/alibaba-cloud-sdk-go/sdk/requests"
-	"github.com/aliyun/alibaba-cloud-sdk-go/services/alidns"
+	alidns "github.com/alibabacloud-go/alidns-20150109/v4/client"
+	openapi "github.com/alibabacloud-go/darabonba-openapi/v2/client"
+	"github.com/alibabacloud-go/tea/dara"
 	"github.com/we11adam/uddns/internal/dnsname"
 	"github.com/we11adam/uddns/provider"
 	"github.com/we11adam/uddns/updater"
@@ -19,6 +17,7 @@ import (
 const (
 	defaultRegionID = "cn-hangzhou"
 	connectTimeout  = 5 * time.Second
+	readTimeout     = 10 * time.Second
 	recordTypeA     = "A"
 	recordTypeAAAA  = "AAAA"
 )
@@ -32,18 +31,9 @@ type Config struct {
 }
 
 type Aliyun struct {
-	config    *Config
-	client    *alidns.Client
-	transport http.RoundTripper
-}
-
-type contextRoundTripper struct {
-	ctx  context.Context
-	base http.RoundTripper
-}
-
-func (t contextRoundTripper) RoundTrip(request *http.Request) (*http.Response, error) {
-	return t.base.RoundTrip(request.WithContext(t.ctx))
+	config  *Config
+	client  *alidns.Client
+	runtime *dara.RuntimeOptions
 }
 
 func init() {
@@ -88,55 +78,41 @@ func New(config *Config) (*Aliyun, error) {
 	}
 
 	if config.RegionID == "" {
-		config.RegionID = "cn-hangzhou"
+		config.RegionID = defaultRegionID
 		slog.Debug("region ID not set, using default", "updater", "aliyun", "region_id", config.RegionID)
 	}
 
-	client, err := newClient(config, nil)
+	client, err := newClient(config)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Aliyun API client: %w", err)
 	}
 
 	return &Aliyun{
-		config:    config,
-		client:    client,
-		transport: defaultTransport(),
+		config: config,
+		client: client,
+		runtime: (&dara.RuntimeOptions{}).
+			SetConnectTimeout(int(connectTimeout.Milliseconds())).
+			SetReadTimeout(int(readTimeout.Milliseconds())),
 	}, nil
 }
 
-func newClient(config *Config, transport http.RoundTripper) (*alidns.Client, error) {
-	sdkConfig := sdk.NewConfig().WithScheme(requests.HTTPS)
-	sdkConfig.Transport = transport
-	credential := credentials.NewAccessKeyCredential(config.AccessKeyID, config.AccessKeySecret)
-	return alidns.NewClientWithOptions(config.RegionID, sdkConfig, credential)
-}
-
-func (a *Aliyun) clientWithContext(ctx context.Context) (*alidns.Client, error) {
-	transport := a.transport
-	if transport == nil {
-		transport = defaultTransport()
-	}
-	return newClient(a.config, contextRoundTripper{ctx: ctx, base: transport})
-}
-
-func defaultTransport() http.RoundTripper {
-	return &http.Transport{
-		Proxy:       http.ProxyFromEnvironment,
-		DialContext: sdk.Timeout(connectTimeout),
-	}
+func newClient(config *Config) (*alidns.Client, error) {
+	sdkConfig := (&openapi.Config{}).
+		SetAccessKeyId(config.AccessKeyID).
+		SetAccessKeySecret(config.AccessKeySecret).
+		SetRegionId(config.RegionID).
+		SetProtocol("HTTPS").
+		SetConnectTimeout(int(connectTimeout.Milliseconds())).
+		SetReadTimeout(int(readTimeout.Milliseconds()))
+	return alidns.NewClient(sdkConfig)
 }
 
 func (a *Aliyun) Update(ctx context.Context, ips *provider.IpResult) error {
-	client, err := a.clientWithContext(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to create Aliyun API client: %w", err)
-	}
-
 	if ips.IPv4 != "" {
 		if !provider.IsValidIPv4(ips.IPv4) {
 			return fmt.Errorf("invalid IPv4 address: %s", ips.IPv4)
 		}
-		if err := a.updateDNSRecord(ctx, client, recordTypeA, ips.IPv4); err != nil {
+		if err := a.updateDNSRecord(ctx, recordTypeA, ips.IPv4); err != nil {
 			return fmt.Errorf("failed to update IPv4 record: %w", err)
 		}
 	}
@@ -145,7 +121,7 @@ func (a *Aliyun) Update(ctx context.Context, ips *provider.IpResult) error {
 		if !provider.IsValidIPv6(ips.IPv6) {
 			return fmt.Errorf("invalid IPv6 address: %s", ips.IPv6)
 		}
-		if err := a.updateDNSRecord(ctx, client, recordTypeAAAA, ips.IPv6); err != nil {
+		if err := a.updateDNSRecord(ctx, recordTypeAAAA, ips.IPv6); err != nil {
 			return fmt.Errorf("failed to update IPv6 record: %w", err)
 		}
 	}
@@ -154,19 +130,15 @@ func (a *Aliyun) Update(ctx context.Context, ips *provider.IpResult) error {
 }
 
 func (a *Aliyun) Current(ctx context.Context) (*provider.IpResult, error) {
-	client, err := a.clientWithContext(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create Aliyun API client: %w", err)
-	}
 	result := &provider.IpResult{}
 
-	ipv4, err := a.currentDNSRecord(ctx, client, recordTypeA)
+	ipv4, err := a.currentDNSRecord(ctx, recordTypeA)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get Aliyun IPv4 record: %w", err)
 	}
 	result.IPv4 = ipv4
 
-	ipv6, err := a.currentDNSRecord(ctx, client, recordTypeAAAA)
+	ipv6, err := a.currentDNSRecord(ctx, recordTypeAAAA)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get Aliyun IPv6 record: %w", err)
 	}
@@ -175,84 +147,90 @@ func (a *Aliyun) Current(ctx context.Context) (*provider.IpResult, error) {
 	return result, nil
 }
 
-func (a *Aliyun) updateDNSRecord(ctx context.Context, client *alidns.Client, recordType, ip string) error {
+func (a *Aliyun) updateDNSRecord(ctx context.Context, recordType, ip string) error {
 	domain := a.config.Domain
 	domainName, rr, err := dnsname.SplitRecord(domain, a.config.Zone)
 	if err != nil {
 		return fmt.Errorf("invalid Aliyun DNS record: %w", err)
 	}
 
-	request := alidns.CreateDescribeSubDomainRecordsRequest()
-	request.SubDomain = domain
-	request.Type = recordType
-
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	response, err := client.DescribeSubDomainRecords(request)
+	request := (&alidns.DescribeSubDomainRecordsRequest{}).
+		SetSubDomain(domain).
+		SetType(recordType)
+	response, err := a.client.DescribeSubDomainRecordsWithContext(ctx, request, a.runtime)
 	if err != nil {
 		return fmt.Errorf("failed to get DNS records: %w", err)
 	}
 
-	if response.TotalCount > 0 && len(response.DomainRecords.Record) > 0 {
-		existingRecord := response.DomainRecords.Record[0]
+	records := responseRecords(response)
+	if responseTotalCount(response) > 0 && len(records) > 0 && records[0] != nil {
+		existingRecord := records[0]
+		existingValue := dara.StringValue(existingRecord.Value)
+		recordID := dara.StringValue(existingRecord.RecordId)
 
-		if existingRecord.Value == ip {
+		if existingValue == ip {
 			slog.Debug("skipping current DNS record", "updater", "aliyun", "record", domain, "record_type", recordType, "ip", ip)
 			return nil
 		}
 
-		updateRequest := alidns.CreateUpdateDomainRecordRequest()
-		updateRequest.RecordId = existingRecord.RecordId
-		updateRequest.RR = rr
-		updateRequest.Type = recordType
-		updateRequest.Value = ip
-
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		_, err := client.UpdateDomainRecord(updateRequest)
+		updateRequest := (&alidns.UpdateDomainRecordRequest{}).
+			SetRecordId(recordID).
+			SetRR(rr).
+			SetType(recordType).
+			SetValue(ip)
+		_, err := a.client.UpdateDomainRecordWithContext(ctx, updateRequest, a.runtime)
 		if err != nil {
 			return fmt.Errorf("failed to update DNS record: %w", err)
 		}
 
-		slog.Info("updated DNS record", "updater", "aliyun", "record", domain, "record_type", recordType, "ip", ip, "record_id", existingRecord.RecordId)
+		slog.Info("updated DNS record", "updater", "aliyun", "record", domain, "record_type", recordType, "ip", ip, "record_id", recordID)
 	} else {
-		addRequest := alidns.CreateAddDomainRecordRequest()
-		addRequest.DomainName = domainName
-		addRequest.RR = rr
-		addRequest.Type = recordType
-		addRequest.Value = ip
-
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		response, err := client.AddDomainRecord(addRequest)
+		addRequest := (&alidns.AddDomainRecordRequest{}).
+			SetDomainName(domainName).
+			SetRR(rr).
+			SetType(recordType).
+			SetValue(ip)
+		response, err := a.client.AddDomainRecordWithContext(ctx, addRequest, a.runtime)
 		if err != nil {
 			return fmt.Errorf("failed to add DNS record: %w", err)
 		}
 
-		slog.Info("added DNS record", "updater", "aliyun", "record", domain, "record_type", recordType, "ip", ip, "record_id", response.RecordId)
+		recordID := ""
+		if response != nil && response.Body != nil {
+			recordID = dara.StringValue(response.Body.RecordId)
+		}
+		slog.Info("added DNS record", "updater", "aliyun", "record", domain, "record_type", recordType, "ip", ip, "record_id", recordID)
 	}
 
 	return nil
 }
 
-func (a *Aliyun) currentDNSRecord(ctx context.Context, client *alidns.Client, recordType string) (string, error) {
-	request := alidns.CreateDescribeSubDomainRecordsRequest()
-	request.SubDomain = a.config.Domain
-	request.Type = recordType
-
-	if err := ctx.Err(); err != nil {
-		return "", err
-	}
-	response, err := client.DescribeSubDomainRecords(request)
+func (a *Aliyun) currentDNSRecord(ctx context.Context, recordType string) (string, error) {
+	request := (&alidns.DescribeSubDomainRecordsRequest{}).
+		SetSubDomain(a.config.Domain).
+		SetType(recordType)
+	response, err := a.client.DescribeSubDomainRecordsWithContext(ctx, request, a.runtime)
 	if err != nil {
 		return "", fmt.Errorf("failed to get DNS records: %w", err)
 	}
-	if response.TotalCount == 0 || len(response.DomainRecords.Record) == 0 {
+	records := responseRecords(response)
+	if responseTotalCount(response) == 0 || len(records) == 0 || records[0] == nil {
 		return "", nil
 	}
 
-	return response.DomainRecords.Record[0].Value, nil
+	return dara.StringValue(records[0].Value), nil
+}
+
+func responseRecords(response *alidns.DescribeSubDomainRecordsResponse) []*alidns.DescribeSubDomainRecordsResponseBodyDomainRecordsRecord {
+	if response == nil || response.Body == nil || response.Body.DomainRecords == nil {
+		return nil
+	}
+	return response.Body.DomainRecords.Record
+}
+
+func responseTotalCount(response *alidns.DescribeSubDomainRecordsResponse) int64 {
+	if response == nil || response.Body == nil {
+		return 0
+	}
+	return dara.Int64Value(response.Body.TotalCount)
 }

@@ -4,21 +4,20 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"sync"
 	"testing"
 	"time"
 
-	"github.com/aliyun/alibaba-cloud-sdk-go/sdk/requests"
+	"github.com/alibabacloud-go/tea/dara"
 	"github.com/we11adam/uddns/provider"
 )
 
-type roundTripFunc func(*http.Request) (*http.Response, error)
+type httpClientFunc func(*http.Request, *http.Transport) (*http.Response, error)
 
-func (f roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
-	return f(request)
+func (f httpClientFunc) Call(request *http.Request, transport *http.Transport) (*http.Response, error) {
+	return f(request, transport)
 }
 
-func TestNewUsesHTTPS(t *testing.T) {
+func TestNewUsesHTTPSAndTimeouts(t *testing.T) {
 	aliyun, err := New(&Config{
 		AccessKeyID:     "access-key-id",
 		AccessKeySecret: "access-key-secret",
@@ -28,8 +27,20 @@ func TestNewUsesHTTPS(t *testing.T) {
 		t.Fatalf("create Aliyun updater: %v", err)
 	}
 
-	if got := aliyun.client.GetConfig().Scheme; got != requests.HTTPS {
-		t.Fatalf("expected Aliyun API scheme %q, got %q", requests.HTTPS, got)
+	if got := dara.StringValue(aliyun.client.Protocol); got != "HTTPS" {
+		t.Fatalf("expected Aliyun API protocol HTTPS, got %q", got)
+	}
+	if got := dara.IntValue(aliyun.client.ConnectTimeout); got != int(connectTimeout.Milliseconds()) {
+		t.Fatalf("expected connect timeout %dms, got %dms", connectTimeout.Milliseconds(), got)
+	}
+	if got := dara.IntValue(aliyun.client.ReadTimeout); got != int(readTimeout.Milliseconds()) {
+		t.Fatalf("expected read timeout %dms, got %dms", readTimeout.Milliseconds(), got)
+	}
+	if got := dara.IntValue(aliyun.runtime.ConnectTimeout); got != int(connectTimeout.Milliseconds()) {
+		t.Fatalf("expected runtime connect timeout %dms, got %dms", connectTimeout.Milliseconds(), got)
+	}
+	if got := dara.IntValue(aliyun.runtime.ReadTimeout); got != int(readTimeout.Milliseconds()) {
+		t.Fatalf("expected runtime read timeout %dms, got %dms", readTimeout.Milliseconds(), got)
 	}
 }
 
@@ -70,10 +81,12 @@ func TestUpdateCancelsInFlightRequest(t *testing.T) {
 		t.Fatalf("create Aliyun updater: %v", err)
 	}
 
-	started := make(chan struct{})
-	var startedOnce sync.Once
-	aliyun.transport = roundTripFunc(func(request *http.Request) (*http.Response, error) {
-		startedOnce.Do(func() { close(started) })
+	requests := make(chan *http.Request, 1)
+	aliyun.client.HttpClient = httpClientFunc(func(request *http.Request, _ *http.Transport) (*http.Response, error) {
+		select {
+		case requests <- request:
+		default:
+		}
 		<-request.Context().Done()
 		return nil, request.Context().Err()
 	})
@@ -85,7 +98,10 @@ func TestUpdateCancelsInFlightRequest(t *testing.T) {
 	}()
 
 	select {
-	case <-started:
+	case request := <-requests:
+		if request.URL.Scheme != "https" {
+			t.Fatalf("expected HTTPS request, got %s", request.URL.Scheme)
+		}
 	case <-time.After(time.Second):
 		t.Fatal("timed out waiting for Aliyun request to start")
 	}
