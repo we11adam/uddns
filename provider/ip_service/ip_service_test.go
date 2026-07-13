@@ -3,6 +3,7 @@ package ip_service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -162,6 +163,116 @@ func TestGetIPsDoesNotRetryPermanentClientError(t *testing.T) {
 	if got := attempts.Load(); got != 1 {
 		t.Fatalf("attempts = %d, want 1", got)
 	}
+}
+
+func TestGetIPsJoinsRedactedErrorsWhenAllServicesFail(t *testing.T) {
+	const (
+		firstName    = "first.test"
+		secondName   = "second.test"
+		secret       = "service-secret"
+		responseBody = "sensitive response body"
+	)
+	firstURL := "https://first.invalid/ip?token=" + secret
+	secondURL := "https://second.invalid/ip"
+	setTestServices(t, map[string]string{firstName: firstURL, secondName: secondURL})
+
+	client := createClient("tcp4")
+	client.SetRetryCount(0)
+	client.SetTransport(roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		switch request.URL.Hostname() {
+		case "first.invalid":
+			return nil, errors.New("request failed for " + request.URL.String())
+		case "second.invalid":
+			return &http.Response{
+				StatusCode: http.StatusBadGateway,
+				Header:     make(http.Header),
+				Body:       io.NopCloser(strings.NewReader(responseBody)),
+				Request:    request,
+			}, nil
+		default:
+			return nil, fmt.Errorf("unexpected request host %q", request.URL.Host)
+		}
+	}))
+	names := ServiceNames{firstName, secondName}
+	service := &IpService{client4: client, client6: createClient("tcp6"), names: &names}
+
+	_, err := service.GetIPs(context.Background(), provider.FamilyRequest{IPv4: true})
+	if err == nil {
+		t.Fatal("expected all-service failure")
+	}
+	message := err.Error()
+	for _, expected := range []string{firstName, secondName, "request failed", "HTTP status 502"} {
+		if !strings.Contains(message, expected) {
+			t.Fatalf("joined error %q does not contain %q", message, expected)
+		}
+	}
+	for _, sensitive := range []string{secret, firstURL, secondURL, responseBody} {
+		if strings.Contains(message, sensitive) {
+			t.Fatalf("joined error leaks %q: %q", sensitive, message)
+		}
+	}
+}
+
+func TestGetIPsReturnsFirstSuccessAfterEarlierFailure(t *testing.T) {
+	const (
+		firstName  = "first.test"
+		secondName = "second.test"
+	)
+	setTestServices(t, map[string]string{
+		firstName:  "https://first.invalid/ip",
+		secondName: "https://second.invalid/ip",
+	})
+
+	client := createClient("tcp4")
+	client.SetRetryCount(0)
+	var calls []string
+	client.SetTransport(roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		calls = append(calls, request.URL.Hostname())
+		status := http.StatusServiceUnavailable
+		body := "temporary failure"
+		if request.URL.Hostname() == "second.invalid" {
+			status = http.StatusOK
+			body = "8.8.8.8"
+		}
+		return &http.Response{
+			StatusCode: status,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader(body)),
+			Request:    request,
+		}, nil
+	}))
+	names := ServiceNames{firstName, secondName}
+	service := &IpService{client4: client, client6: createClient("tcp6"), names: &names}
+
+	result, err := service.GetIPs(context.Background(), provider.FamilyRequest{IPv4: true})
+	if err != nil {
+		t.Fatalf("get IPs after fallback success: %v", err)
+	}
+	if result.IPv4 != "8.8.8.8" {
+		t.Fatalf("IPv4 = %q, want 8.8.8.8", result.IPv4)
+	}
+	if got, want := strings.Join(calls, ","), "first.invalid,second.invalid"; got != want {
+		t.Fatalf("request order = %q, want %q", got, want)
+	}
+}
+
+func setTestServices(t *testing.T, services map[string]string) {
+	t.Helper()
+	previous := make(map[string]string, len(services))
+	existed := make(map[string]bool, len(services))
+	for name, serviceURL := range services {
+		previous[name], existed[name] = SERVICES[name]
+		SERVICES[name] = serviceURL
+	}
+	t.Cleanup(func() {
+		for name := range services {
+			if existed[name] {
+				SERVICES[name] = previous[name]
+			} else {
+				delete(SERVICES, name)
+			}
+		}
+	})
 }
 
 func TestGetIPsStopsRetriesWhenContextIsCanceled(t *testing.T) {

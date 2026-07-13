@@ -2,6 +2,7 @@ package ip_service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/go-resty/resty/v2"
+	"github.com/we11adam/uddns/internal/redact"
 	"github.com/we11adam/uddns/internal/restyretry"
 	"github.com/we11adam/uddns/provider"
 )
@@ -141,6 +143,7 @@ func (i *IpService) GetIPs(ctx context.Context, families provider.FamilyRequest)
 		return nil, fmt.Errorf("no IP families requested")
 	}
 	result := &provider.IpResult{}
+	var failures []error
 
 	if families.IPv4 {
 		ipv4, err := i.getIP(ctx, i.client4, "ipv4")
@@ -148,6 +151,8 @@ func (i *IpService) GetIPs(ctx context.Context, families provider.FamilyRequest)
 			result.IPv4 = ipv4
 		} else if ctx.Err() != nil {
 			return nil, ctx.Err()
+		} else {
+			failures = append(failures, fmt.Errorf("IPv4 lookup failed: %w", err))
 		}
 	}
 
@@ -157,48 +162,65 @@ func (i *IpService) GetIPs(ctx context.Context, families provider.FamilyRequest)
 			result.IPv6 = ipv6
 		} else if ctx.Err() != nil {
 			return nil, ctx.Err()
+		} else {
+			failures = append(failures, fmt.Errorf("IPv6 lookup failed: %w", err))
 		}
 	}
 
 	if result.IPv4 == "" && result.IPv6 == "" {
-		return nil, fmt.Errorf("failed to get requested IP addresses")
+		if len(failures) == 0 {
+			failures = append(failures, fmt.Errorf("failed to get requested IP addresses"))
+		}
+		return nil, errors.Join(failures...)
 	}
 
 	return result, nil
 }
 
 func (i *IpService) getIP(ctx context.Context, client *resty.Client, family string) (string, error) {
+	var failures []error
 	for _, name := range *i.names {
 		if err := ctx.Err(); err != nil {
 			return "", err
 		}
 		serviceURL, ok := SERVICES[name]
 		if !ok {
+			failures = append(failures, fmt.Errorf("IP service %q (%s) is not registered", name, family))
 			continue
 		}
 
-		slog.Debug("requesting IP address", "provider", "ip_service", "service", serviceURL, "family", family)
+		slog.Debug("requesting IP address", "provider", "ip_service", "service", name, "family", family)
 		requestCtx, cancel := context.WithTimeout(ctx, requestTimeout)
 		resp, err := client.R().SetContext(requestCtx).Get(serviceURL)
 		cancel()
 		if err != nil {
-			slog.Debug("failed to request IP address", "provider", "ip_service", "service", serviceURL, "family", family, "error", err)
+			if ctx.Err() != nil {
+				return "", ctx.Err()
+			}
+			safeErr := redact.Error(err, serviceURL)
+			slog.Debug("failed to request IP address", "provider", "ip_service", "service", name, "family", family, "error", safeErr)
+			failures = append(failures, fmt.Errorf("IP service %q (%s) request failed: %w", name, family, safeErr))
 			continue
 		}
 		if resp.StatusCode() != 200 {
-			slog.Debug("unexpected IP address response status", "provider", "ip_service", "service", serviceURL, "family", family, "status", resp.StatusCode())
+			slog.Debug("unexpected IP address response status", "provider", "ip_service", "service", name, "family", family, "status", resp.StatusCode())
+			failures = append(failures, fmt.Errorf("IP service %q (%s) returned unexpected HTTP status %d", name, family, resp.StatusCode()))
 			continue
 		}
 		ip := string(resp.Body())
 		ip = strings.TrimSpace(ip)
 		if !isValidIPFamily(ip, family) {
-			slog.Debug("ignoring invalid IP address response", "provider", "ip_service", "service", serviceURL, "family", family, "ip", ip)
+			slog.Debug("ignoring invalid IP address response", "provider", "ip_service", "service", name, "family", family)
+			failures = append(failures, fmt.Errorf("IP service %q (%s) returned an invalid address", name, family))
 			continue
 		}
 		slog.Debug("got IP address", "provider", "ip_service", "family", family, "ip", ip)
 		return ip, nil
 	}
-	return "", fmt.Errorf("failed to get IP address from all services")
+	if len(failures) == 0 {
+		failures = append(failures, fmt.Errorf("no registered IP services configured for %s", family))
+	}
+	return "", errors.Join(failures...)
 }
 
 func isValidIPFamily(ip, family string) bool {
