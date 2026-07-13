@@ -6,6 +6,33 @@ All notable changes to UDDNS are documented here, based on the Git commit histor
 
 No changes yet.
 
+## v1.7.0 - 2026-07-13
+
+### Added
+
+- Added bounded retries for transient IP-service and DNS update failures, plus per-job exponential backoff with jitter.
+- Added release SBOMs and GitHub Actions provenance attestations for release artifacts and `install.sh`.
+- Expanded CI with race-enabled tests, a coverage floor, Staticcheck, `govulncheck`, installer tests, and ShellCheck; release actions and tools are pinned to fixed revisions or versions.
+
+### Changed
+
+- Raised the minimum Go version to 1.26.5, refreshed dependencies, and migrated Aliyun DNS support to the maintained Alibaba Cloud SDK.
+- Hardened outbound HTTP with HTTPS for the bundled public-IP services and Aliyun, same-origin HTTPS redirect restrictions, strict proxy validation, timeouts and response-body limits, credential redaction, and context cancellation.
+- Public IP services now reject non-public addresses; provider and verified addresses are normalized before comparison, and network-interface address selection is deterministic.
+- Automatic DNS verification now queries only configured address families, is periodically throttled, and no longer blocks an IP update when verification is temporarily unavailable.
+- The installer now downloads the release asset, validates tar/zip members before extraction, and uses HTTPS-only downloads with timeouts and retries while retaining checksum verification.
+- systemd installations now run as a dedicated unprivileged `uddns` user, pass configuration through a systemd credential, and apply stricter input validation, sandboxing, and private permissions.
+- Automatic `.env` loading has been removed. On Unix, configuration files must not be accessible to group or other users (use `chmod 600`), and `UDDNS_INTERVAL` is limited to 10 seconds–24 hours.
+
+### Fixed
+
+- Fixed DNS reconciliation so initially synchronized records are not rewritten, absent address families are preserved, and duplicate Cloudflare/Aliyun records are reconciled.
+- Fixed DNS updater domain validation and rejected nil integration configurations before use.
+- Fixed repeated IP-change and update-failure notifications and nil notifier handling.
+- Fixed DuckDNS and Telegram success-response validation, response-body cleanup and limits, and preservation of public-IP service failure details.
+- Fixed file logging permissions and rejected symlink or non-regular log targets.
+- Fixed plugin registry races, ambiguous aliases, and nil constructor results.
+
 ## v1.6.1 - 2026-06-13
 
 ### Added

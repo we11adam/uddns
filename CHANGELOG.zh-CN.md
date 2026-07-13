@@ -6,6 +6,33 @@
 
 暂无变更。
 
+## v1.7.0 - 2026-07-13
+
+### 新增
+
+- 为瞬时公网 IP 服务和 DNS 更新故障增加有界重试，并为每个 job 增加带抖动的指数退避。
+- 发布产物新增 SBOM，并为发布产物和 `install.sh` 生成 GitHub Actions 来源证明。
+- CI 新增 race detector、覆盖率下限、Staticcheck、`govulncheck`、安装器测试和 ShellCheck；发布 Actions 和工具固定到明确的 revision 或版本。
+
+### 变更
+
+- 最低 Go 版本提升到 1.26.5，更新依赖，并将阿里云 DNS 支持迁移到仍受维护的 Alibaba Cloud SDK。
+- 加固出站 HTTP：内置公网 IP 服务和阿里云改用 HTTPS，限制为同源 HTTPS 重定向，严格校验代理，并增加请求超时、响应体大小限制、凭据脱敏和 context 取消传递。
+- 公网 IP 服务现在会拒绝非公网地址；provider 和 DNS 验证返回的地址会在比较前规范化，本机网卡地址选择也改为确定性行为。
+- 自动 DNS 验证现在仅查询已配置的地址族并进行周期限频；验证暂时不可用时不再阻塞 IP 更新。
+- 安装器改为下载 release asset，解压前校验 tar/zip 成员，并在保留校验和验证的基础上增加仅 HTTPS 下载、超时和重试。
+- systemd 安装改为使用专用的非特权 `uddns` 用户运行，通过 systemd credential 提供配置，并采用更严格的输入校验、沙箱和私有权限。
+- 不再自动加载 `.env` 文件。Unix 下配置文件不得对 group/other 用户开放（可执行 `chmod 600`），且 `UDDNS_INTERVAL` 现在限制为 10 秒至 24 小时。
+
+### 修复
+
+- 修复 DNS 对账：不再重写初始状态已同步的记录，保留缺失地址族，并对 Cloudflare/阿里云重复记录进行统一更新。
+- 修复 DNS updater 域名校验，并在使用前拒绝 nil 集成配置。
+- 修复重复 IP 变更/更新失败通知和 nil notifier 处理。
+- 修复 DuckDNS 与 Telegram 成功响应校验、响应体清理与大小限制，以及公网 IP 服务失败详情丢失。
+- 修复文件日志权限，并拒绝符号链接或非普通文件日志目标。
+- 修复插件 registry 的并发竞争、别名冲突和构造函数返回 nil 的问题。
+
 ## v1.6.1 - 2026-06-13
 
 ### 新增

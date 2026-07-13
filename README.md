@@ -15,7 +15,8 @@ notifications when the IP address or update status changes.
 - Configurable update interval.
 - Structured logs with optional daily rotated file logging and retention.
 - Curl installer with optional systemd service installation.
-- GoReleaser-based release artifacts for multiple platforms.
+- GoReleaser-based release artifacts for multiple platforms, with SBOMs and
+  GitHub Actions provenance attestations.
 
 ## Installation
 
@@ -34,8 +35,20 @@ gh attestation verify install.sh --repo we11adam/uddns
 sh install.sh
 ```
 
+The installer downloads release archives only over HTTPS, verifies their
+checksums, and validates archive contents before extraction. Each release
+archive also has an attached SBOM and a GitHub Actions provenance attestation;
+after downloading an archive manually, verify it with:
+
+```shell
+gh attestation verify /path/to/archive --repo we11adam/uddns
+```
+
 The installer detects systemd and asks whether to install UDDNS as a systemd
-service. For non-interactive systemd installation:
+service. The generated unit runs as the dedicated unprivileged `uddns` user and
+passes the configuration through a protected systemd credential, so the source
+config can remain owned by root with mode `0600`. For non-interactive systemd
+installation:
 
 ```shell
 curl -fsSL https://github.com/we11adam/uddns/releases/latest/download/install.sh | sh -s -- --systemd --config /etc/uddns.yaml
@@ -54,7 +67,11 @@ Useful installer options:
 --log-retention-days <n>     Calendar days of logs to keep
 ```
 
-You can also install with Go:
+Installer-provided install, config, and log paths must be absolute. If the
+selected config is missing or is not a readable regular file, the systemd unit
+is enabled but not started.
+
+You can also install from source with Go 1.26.5 or newer:
 
 ```shell
 go install github.com/we11adam/uddns@latest
@@ -71,6 +88,16 @@ UDDNS looks for a config file in this order:
 3. `./uddns.yaml`.
 4. `~/.config/uddns.yaml`.
 5. `/etc/uddns.yaml`.
+
+An unreadable path selected explicitly with `-c` or `UDDNS_CONFIG` is an error
+and does not fall back to another location. UDDNS does not load `.env` files
+automatically; set environment variables in your shell or service manager. On
+Unix, the selected config file must not grant any permissions to group or other
+users. Secure it before starting UDDNS:
+
+```shell
+chmod 600 /etc/uddns.yaml
+```
 
 ### Simple Mode
 
@@ -211,6 +238,10 @@ sequentially on the global update interval. Without `jobs`, UDDNS behaves as a
 single implicit `default` job using the simple-mode config. Notifications from
 named jobs are prefixed with the job name.
 
+Transient public-IP service and DNS update requests are retried. Repeated
+provider, strict-verification, or updater failures apply exponential backoff
+with jitter only to the affected job; other jobs continue to run.
+
 Jobs select provider and updater implementation names. Jobs that use the same
 implementation share that implementation's configuration, for example all
 `cloudflare` jobs use `updaters.cloudflare` credentials.
@@ -227,8 +258,13 @@ Verify behavior:
 
 When updater API verification is active, UDDNS updates if the detected IP
 differs from the job's last successful IP, or if the current DNS record returned
-by the updater API does not match the detected IP. If verification fails, that
-job skips the update for the current cycle.
+by the updater API does not match the detected IP. A matching record on startup
+initializes local state without an unnecessary rewrite. `auto` verifies on
+startup, when the provider IP changes, and periodically while stable, querying
+only the configured address families. A temporary `auto` verification failure
+does not block an update caused by a changed provider IP. `updater_api` remains
+strict, verifies every cycle, and skips the job's current cycle if verification
+fails.
 
 ### Providers
 
@@ -239,6 +275,7 @@ job skips the update for the current cycle.
   - `insecure`: Skip TLS verification. Optional, defaults to `true`.
 - `ip_service`: Reads the public IP from external services.
   - Supported services: `ip.fm`, `ifconfig.me`, `ip.sb`, `3322.org`.
+  - Only public, globally routable addresses are accepted.
 - `netif`: Reads IP addresses from a local network interface.
   - `name`: Network interface name.
 
@@ -249,7 +286,7 @@ job skips the update for the current cycle.
   - `email` and `apikey`: Alternative Cloudflare API key authentication.
   - `domain`: DNS record to update, for example `ddns.example.com`.
   - `zone`: Optional DNS zone, for example `example.co.uk`.
-  - `proxy`: Optional HTTP proxy.
+  - `proxy`: Optional HTTP or HTTPS proxy.
 - `aliyun`:
   - `accesskeyid`: Aliyun access key ID.
   - `accesskeysecret`: Aliyun access key secret.
@@ -268,7 +305,11 @@ job skips the update for the current cycle.
 - `telegram`:
   - `token`: Telegram bot token.
   - `chat_id`: Telegram chat ID.
-  - `proxy`: Optional HTTP proxy.
+  - `proxy`: Optional HTTP or HTTPS proxy.
+
+Cloudflare and Telegram proxy values must be absolute URLs with a host. URL
+userinfo credentials are supported; paths other than `/`, queries, and
+fragments are rejected.
 
 ## Running
 
@@ -290,7 +331,9 @@ Or run in the background:
 nohup uddns -c /etc/uddns.yaml > uddns.log 2>&1 &
 ```
 
-The default update interval is `30s`. Override it with `UDDNS_INTERVAL`:
+The default update interval is `30s`. `UDDNS_INTERVAL` accepts Go duration
+strings from `10s` through `24h`; invalid or out-of-range values emit a warning
+and fall back to `30s`:
 
 ```shell
 UDDNS_INTERVAL=5m uddns -c /etc/uddns.yaml
@@ -322,6 +365,9 @@ Environment variables override config-file logging values:
 - `UDDNS_LOG_LEVEL`
 - `UDDNS_LOG_DIR`
 - `UDDNS_LOG_RETENTION_DAYS`
+
+UDDNS creates managed log directories with mode `0700` and log files with mode
+`0600`. Symlinks and non-regular log targets are rejected.
 
 ## Changelog
 
