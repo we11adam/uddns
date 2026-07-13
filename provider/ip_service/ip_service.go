@@ -21,6 +21,8 @@ var SERVICES = map[string]string{
 	"3322.org":    "https://members.3322.org/dyndns/getip",
 }
 
+const maxServiceRedirects = 3
+
 type ServiceNames []string
 
 type IpService struct {
@@ -75,8 +77,29 @@ func createClient(network string) *resty.Client {
 	}
 	httpClient.SetTransport(transport)
 	httpClient.SetTimeout(5 * time.Second)
+	httpClient.SetRedirectPolicy(sameOriginHTTPSRedirectPolicy(maxServiceRedirects))
 	httpClient.RemoveProxy().SetHeaders(map[string]string{"User-Agent": "curl/8.6.0"})
 	return httpClient
+}
+
+func sameOriginHTTPSRedirectPolicy(maxRedirects int) resty.RedirectPolicy {
+	return resty.RedirectPolicyFunc(func(req *http.Request, via []*http.Request) error {
+		if len(via) == 0 {
+			return fmt.Errorf("redirect rejected: missing original request")
+		}
+		if len(via) > maxRedirects {
+			return fmt.Errorf("redirect rejected: stopped after %d redirects", maxRedirects)
+		}
+
+		origin := via[0].URL
+		if !strings.EqualFold(origin.Scheme, "https") || !strings.EqualFold(req.URL.Scheme, origin.Scheme) {
+			return fmt.Errorf("redirect rejected: scheme must remain HTTPS")
+		}
+		if !strings.EqualFold(req.URL.Host, origin.Host) {
+			return fmt.Errorf("redirect rejected: host must remain %q", origin.Host)
+		}
+		return nil
+	})
 }
 
 func (i *IpService) GetIPs() (*provider.IpResult, error) {
