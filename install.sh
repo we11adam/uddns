@@ -436,6 +436,21 @@ verify_checksum() {
 	log "Verified checksum for ${asset_name}"
 }
 
+download_file() {
+	url="$1"
+	output="$2"
+
+	curl -fsSL \
+		--proto '=https' \
+		--proto-redir '=https' \
+		--connect-timeout 10 \
+		--max-time 300 \
+		--retry 3 \
+		--retry-delay 1 \
+		--retry-max-time 300 \
+		"$url" -o "$output"
+}
+
 download_release() {
 	tmpdir="$1"
 	os="$2"
@@ -445,7 +460,7 @@ download_release() {
 	api_url="$(release_api_url)"
 
 	log "Fetching release metadata from ${api_url}"
-	curl -fsSL "$api_url" -o "$release_json"
+	download_file "$api_url" "$release_json"
 
 	resolved_version="$(extract_tag "$release_json")"
 	[ -n "$resolved_version" ] || resolved_version="$VERSION"
@@ -455,13 +470,13 @@ download_release() {
 
 	archive="${tmpdir}/archive"
 	log "Downloading ${REPO} ${resolved_version} for ${os}/${arch}"
-	curl -fL "$asset_url" -o "$archive"
+	download_file "$asset_url" "$archive"
 
 	checksum_url="$(find_checksum_url "$release_json")"
 	[ -n "$checksum_url" ] || fail "no checksums.txt asset found in ${resolved_version}"
 	checksums="${tmpdir}/checksums.txt"
 	log "Downloading checksums for ${resolved_version}"
-	curl -fsSL "$checksum_url" -o "$checksums"
+	download_file "$checksum_url" "$checksums"
 	verify_checksum "$archive" "$checksums" "$asset_url"
 
 	extract_dir="${tmpdir}/extract"

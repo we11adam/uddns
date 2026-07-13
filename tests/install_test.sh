@@ -124,4 +124,47 @@ assert_systemctl_calls "$(printf '%s\n' \
 	'systemctl enable uddns-test@blue_1.service' \
 	'systemctl restart uddns-test@blue_1.service')"
 
+download_release_body="$(sed -n '/^download_release() {/,/^}/p' "$root_dir/install.sh")"
+download_calls="$(printf '%s\n' "$download_release_body" | grep -c '^[[:space:]]*download_file ' || true)"
+if [ "$download_calls" -ne 3 ]; then
+	printf 'expected all three release downloads to use download_file, got %s\n' "$download_calls" >&2
+	exit 1
+fi
+if printf '%s\n' "$download_release_body" | grep -q '^[[:space:]]*curl '; then
+	printf 'download_release contains a direct curl call\n' >&2
+	exit 1
+fi
+
+fake_bin="$test_dir/fake-bin"
+curl_calls="$test_dir/curl-calls"
+mkdir -p "$fake_bin"
+cat >"$fake_bin/curl" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$@" >>"$CURL_CALLS_FILE"
+EOF
+chmod +x "$fake_bin/curl"
+CURL_CALLS_FILE="$curl_calls"
+export CURL_CALLS_FILE
+PATH="$fake_bin:$PATH"
+export PATH
+
+download_url="https://downloads.example.test/uddns.tar.gz"
+download_output="$test_dir/download-output"
+download_file "$download_url" "$download_output"
+expected_curl_calls="$(printf '%s\n' \
+	'-fsSL' \
+	'--proto' '=https' \
+	'--proto-redir' '=https' \
+	'--connect-timeout' '10' \
+	'--max-time' '300' \
+	'--retry' '3' \
+	'--retry-delay' '1' \
+	'--retry-max-time' '300' \
+	"$download_url" '-o' "$download_output")"
+actual_curl_calls="$(cat "$curl_calls")"
+if [ "$actual_curl_calls" != "$expected_curl_calls" ]; then
+	printf 'unexpected curl arguments:\n%s\n' "$actual_curl_calls" >&2
+	exit 1
+fi
+
 printf 'install.sh input validation tests passed\n'
