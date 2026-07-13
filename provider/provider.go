@@ -1,6 +1,8 @@
 package provider
 
 import (
+	"context"
+
 	"github.com/we11adam/uddns/internal/registry"
 )
 
@@ -10,7 +12,7 @@ type IpResult struct {
 }
 
 type Provider interface {
-	GetIPs() (*IpResult, error)
+	GetIPs(context.Context) (*IpResult, error)
 }
 
 type ConfigReader = registry.ConfigReader

@@ -2,6 +2,7 @@ package cloudflare
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -111,12 +112,10 @@ func newHTTPClient(proxy *url.URL) *http.Client {
 	return &http.Client{Transport: transport, Timeout: requestTimeout}
 }
 
-func (c *Cloudflare) Update(ips *provider.IpResult) error {
-	if err := c.ensureZoneID(); err != nil {
+func (c *Cloudflare) Update(ctx context.Context, ips *provider.IpResult) error {
+	if err := c.ensureZoneID(ctx); err != nil {
 		return err
 	}
-
-	ctx := context.Background()
 
 	if ips.IPv4 != "" {
 		if !provider.IsValidIPv4(ips.IPv4) {
@@ -139,12 +138,10 @@ func (c *Cloudflare) Update(ips *provider.IpResult) error {
 	return nil
 }
 
-func (c *Cloudflare) Current() (*provider.IpResult, error) {
-	if err := c.ensureZoneID(); err != nil {
+func (c *Cloudflare) Current(ctx context.Context) (*provider.IpResult, error) {
+	if err := c.ensureZoneID(ctx); err != nil {
 		return nil, err
 	}
-
-	ctx := context.Background()
 	result := &provider.IpResult{}
 
 	ipv4, err := c.currentDNSRecord(ctx, recordTypeA)
@@ -162,7 +159,7 @@ func (c *Cloudflare) Current() (*provider.IpResult, error) {
 	return result, nil
 }
 
-func (c *Cloudflare) ensureZoneID() error {
+func (c *Cloudflare) ensureZoneID(ctx context.Context) error {
 	if c.zoneID != "" {
 		return nil
 	}
@@ -171,7 +168,7 @@ func (c *Cloudflare) ensureZoneID() error {
 	if err != nil {
 		return fmt.Errorf("invalid Cloudflare DNS record: %w", err)
 	}
-	zoneID, err := c.client.ZoneIDByName(zone)
+	zoneID, err := c.zoneIDByName(ctx, zone)
 	if err != nil {
 		c.zoneID = ""
 		return fmt.Errorf("failed to get Cloudflare zone ID for zone %s: %w", zone, err)
@@ -180,6 +177,22 @@ func (c *Cloudflare) ensureZoneID() error {
 	c.zoneID = zoneID
 	slog.Debug("zone ID retrieved", "updater", "cloudflare", "record", c.config.Domain, "zone", zone, "zone_id", zoneID)
 	return nil
+}
+
+func (c *Cloudflare) zoneIDByName(ctx context.Context, zone string) (string, error) {
+	response, err := c.client.ListZonesContext(ctx, cloudflare.WithZoneFilters(zone, "", ""))
+	if err != nil {
+		return "", fmt.Errorf("ListZonesContext command failed: %w", err)
+	}
+
+	switch len(response.Result) {
+	case 0:
+		return "", errors.New("zone could not be found")
+	case 1:
+		return response.Result[0].ID, nil
+	default:
+		return "", errors.New("ambiguous zone name; an account ID might help")
+	}
 }
 
 func (c *Cloudflare) updateDNSRecord(ctx context.Context, recordType, ip string) error {

@@ -16,7 +16,7 @@ type staticProvider struct {
 	err    error
 }
 
-func (p *staticProvider) GetIPs() (*provider.IpResult, error) {
+func (p *staticProvider) GetIPs(_ context.Context) (*provider.IpResult, error) {
 	return p.result, p.err
 }
 
@@ -26,7 +26,7 @@ type recordingUpdater struct {
 	err   error
 }
 
-func (u *recordingUpdater) Update(ips *provider.IpResult) error {
+func (u *recordingUpdater) Update(_ context.Context, ips *provider.IpResult) error {
 	u.calls++
 	u.last = ips
 	return u.err
@@ -38,7 +38,7 @@ type recordReadingUpdater struct {
 	err     error
 }
 
-func (u *recordReadingUpdater) Current() (*provider.IpResult, error) {
+func (u *recordReadingUpdater) Current(_ context.Context) (*provider.IpResult, error) {
 	return u.current, u.err
 }
 
@@ -47,9 +47,19 @@ type recordingNotifier struct {
 	err           error
 }
 
-func (n *recordingNotifier) Notify(notification notifier.Notification) error {
+func (n *recordingNotifier) Notify(_ context.Context, notification notifier.Notification) error {
 	n.notifications = append(n.notifications, notification)
 	return n.err
+}
+
+type blockingProvider struct {
+	started chan struct{}
+}
+
+func (p *blockingProvider) GetIPs(ctx context.Context) (*provider.IpResult, error) {
+	close(p.started)
+	<-ctx.Done()
+	return nil, ctx.Err()
 }
 
 func TestRunOnceUpdatesDNSWhenIPChanges(t *testing.T) {
@@ -165,6 +175,32 @@ func TestRunReturnsWhenContextIsCanceled(t *testing.T) {
 
 	if u.calls != 0 {
 		t.Fatalf("expected canceled context to skip updates, got %d calls", u.calls)
+	}
+}
+
+func TestRunCancelsInFlightProvider(t *testing.T) {
+	p := &blockingProvider{started: make(chan struct{})}
+	u := &recordingUpdater{}
+	n := &recordingNotifier{}
+	a := newTestApp(p, u, n, AllFamilies())
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		a.Run(ctx)
+		close(done)
+	}()
+
+	select {
+	case <-p.started:
+	case <-time.After(time.Second):
+		t.Fatal("provider call did not start")
+	}
+	cancel()
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("app did not return after canceling an in-flight provider call")
 	}
 }
 

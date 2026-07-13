@@ -1,6 +1,7 @@
 package netif
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"net/netip"
@@ -44,7 +45,10 @@ func New(cfg *Config) (*Netif, error) {
 	}, nil
 }
 
-func (n *Netif) GetIPs() (*provider.IpResult, error) {
+func (n *Netif) GetIPs(ctx context.Context) (*provider.IpResult, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	addrs, err := n.iface.Addrs()
 	if err != nil {
 		return nil, err

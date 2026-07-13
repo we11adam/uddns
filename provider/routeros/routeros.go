@@ -1,6 +1,7 @@
 package routeros
 
 import (
+	"context"
 	"crypto/tls"
 	"fmt"
 	"net/url"
@@ -91,9 +92,9 @@ func routerOSRestURL(endpoint string) (string, error) {
 	return strings.TrimRight(endpoint, "/") + "/rest", nil
 }
 
-func (r *RouterOS) GetIPs() (*provider.IpResult, error) {
+func (r *RouterOS) GetIPs(ctx context.Context) (*provider.IpResult, error) {
 	var rfaces []rosInterface
-	_, err := r.httpClient.R().SetResult(&rfaces).Get("/interface")
+	_, err := r.httpClient.R().SetContext(ctx).SetResult(&rfaces).Get("/interface")
 	if err != nil {
 		return nil, err
 	}
@@ -110,7 +111,7 @@ func (r *RouterOS) GetIPs() (*provider.IpResult, error) {
 
 	// Get IPv4 address
 	var raddrs []rosAddress
-	_, err = r.httpClient.R().SetResult(&raddrs).Get("/ip/address")
+	_, err = r.httpClient.R().SetContext(ctx).SetResult(&raddrs).Get("/ip/address")
 	if err != nil {
 		return nil, err
 	}
@@ -124,7 +125,7 @@ func (r *RouterOS) GetIPs() (*provider.IpResult, error) {
 
 	// Get IPv6 address
 	var raddrs6 []rosAddress
-	_, err = r.httpClient.R().SetResult(&raddrs6).Get("/ipv6/address")
+	_, err = r.httpClient.R().SetContext(ctx).SetResult(&raddrs6).Get("/ipv6/address")
 	if err != nil {
 		return nil, err
 	}

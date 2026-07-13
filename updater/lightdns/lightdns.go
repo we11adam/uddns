@@ -1,6 +1,7 @@
 package lightdns
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"time"
@@ -48,16 +49,16 @@ func New(cfg *Config) *LightDNS {
 	}
 }
 
-func (c *LightDNS) Update(ips *provider.IpResult) error {
+func (c *LightDNS) Update(ctx context.Context, ips *provider.IpResult) error {
 	if ips.IPv4 != "" {
-		err := c.updateIP(ips.IPv4)
+		err := c.updateIP(ctx, ips.IPv4)
 		if err != nil {
 			return fmt.Errorf("failed to update IPv4: %w", err)
 		}
 	}
 
 	if ips.IPv6 != "" {
-		err := c.updateIP(ips.IPv6)
+		err := c.updateIP(ctx, ips.IPv6)
 		if err != nil {
 			return fmt.Errorf("failed to update IPv6: %w", err)
 		}
@@ -66,8 +67,9 @@ func (c *LightDNS) Update(ips *provider.IpResult) error {
 	return nil
 }
 
-func (c *LightDNS) updateIP(ip string) error {
+func (c *LightDNS) updateIP(ctx context.Context, ip string) error {
 	resp, err := c.httpclient.R().
+		SetContext(ctx).
 		SetQueryParams(map[string]string{
 			"domain": c.config.Domain,
 			"key":    c.config.Key,

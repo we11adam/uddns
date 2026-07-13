@@ -1,6 +1,7 @@
 package telegram
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -58,8 +59,8 @@ func newHTTPClient(token, proxy string) *resty.Client {
 	return client
 }
 
-func (t *Telegram) Notify(notification notifier.Notification) error {
-	resp, err := t.hc.R().SetBody(map[string]any{
+func (t *Telegram) Notify(ctx context.Context, notification notifier.Notification) error {
+	resp, err := t.hc.R().SetContext(ctx).SetBody(map[string]any{
 		"chat_id": t.ChatID,
 		"text":    notification.Message,
 	}).Post("")

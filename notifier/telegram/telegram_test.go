@@ -1,12 +1,14 @@
 package telegram
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-resty/resty/v2"
 	"github.com/we11adam/uddns/notifier"
@@ -37,7 +39,7 @@ func TestNotifyRedactsTokenFromTransportError(t *testing.T) {
 			SetTransport(failingTransport{message: "request failed for " + url.QueryEscape(token)}),
 	}
 
-	err := telegram.Notify(notifier.Notification{Message: "test"})
+	err := telegram.Notify(context.Background(), notifier.Notification{Message: "test"})
 	if err == nil {
 		t.Fatal("expected transport error")
 	}
@@ -85,7 +87,7 @@ func TestNotifyChecksTelegramAPIResponse(t *testing.T) {
 				ChatID: "123456",
 				hc:     resty.New().SetBaseURL(server.URL),
 			}
-			err := telegram.Notify(notifier.Notification{Message: "test"})
+			err := telegram.Notify(context.Background(), notifier.Notification{Message: "test"})
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("expected wantErr=%v, got err=%v", tt.wantErr, err)
 			}
@@ -93,6 +95,44 @@ func TestNotifyChecksTelegramAPIResponse(t *testing.T) {
 				assertTokenRedacted(t, err.Error(), token)
 			}
 		})
+	}
+}
+
+func TestNotifyCancelsInFlightRequest(t *testing.T) {
+	requestStarted := make(chan struct{})
+	releaseRequest := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		close(requestStarted)
+		<-releaseRequest
+	}))
+	defer server.Close()
+	defer close(releaseRequest)
+
+	telegram := &Telegram{
+		Token:  "token",
+		ChatID: "123456",
+		hc:     resty.New().SetBaseURL(server.URL),
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		done <- telegram.Notify(ctx, notifier.Notification{Message: "test"})
+	}()
+
+	select {
+	case <-requestStarted:
+	case <-time.After(time.Second):
+		t.Fatal("Telegram request did not start")
+	}
+	cancel()
+
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("expected canceled Telegram request to return an error")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Telegram request did not return after context cancellation")
 	}
 }
 

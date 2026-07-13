@@ -120,11 +120,11 @@ func (a *App) runOnce(ctx context.Context) {
 		if ctx.Err() != nil {
 			return
 		}
-		a.runJob(&a.jobs[i])
+		a.runJob(ctx, &a.jobs[i])
 	}
 }
 
-func (a *App) runJob(job *Job) {
+func (a *App) runJob(ctx context.Context, job *Job) {
 	startedAt := time.Now()
 	status := "ok"
 	updated := false
@@ -147,7 +147,7 @@ func (a *App) runJob(job *Job) {
 		)...,
 	)
 
-	ipResult, err := job.Provider.GetIPs()
+	ipResult, err := job.Provider.GetIPs(ctx)
 	if err != nil {
 		status = "provider_error"
 		slog.Error("failed to get IP addresses", job.logAttrs("error", err)...)
@@ -178,7 +178,7 @@ func (a *App) runJob(job *Job) {
 	var currentIPResult *provider.IpResult
 
 	if job.shouldReadCurrentRecords() {
-		currentIPResult, err = job.currentRecordIPs()
+		currentIPResult, err = job.currentRecordIPs(ctx)
 		if err != nil {
 			status = "verify_error"
 			slog.Error("failed to verify current DNS records", job.logAttrs("verify", job.Verify, "error", err)...)
@@ -218,11 +218,11 @@ func (a *App) runJob(job *Job) {
 	}
 
 	if ipv4Changed {
-		a.notify("ip_change", job, notifier.Notification{Message: jobNotificationMessage(job, fmt.Sprintf("IPv4 address changed to %s", ipResult.IPv4))})
+		a.notify(ctx, "ip_change", job, notifier.Notification{Message: jobNotificationMessage(job, fmt.Sprintf("IPv4 address changed to %s", ipResult.IPv4))})
 	}
 
 	if ipv6Changed {
-		a.notify("ip_change", job, notifier.Notification{Message: jobNotificationMessage(job, fmt.Sprintf("IPv6 address changed to %s", ipResult.IPv6))})
+		a.notify(ctx, "ip_change", job, notifier.Notification{Message: jobNotificationMessage(job, fmt.Sprintf("IPv6 address changed to %s", ipResult.IPv6))})
 	}
 
 	slog.Debug(
@@ -233,7 +233,7 @@ func (a *App) runJob(job *Job) {
 		)...,
 	)
 
-	if err := job.Updater.Update(ipResult); err != nil {
+	if err := job.Updater.Update(ctx, ipResult); err != nil {
 		status = "updater_error"
 		slog.Error(
 			"failed to update DNS records",
@@ -243,7 +243,7 @@ func (a *App) runJob(job *Job) {
 				"error", err,
 			)...,
 		)
-		a.notify("update_failure", job, notifier.Notification{Message: jobNotificationMessage(job, fmt.Sprintf("DNS update failed for %s: %s", notificationIPSummary(ipResult), err))})
+		a.notify(ctx, "update_failure", job, notifier.Notification{Message: jobNotificationMessage(job, fmt.Sprintf("DNS update failed for %s: %s", notificationIPSummary(ipResult), err))})
 		return
 	}
 
@@ -258,7 +258,7 @@ func (a *App) runJob(job *Job) {
 			"ipv6", ipResult.IPv6,
 		)...,
 	)
-	a.notify("update_success", job, notifier.Notification{Message: jobNotificationMessage(job, fmt.Sprintf("DNS records updated for %s", notificationIPSummary(ipResult)))})
+	a.notify(ctx, "update_success", job, notifier.Notification{Message: jobNotificationMessage(job, fmt.Sprintf("DNS records updated for %s", notificationIPSummary(ipResult)))})
 }
 
 func filterFamilies(ipResult *provider.IpResult, families Families) *provider.IpResult {
@@ -287,12 +287,12 @@ func (job *Job) shouldReadCurrentRecords() bool {
 	}
 }
 
-func (job *Job) currentRecordIPs() (*provider.IpResult, error) {
+func (job *Job) currentRecordIPs(ctx context.Context) (*provider.IpResult, error) {
 	reader, ok := job.Updater.(updater.RecordReader)
 	if !ok {
 		return nil, fmt.Errorf("updater %s does not support verify mode %s", job.UpdaterName, VerifyUpdaterAPI)
 	}
-	current, err := reader.Current()
+	current, err := reader.Current(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -377,8 +377,8 @@ func (job *Job) logAttrs(args ...any) []any {
 	return append(attrs, args...)
 }
 
-func (a *App) notify(reason string, job *Job, notification notifier.Notification) {
-	if err := a.notifier.Notify(notification); err != nil {
+func (a *App) notify(ctx context.Context, reason string, job *Job, notification notifier.Notification) {
+	if err := a.notifier.Notify(ctx, notification); err != nil {
 		slog.Error(
 			"failed to send notification",
 			job.logAttrs(

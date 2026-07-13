@@ -1,6 +1,8 @@
 package notifier
 
 import (
+	"context"
+
 	"github.com/we11adam/uddns/internal/registry"
 )
 
@@ -10,7 +12,7 @@ type Notification struct {
 }
 
 type Notifier interface {
-	Notify(notification Notification) error
+	Notify(context.Context, Notification) error
 }
 
 type ConfigReader = registry.ConfigReader
@@ -23,7 +25,7 @@ var notifiers = registry.New[Notifier]("notifier", "notifiers.use")
 
 type Noop struct{}
 
-func (n *Noop) Notify(_ Notification) error {
+func (n *Noop) Notify(_ context.Context, _ Notification) error {
 	return nil
 }
 

@@ -1,13 +1,22 @@
 package ip_service
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/we11adam/uddns/provider"
 )
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return f(request)
+}
 
 func TestServicesUseHTTPS(t *testing.T) {
 	for name, serviceURL := range SERVICES {
@@ -85,6 +94,40 @@ func TestServiceRedirectPolicy(t *testing.T) {
 				t.Fatalf("redirect policy error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
+	}
+}
+
+func TestGetIPsCancelsInFlightRequest(t *testing.T) {
+	requestStarted := make(chan struct{})
+	client := createClient("tcp4")
+	client.SetTransport(roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		close(requestStarted)
+		<-request.Context().Done()
+		return nil, request.Context().Err()
+	}))
+	names := ServiceNames{"ip.fm"}
+	service := &IpService{client4: client, client6: createClient("tcp6"), names: &names}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		_, err := service.GetIPs(ctx)
+		done <- err
+	}()
+
+	select {
+	case <-requestStarted:
+	case <-time.After(time.Second):
+		t.Fatal("IP service request did not start")
+	}
+	cancel()
+
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("expected context cancellation, got %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("IP service request did not return after context cancellation")
 	}
 }
 

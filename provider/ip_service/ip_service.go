@@ -129,17 +129,21 @@ func sameOriginHTTPSRedirectPolicy(maxRedirects int) resty.RedirectPolicy {
 	})
 }
 
-func (i *IpService) GetIPs() (*provider.IpResult, error) {
+func (i *IpService) GetIPs(ctx context.Context) (*provider.IpResult, error) {
 	result := &provider.IpResult{}
 
-	ipv4, err := i.getIP(i.client4, "ipv4")
+	ipv4, err := i.getIP(ctx, i.client4, "ipv4")
 	if err == nil {
 		result.IPv4 = ipv4
+	} else if ctx.Err() != nil {
+		return nil, ctx.Err()
 	}
 
-	ipv6, err := i.getIP(i.client6, "ipv6")
+	ipv6, err := i.getIP(ctx, i.client6, "ipv6")
 	if err == nil {
 		result.IPv6 = ipv6
+	} else if ctx.Err() != nil {
+		return nil, ctx.Err()
 	}
 
 	if result.IPv4 == "" && result.IPv6 == "" {
@@ -149,15 +153,18 @@ func (i *IpService) GetIPs() (*provider.IpResult, error) {
 	return result, nil
 }
 
-func (i *IpService) getIP(client *resty.Client, family string) (string, error) {
+func (i *IpService) getIP(ctx context.Context, client *resty.Client, family string) (string, error) {
 	for _, name := range *i.names {
+		if err := ctx.Err(); err != nil {
+			return "", err
+		}
 		serviceURL, ok := SERVICES[name]
 		if !ok {
 			continue
 		}
 
 		slog.Debug("requesting IP address", "provider", "ip_service", "service", serviceURL, "family", family)
-		resp, err := client.R().Get(serviceURL)
+		resp, err := client.R().SetContext(ctx).Get(serviceURL)
 		if err != nil {
 			slog.Debug("failed to request IP address", "provider", "ip_service", "service", serviceURL, "family", family, "error", err)
 			continue
