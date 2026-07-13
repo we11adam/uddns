@@ -117,16 +117,45 @@ func TestGetProviderRejectsUnsupportedService(t *testing.T) {
 }
 
 func TestIsValidIPFamily(t *testing.T) {
-	if !isValidIPFamily("192.0.2.10", "ipv4") {
-		t.Fatal("expected IPv4 address to be valid for ipv4")
+	tests := []struct {
+		name   string
+		ip     string
+		family string
+		want   bool
+	}{
+		{name: "public IPv4", ip: "8.8.8.8", family: "ipv4", want: true},
+		{name: "public IPv6", ip: "2606:4700:4700::1111", family: "ipv6", want: true},
+		{name: "private IPv4", ip: "10.0.0.1", family: "ipv4"},
+		{name: "private IPv6 ULA", ip: "fd00::1", family: "ipv6"},
+		{name: "IPv4 loopback", ip: "127.0.0.1", family: "ipv4"},
+		{name: "IPv6 loopback", ip: "::1", family: "ipv6"},
+		{name: "IPv4 link local", ip: "169.254.10.20", family: "ipv4"},
+		{name: "IPv6 link local", ip: "fe80::1", family: "ipv6"},
+		{name: "IPv4 multicast", ip: "224.0.0.1", family: "ipv4"},
+		{name: "IPv6 multicast", ip: "ff02::1", family: "ipv6"},
+		{name: "IPv4 unspecified", ip: "0.0.0.0", family: "ipv4"},
+		{name: "IPv6 unspecified", ip: "::", family: "ipv6"},
+		{name: "CGNAT", ip: "100.64.0.1", family: "ipv4"},
+		{name: "IPv4 documentation", ip: "192.0.2.10", family: "ipv4"},
+		{name: "IPv6 documentation", ip: "2001:db8::1", family: "ipv6"},
+		{name: "IPv4 benchmark", ip: "198.18.0.1", family: "ipv4"},
+		{name: "IPv6 benchmark", ip: "2001:2::1", family: "ipv6"},
+		{name: "IPv4 reserved", ip: "240.0.0.1", family: "ipv4"},
+		{name: "IPv6 reserved", ip: "3fff::1", family: "ipv6"},
+		{name: "IPv6 NAT64", ip: "64:ff9b::808:808", family: "ipv6"},
+		{name: "IPv6 6to4", ip: "2002:0808:0808::1", family: "ipv6"},
+		{name: "IPv4-mapped IPv6", ip: "::ffff:8.8.8.8", family: "ipv6"},
+		{name: "wrong IPv4 family", ip: "2606:4700:4700::1111", family: "ipv4"},
+		{name: "wrong IPv6 family", ip: "8.8.8.8", family: "ipv6"},
+		{name: "unknown family", ip: "8.8.8.8", family: "unknown"},
+		{name: "invalid address", ip: "not-an-ip", family: "ipv4"},
 	}
-	if isValidIPFamily("2001:db8::1", "ipv4") {
-		t.Fatal("expected IPv6 address to be invalid for ipv4")
-	}
-	if !isValidIPFamily("2001:db8::1", "ipv6") {
-		t.Fatal("expected IPv6 address to be valid for ipv6")
-	}
-	if isValidIPFamily("not-an-ip", "ipv6") {
-		t.Fatal("expected invalid address to be invalid for ipv6")
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isValidIPFamily(tt.ip, tt.family); got != tt.want {
+				t.Fatalf("isValidIPFamily(%q, %q) = %v, want %v", tt.ip, tt.family, got, tt.want)
+			}
+		})
 	}
 }

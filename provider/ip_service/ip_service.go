@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/netip"
 	"sort"
 	"strings"
 	"time"
@@ -22,6 +23,32 @@ var SERVICES = map[string]string{
 }
 
 const maxServiceRedirects = 3
+
+var (
+	publicIPv6Prefix  = netip.MustParsePrefix("2000::/3")
+	nonPublicPrefixes = []netip.Prefix{
+		// IPv4 special-purpose and reserved ranges not suitable for public DNS.
+		netip.MustParsePrefix("0.0.0.0/8"),
+		netip.MustParsePrefix("100.64.0.0/10"),
+		netip.MustParsePrefix("192.0.0.0/24"),
+		netip.MustParsePrefix("192.0.2.0/24"),
+		netip.MustParsePrefix("192.31.196.0/24"),
+		netip.MustParsePrefix("192.52.193.0/24"),
+		netip.MustParsePrefix("192.88.99.0/24"),
+		netip.MustParsePrefix("192.175.48.0/24"),
+		netip.MustParsePrefix("198.18.0.0/15"),
+		netip.MustParsePrefix("198.51.100.0/24"),
+		netip.MustParsePrefix("203.0.113.0/24"),
+		netip.MustParsePrefix("240.0.0.0/4"),
+
+		// IPv6 protocol assignments, documentation, transition, and reserved ranges.
+		netip.MustParsePrefix("2001::/23"),
+		netip.MustParsePrefix("2001:db8::/32"),
+		netip.MustParsePrefix("2002::/16"),
+		netip.MustParsePrefix("2620:4f:8000::/48"),
+		netip.MustParsePrefix("3fff::/20"),
+	}
+)
 
 type ServiceNames []string
 
@@ -152,14 +179,41 @@ func (i *IpService) getIP(client *resty.Client, family string) (string, error) {
 }
 
 func isValidIPFamily(ip, family string) bool {
+	addr, err := netip.ParseAddr(strings.TrimSpace(ip))
+	if err != nil || addr.Zone() != "" {
+		return false
+	}
+
 	switch family {
 	case "ipv4":
-		return provider.IsValidIPv4(ip)
+		if !addr.Is4() {
+			return false
+		}
 	case "ipv6":
-		return provider.IsValidIPv6(ip)
+		if !addr.Is6() || addr.Is4In6() {
+			return false
+		}
 	default:
 		return false
 	}
+	return isPublicRoutable(addr)
+}
+
+func isPublicRoutable(addr netip.Addr) bool {
+	if !addr.IsValid() || addr.Is4In6() || addr.Zone() != "" ||
+		!addr.IsGlobalUnicast() || addr.IsPrivate() || addr.IsUnspecified() ||
+		addr.IsLoopback() || addr.IsLinkLocalUnicast() || addr.IsMulticast() {
+		return false
+	}
+	if addr.Is6() && !publicIPv6Prefix.Contains(addr) {
+		return false
+	}
+	for _, prefix := range nonPublicPrefixes {
+		if prefix.Contains(addr) {
+			return false
+		}
+	}
+	return true
 }
 
 func supportedServiceNames() []string {
