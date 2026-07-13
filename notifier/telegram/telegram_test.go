@@ -23,12 +23,36 @@ func (f failingTransport) RoundTrip(_ *http.Request) (*http.Response, error) {
 }
 
 func TestHTTPClientTimeout(t *testing.T) {
-	client := newHTTPClient("token", "")
+	client := newHTTPClient("token", nil)
 	if got := client.GetClient().Timeout; got != requestTimeout {
 		t.Fatalf("expected Telegram request timeout %s, got %s", requestTimeout, got)
 	}
 	if client.ResponseBodyLimit != responseBodyLimit {
 		t.Fatalf("expected Telegram response body limit %d, got %d", responseBodyLimit, client.ResponseBodyLimit)
+	}
+}
+
+func TestNewValidatesProxyURLWithoutExposingCredentials(t *testing.T) {
+	_, err := New(&Telegram{
+		Token:  "token",
+		ChatID: "123456",
+		Proxy:  "http://user:proxy-secret@proxy.example?token=hidden",
+	})
+	if err == nil {
+		t.Fatal("expected invalid proxy URL to fail")
+	}
+	for _, sensitive := range []string{"user", "proxy-secret", "hidden"} {
+		if strings.Contains(err.Error(), sensitive) {
+			t.Fatalf("proxy validation error exposes %q: %v", sensitive, err)
+		}
+	}
+
+	if _, err := New(&Telegram{
+		Token:  "token",
+		ChatID: "123456",
+		Proxy:  "http://user:proxy-secret@proxy.example:8080/",
+	}); err != nil {
+		t.Fatalf("expected valid authenticated proxy URL: %v", err)
 	}
 }
 

@@ -12,6 +12,7 @@ import (
 
 	"github.com/cloudflare/cloudflare-go"
 	"github.com/we11adam/uddns/internal/dnsname"
+	"github.com/we11adam/uddns/internal/proxyurl"
 	"github.com/we11adam/uddns/provider"
 	"github.com/we11adam/uddns/updater"
 )
@@ -78,9 +79,9 @@ func New(config *Config) (*Cloudflare, error) {
 	httpClient := newHTTPClient(nil)
 
 	if config.Proxy != "" {
-		proxy, err := url.Parse(config.Proxy)
+		proxy, err := proxyurl.Parse(config.Proxy)
 		if err != nil {
-			return nil, fmt.Errorf("failed to parse Cloudflare proxy URL: %w", err)
+			return nil, fmt.Errorf("invalid Cloudflare proxy configuration: %w", err)
 		}
 		slog.Info("using proxy", "updater", "cloudflare", "proxy", proxyLogValue(proxy))
 		httpClient = newHTTPClient(proxy)

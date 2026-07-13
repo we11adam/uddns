@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"time"
 
 	"github.com/go-resty/resty/v2"
+	"github.com/we11adam/uddns/internal/proxyurl"
 	"github.com/we11adam/uddns/internal/redact"
 	"github.com/we11adam/uddns/notifier"
 )
@@ -41,24 +43,40 @@ func init() {
 			return nil, err
 		}
 
-		if telegram.Token == "" || telegram.ChatID == "" {
-			return nil, fmt.Errorf("missing required fields")
-		}
-
-		telegram.hc = newHTTPClient(telegram.Token, telegram.Proxy)
-
-		return &telegram, nil
+		return New(&telegram)
 	})
 }
 
-func newHTTPClient(token, proxy string) *resty.Client {
+func New(config *Telegram) (*Telegram, error) {
+	if config == nil {
+		return nil, fmt.Errorf("Telegram config is nil")
+	}
+	if config.Token == "" || config.ChatID == "" {
+		return nil, fmt.Errorf("missing required fields")
+	}
+
+	var proxy *url.URL
+	if config.Proxy != "" {
+		parsed, err := proxyurl.Parse(config.Proxy)
+		if err != nil {
+			return nil, fmt.Errorf("invalid Telegram proxy configuration: %w", err)
+		}
+		proxy = parsed
+	}
+
+	telegram := *config
+	telegram.hc = newHTTPClient(telegram.Token, proxy)
+	return &telegram, nil
+}
+
+func newHTTPClient(token string, proxy *url.URL) *resty.Client {
 	client := resty.New().
 		SetTimeout(requestTimeout).
 		SetResponseBodyLimit(responseBodyLimit).
 		SetHeader("Content-Type", "application/json").
 		SetBaseURL("https://api.telegram.org/bot" + token + "/sendMessage")
-	if proxy != "" {
-		client.SetProxy(proxy)
+	if proxy != nil {
+		client.SetProxy(proxy.String())
 	}
 	return client
 }

@@ -102,6 +102,30 @@ func TestProxyLogValueRedactsCredentials(t *testing.T) {
 	}
 }
 
+func TestNewValidatesProxyURLWithoutExposingCredentials(t *testing.T) {
+	_, err := New(&Config{
+		APIToken: "token",
+		Domain:   "home.example.com",
+		Proxy:    "http://user:proxy-secret@proxy.example/tunnel",
+	})
+	if err == nil {
+		t.Fatal("expected invalid proxy URL to fail")
+	}
+	for _, sensitive := range []string{"user", "proxy-secret", "tunnel"} {
+		if strings.Contains(err.Error(), sensitive) {
+			t.Fatalf("proxy validation error exposes %q: %v", sensitive, err)
+		}
+	}
+
+	if _, err := New(&Config{
+		APIToken: "token",
+		Domain:   "home.example.com",
+		Proxy:    "https://user:proxy-secret@proxy.example:8443/",
+	}); err != nil {
+		t.Fatalf("expected valid authenticated proxy URL: %v", err)
+	}
+}
+
 func TestZoneLookupUsesContext(t *testing.T) {
 	api, err := cloudflareapi.NewWithAPIToken("token", cloudflareapi.HTTPClient(&http.Client{}))
 	if err != nil {
