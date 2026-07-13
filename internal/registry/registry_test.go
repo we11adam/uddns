@@ -2,8 +2,11 @@ package registry
 
 import (
 	"errors"
+	"fmt"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 )
 
 type testConfig map[string]string
@@ -83,6 +86,101 @@ func TestRegistryRegisterRejectsAliasCollisions(t *testing.T) {
 			}()
 			r.Register(tt.newName, tt.newConfigKey, constructor)
 		})
+	}
+}
+
+func TestRegistryConcurrentRegisterAndGet(t *testing.T) {
+	r := New[string]("thing", "things.use")
+	r.Register("Default", "things.default", func(ConfigReader) (string, error) {
+		return "default", nil
+	})
+
+	const (
+		writers           = 4
+		registrationsEach = 50
+		readers           = 8
+		lookupsEach       = 200
+	)
+	start := make(chan struct{})
+	errs := make(chan error, readers*lookupsEach*2)
+	var wg sync.WaitGroup
+
+	for writer := range writers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			for registration := range registrationsEach {
+				name := fmt.Sprintf("Writer%dEntry%d", writer, registration)
+				configKey := fmt.Sprintf("things.writer_%d_entry_%d", writer, registration)
+				r.Register(name, configKey, func(ConfigReader) (string, error) {
+					return "registered", nil
+				})
+			}
+		}()
+	}
+
+	config := testConfig{"things.default": "configured"}
+	for range readers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			for range lookupsEach {
+				name, value, err := r.Get(config)
+				if err != nil || name != "Default" || value != "default" {
+					errs <- fmt.Errorf("Get returned %q/%q, err=%v", name, value, err)
+				}
+
+				name, value, err = r.GetOptional(config, "Fallback", "fallback")
+				if err != nil || name != "Default" || value != "default" {
+					errs <- fmt.Errorf("GetOptional returned %q/%q, err=%v", name, value, err)
+				}
+			}
+		}()
+	}
+
+	close(start)
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Error(err)
+	}
+
+	entries := r.snapshot()
+	wantEntries := 1 + writers*registrationsEach
+	if len(entries) != wantEntries {
+		t.Fatalf("expected %d registered entries, got %d", wantEntries, len(entries))
+	}
+}
+
+func TestRegistryGetDoesNotHoldLockWhileCallingConstructor(t *testing.T) {
+	r := New[string]("thing", "things.use")
+	r.Register("First", "things.first", func(ConfigReader) (string, error) {
+		r.Register("Second", "things.second", func(ConfigReader) (string, error) {
+			return "second", nil
+		})
+		return "first", nil
+	})
+
+	type result struct {
+		name  string
+		value string
+		err   error
+	}
+	results := make(chan result, 1)
+	go func() {
+		name, value, err := r.Get(testConfig{})
+		results <- result{name: name, value: value, err: err}
+	}()
+
+	select {
+	case got := <-results:
+		if got.err != nil || got.name != "First" || got.value != "first" {
+			t.Fatalf("Get returned %q/%q, err=%v", got.name, got.value, got.err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Get deadlocked while constructor registered another entry")
 	}
 }
 
