@@ -2,11 +2,13 @@ package ip_service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
 	"net/netip"
+	"net/url"
 	"sort"
 	"strings"
 	"time"
@@ -25,6 +27,10 @@ var SERVICES = map[string]string{
 const (
 	maxServiceRedirects = 3
 	responseBodyLimit   = 4 << 10
+	requestTimeout      = 5 * time.Second
+	maxServiceRetries   = 3
+	retryWaitTime       = 100 * time.Millisecond
+	retryMaxWaitTime    = 2 * time.Second
 )
 
 var (
@@ -106,8 +112,12 @@ func createClient(network string) *resty.Client {
 		},
 	}
 	httpClient.SetTransport(transport)
-	httpClient.SetTimeout(5 * time.Second)
+	httpClient.SetTimeout(requestTimeout)
 	httpClient.SetResponseBodyLimit(responseBodyLimit)
+	httpClient.SetRetryCount(maxServiceRetries)
+	httpClient.SetRetryWaitTime(retryWaitTime)
+	httpClient.SetRetryMaxWaitTime(retryMaxWaitTime)
+	httpClient.AddRetryCondition(shouldRetryServiceRequest)
 	httpClient.SetRedirectPolicy(sameOriginHTTPSRedirectPolicy(maxServiceRedirects))
 	httpClient.RemoveProxy().SetHeaders(map[string]string{"User-Agent": "curl/8.6.0"})
 	return httpClient
@@ -175,7 +185,9 @@ func (i *IpService) getIP(ctx context.Context, client *resty.Client, family stri
 		}
 
 		slog.Debug("requesting IP address", "provider", "ip_service", "service", serviceURL, "family", family)
-		resp, err := client.R().SetContext(ctx).Get(serviceURL)
+		requestCtx, cancel := context.WithTimeout(ctx, requestTimeout)
+		resp, err := client.R().SetContext(requestCtx).Get(serviceURL)
+		cancel()
 		if err != nil {
 			slog.Debug("failed to request IP address", "provider", "ip_service", "service", serviceURL, "family", family, "error", err)
 			continue
@@ -194,6 +206,22 @@ func (i *IpService) getIP(ctx context.Context, client *resty.Client, family stri
 		return ip, nil
 	}
 	return "", fmt.Errorf("failed to get IP address from all services")
+}
+
+func shouldRetryServiceRequest(response *resty.Response, err error) bool {
+	if err != nil {
+		var urlErr *url.Error
+		if errors.As(err, &urlErr) {
+			return true
+		}
+		var netErr net.Error
+		return errors.As(err, &netErr)
+	}
+	if response == nil {
+		return false
+	}
+	status := response.StatusCode()
+	return status == http.StatusTooManyRequests || status >= http.StatusInternalServerError
 }
 
 func isValidIPFamily(ip, family string) bool {

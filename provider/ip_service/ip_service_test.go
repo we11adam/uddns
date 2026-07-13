@@ -5,11 +5,14 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/go-resty/resty/v2"
 	"github.com/we11adam/uddns/provider"
 )
 
@@ -103,6 +106,154 @@ func TestServiceClientLimitsResponseBodies(t *testing.T) {
 	if client.ResponseBodyLimit != responseBodyLimit {
 		t.Fatalf("response body limit = %d, want %d", client.ResponseBodyLimit, responseBodyLimit)
 	}
+}
+
+func TestServiceClientRetryPolicy(t *testing.T) {
+	client := createClient("tcp4")
+	if client.RetryCount != maxServiceRetries {
+		t.Fatalf("retry count = %d, want %d", client.RetryCount, maxServiceRetries)
+	}
+	if client.GetClient().Timeout != requestTimeout {
+		t.Fatalf("request timeout = %s, want %s", client.GetClient().Timeout, requestTimeout)
+	}
+}
+
+func TestGetIPsRetriesTransientFailures(t *testing.T) {
+	var attempts atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		switch attempts.Add(1) {
+		case 1:
+			http.Error(w, "temporary failure", http.StatusServiceUnavailable)
+		case 2:
+			http.Error(w, "rate limited", http.StatusTooManyRequests)
+		default:
+			_, _ = io.WriteString(w, "8.8.8.8")
+		}
+	}))
+	defer server.Close()
+
+	service := testIPService(t, server.URL)
+	service.client4.SetRetryWaitTime(time.Millisecond).SetRetryMaxWaitTime(2 * time.Millisecond)
+	result, err := service.GetIPs(context.Background(), provider.FamilyRequest{IPv4: true})
+	if err != nil {
+		t.Fatalf("get IPs after transient failures: %v", err)
+	}
+	if result.IPv4 != "8.8.8.8" {
+		t.Fatalf("IPv4 = %q, want %q", result.IPv4, "8.8.8.8")
+	}
+	if got := attempts.Load(); got != 3 {
+		t.Fatalf("attempts = %d, want 3", got)
+	}
+}
+
+func TestGetIPsDoesNotRetryPermanentClientError(t *testing.T) {
+	var attempts atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		attempts.Add(1)
+		http.Error(w, "invalid request", http.StatusBadRequest)
+	}))
+	defer server.Close()
+
+	service := testIPService(t, server.URL)
+	service.client4.SetRetryWaitTime(time.Millisecond).SetRetryMaxWaitTime(2 * time.Millisecond)
+	if _, err := service.GetIPs(context.Background(), provider.FamilyRequest{IPv4: true}); err == nil {
+		t.Fatal("expected permanent client error")
+	}
+	if got := attempts.Load(); got != 1 {
+		t.Fatalf("attempts = %d, want 1", got)
+	}
+}
+
+func TestGetIPsStopsRetriesWhenContextIsCanceled(t *testing.T) {
+	var attempts atomic.Int32
+	firstResponse := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		attempt := attempts.Add(1)
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = io.WriteString(w, "temporary failure")
+		if flusher, ok := w.(http.Flusher); ok {
+			flusher.Flush()
+		}
+		if attempt == 1 {
+			close(firstResponse)
+		}
+	}))
+	defer server.Close()
+
+	service := testIPService(t, server.URL)
+	service.client4.SetRetryWaitTime(500 * time.Millisecond).SetRetryMaxWaitTime(500 * time.Millisecond)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		_, err := service.GetIPs(ctx, provider.FamilyRequest{IPv4: true})
+		done <- err
+	}()
+
+	select {
+	case <-firstResponse:
+		cancel()
+	case <-time.After(time.Second):
+		cancel()
+		t.Fatal("first request did not complete")
+	}
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("expected context cancellation, got %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("retry loop did not stop after context cancellation")
+	}
+	if got := attempts.Load(); got != 1 {
+		t.Fatalf("attempts = %d, want 1", got)
+	}
+}
+
+func TestShouldRetryServiceRequest(t *testing.T) {
+	response := func(status int) *resty.Response {
+		return &resty.Response{RawResponse: &http.Response{StatusCode: status}}
+	}
+	tests := []struct {
+		name     string
+		response *resty.Response
+		err      error
+		want     bool
+	}{
+		{name: "network error", err: &url.Error{Op: "Get", URL: "https://example.com", Err: errors.New("connection reset")}, want: true},
+		{name: "generic error", err: errors.New("request configuration failed")},
+		{name: "rate limit", response: response(http.StatusTooManyRequests), want: true},
+		{name: "server error", response: response(http.StatusServiceUnavailable), want: true},
+		{name: "request timeout response", response: response(http.StatusRequestTimeout)},
+		{name: "bad request", response: response(http.StatusBadRequest)},
+		{name: "success", response: response(http.StatusOK)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := shouldRetryServiceRequest(tt.response, tt.err); got != tt.want {
+				t.Fatalf("shouldRetryServiceRequest() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func testIPService(t *testing.T, serviceURL string) *IpService {
+	t.Helper()
+	const name = "test.local"
+	previous, existed := SERVICES[name]
+	SERVICES[name] = serviceURL
+	t.Cleanup(func() {
+		if existed {
+			SERVICES[name] = previous
+		} else {
+			delete(SERVICES, name)
+		}
+	})
+	names := ServiceNames{name}
+	service, err := New(&names)
+	if err != nil {
+		t.Fatalf("create IP service: %v", err)
+	}
+	return service
 }
 
 func TestGetIPsCancelsInFlightRequest(t *testing.T) {
