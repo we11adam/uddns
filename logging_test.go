@@ -81,6 +81,32 @@ func TestCalendarRotatingWriterCreatesPrivateDirectoryAndLogFile(t *testing.T) {
 	}
 }
 
+func TestCalendarRotatingWriterRestrictsExistingDirectory(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "logs")
+	if err := os.Mkdir(dir, 0777); err != nil {
+		t.Fatalf("create exposed log directory: %v", err)
+	}
+	if err := os.Chmod(dir, 0777); err != nil {
+		t.Fatalf("expose log directory: %v", err)
+	}
+
+	writer, err := newCalendarRotatingWriterWithClock(dir, logFilePrefix, 2, func() time.Time {
+		return time.Date(2026, 5, 21, 10, 0, 0, 0, time.Local)
+	})
+	if err != nil {
+		t.Fatalf("newCalendarRotatingWriterWithClock returned error: %v", err)
+	}
+	defer writer.Close()
+
+	info, err := os.Stat(dir)
+	if err != nil {
+		t.Fatalf("stat log directory: %v", err)
+	}
+	if got := info.Mode().Perm(); got != logDirMode {
+		t.Fatalf("expected existing log directory permissions %04o, got %04o", logDirMode, got)
+	}
+}
+
 func TestCalendarRotatingWriterRejectsCurrentLogSymlink(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(t.TempDir(), "target.log")

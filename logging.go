@@ -220,6 +220,9 @@ func newCalendarRotatingWriterWithClock(dir, prefix string, retentionDays int, n
 	if err := os.MkdirAll(dir, logDirMode); err != nil {
 		return nil, err
 	}
+	if err := os.Chmod(dir, logDirMode); err != nil {
+		return nil, err
+	}
 	root, err := os.OpenRoot(dir)
 	if err != nil {
 		return nil, err
