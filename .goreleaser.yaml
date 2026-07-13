@@ -42,6 +42,9 @@ archives:
       - default
     builds_info:
       mode: 0755
+    # The installer deliberately accepts only one executable per archive.
+    files:
+      - none*
     formats: [zip]
     format_overrides:
       - goos: linux
