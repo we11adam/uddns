@@ -1,6 +1,6 @@
 module github.com/we11adam/uddns
 
-go 1.26
+go 1.26.5
 
 require (
 	github.com/alibabacloud-go/alidns-20150109/v4 v4.7.0
