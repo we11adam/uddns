@@ -97,6 +97,48 @@ func TestIntervalReturnsDefaultOnInvalidEnvironment(t *testing.T) {
 	}
 }
 
+func TestIntervalRejectsValuesOutsideAllowedRange(t *testing.T) {
+	tests := []string{"1ns", "9s", "24h1s"}
+	for _, value := range tests {
+		t.Run(value, func(t *testing.T) {
+			t.Setenv("UDDNS_INTERVAL", value)
+			cfg := &Config{}
+
+			duration, raw, err := cfg.Interval()
+			if err == nil {
+				t.Fatalf("expected interval %q to be rejected", value)
+			}
+			if duration != DefaultInterval || raw != value {
+				t.Fatalf("expected default/%q, got %s/%q", value, duration, raw)
+			}
+		})
+	}
+}
+
+func TestIntervalAcceptsAllowedBoundaries(t *testing.T) {
+	tests := []struct {
+		value string
+		want  time.Duration
+	}{
+		{value: "10s", want: MinInterval},
+		{value: "24h", want: MaxInterval},
+	}
+	for _, tt := range tests {
+		t.Run(tt.value, func(t *testing.T) {
+			t.Setenv("UDDNS_INTERVAL", tt.value)
+			cfg := &Config{}
+
+			duration, _, err := cfg.Interval()
+			if err != nil {
+				t.Fatalf("Interval returned error: %v", err)
+			}
+			if duration != tt.want {
+				t.Fatalf("expected %s, got %s", tt.want, duration)
+			}
+		})
+	}
+}
+
 func TestJobsParsesConfiguredJobs(t *testing.T) {
 	path := writeConfigFile(t, `
 jobs:

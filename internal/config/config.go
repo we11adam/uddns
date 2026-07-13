@@ -9,7 +9,11 @@ import (
 	"github.com/spf13/viper"
 )
 
-const DefaultInterval = 30 * time.Second
+const (
+	DefaultInterval = 30 * time.Second
+	MinInterval     = 10 * time.Second
+	MaxInterval     = 24 * time.Hour
+)
 
 type Config struct {
 	path string
@@ -127,6 +131,9 @@ func (c *Config) Interval() (time.Duration, string, error) {
 	duration, err := time.ParseDuration(value)
 	if err != nil {
 		return DefaultInterval, value, err
+	}
+	if duration < MinInterval || duration > MaxInterval {
+		return DefaultInterval, value, fmt.Errorf("interval must be between %s and %s", MinInterval, MaxInterval)
 	}
 	return duration, value, nil
 }
