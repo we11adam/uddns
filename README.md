@@ -25,6 +25,15 @@ Install the latest release with curl:
 curl -fsSL https://github.com/we11adam/uddns/releases/latest/download/install.sh | sh
 ```
 
+For a verified installation, download the script first and check its GitHub
+Actions provenance before running it:
+
+```shell
+curl -fsSLO https://github.com/we11adam/uddns/releases/latest/download/install.sh
+gh attestation verify install.sh --repo we11adam/uddns
+sh install.sh
+```
+
 The installer detects systemd and asks whether to install UDDNS as a systemd
 service. For non-interactive systemd installation:
 
