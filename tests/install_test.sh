@@ -90,6 +90,9 @@ is_tty_available() {
 warn_config_write_permission() {
 	:
 }
+ensure_service_user() {
+	:
+}
 config_file_available_to_service() {
 	return 0
 }
@@ -123,6 +126,22 @@ assert_systemctl_calls "$(printf '%s\n' \
 	'systemctl daemon-reload' \
 	'systemctl enable uddns-test@blue_1.service' \
 	'systemctl restart uddns-test@blue_1.service')"
+
+unit_file="$test_dir/uddns-test@blue_1.service"
+for expected_line in \
+	'User=uddns' \
+	'Group=uddns' \
+	'LoadCredential="uddns.yaml:/etc/UD DNS/config \"blue\".yaml"' \
+	'Environment="UDDNS_CONFIG=%d/uddns.yaml"' \
+	'CapabilityBoundingSet=' \
+	'RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6' \
+	'LogsDirectory=uddns' \
+	'UMask=0077'; do
+	if ! grep -Fqx "$expected_line" "$unit_file"; then
+		printf 'systemd unit missing expected line: %s\n' "$expected_line" >&2
+		exit 1
+	fi
+done
 
 download_release_body="$(sed -n '/^download_release() {/,/^}/p' "$root_dir/install.sh")"
 download_calls="$(printf '%s\n' "$download_release_body" | grep -c '^[[:space:]]*download_file ' || true)"

@@ -17,6 +17,8 @@ SERVICE_INTERVAL="${UDDNS_INTERVAL:-30s}"
 LOG_DIR="${UDDNS_LOG_DIR:-}"
 LOG_RETENTION_DAYS="${UDDNS_LOG_RETENTION_DAYS:-}"
 INSTALL_SYSTEMD="${UDDNS_INSTALL_SYSTEMD:-}"
+SERVICE_USER="uddns"
+SERVICE_CREDENTIAL="uddns.yaml"
 
 usage() {
 	cat <<EOF
@@ -237,9 +239,27 @@ systemd_unit_config_file() {
 	sed -n \
 		-e 's/^Environment=UDDNS_CONFIG=\(.*\)$/\1/p' \
 		-e 's/^Environment="UDDNS_CONFIG=\(.*\)"$/\1/p' \
+		-e 's/^LoadCredential=uddns\.yaml:\(.*\)$/\1/p' \
+		-e 's/^LoadCredential="uddns\.yaml:\(.*\)"$/\1/p' \
 		"$unit_path" |
 		head -n 1 |
 		sed 's/\\"/"/g; s/\\\\/\\/g; s/%%/%/g'
+}
+
+ensure_service_user() {
+	if id "$SERVICE_USER" >/dev/null 2>&1; then
+		return 0
+	fi
+
+	if command -v systemd-sysusers >/dev/null 2>&1; then
+		sysusers_file="${tmpdir}/uddns-sysusers.conf"
+		printf 'u %s - "UDDNS service user" /nonexistent /usr/sbin/nologin\n' "$SERVICE_USER" >"$sysusers_file"
+		run_as_root systemd-sysusers "$sysusers_file"
+	elif command -v useradd >/dev/null 2>&1; then
+		run_as_root useradd --system --user-group --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin "$SERVICE_USER"
+	else
+		fail "systemd installation requires systemd-sysusers or useradd to create ${SERVICE_USER}"
+	fi
 }
 
 systemd_quote() {
@@ -553,6 +573,7 @@ install_systemd_service() {
 		CONFIG_FILE="$(prompt_text "Config file path for the systemd service" "$CONFIG_FILE")"
 	fi
 	validate_systemd_inputs
+	ensure_service_user
 	warn_config_write_permission "$CONFIG_FILE" "$needs_config_write"
 
 	cat >"$unit_file" <<EOF
@@ -564,9 +585,12 @@ After=network-online.target
 
 [Service]
 Type=simple
+User=${SERVICE_USER}
+Group=${SERVICE_USER}
 EOF
 
-	systemd_env_line UDDNS_CONFIG "$CONFIG_FILE" >>"$unit_file"
+	printf 'LoadCredential=%s\n' "$(systemd_quote "${SERVICE_CREDENTIAL}:${CONFIG_FILE}")" >>"$unit_file"
+	printf 'Environment="UDDNS_CONFIG=%%d/%s"\n' "$SERVICE_CREDENTIAL" >>"$unit_file"
 	systemd_env_line UDDNS_INTERVAL "$SERVICE_INTERVAL" >>"$unit_file"
 
 	if [ -n "$LOG_DIR" ]; then
@@ -581,15 +605,25 @@ ExecStart=$(systemd_quote "$binary_path")
 Restart=on-failure
 RestartSec=10s
 NoNewPrivileges=true
+CapabilityBoundingSet=
+AmbientCapabilities=
 PrivateTmp=true
+PrivateDevices=true
 ProtectSystem=strict
 ProtectHome=read-only
 ProtectControlGroups=true
 ProtectKernelModules=true
 ProtectKernelTunables=true
+ProtectKernelLogs=true
+ProtectClock=true
 RestrictSUIDSGID=true
+RestrictNamespaces=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 LockPersonality=true
 SystemCallArchitectures=native
+LogsDirectory=uddns
+LogsDirectoryMode=0700
+UMask=0077
 EOF
 
 	if [ -n "$LOG_DIR" ]; then
