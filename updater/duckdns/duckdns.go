@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/go-resty/resty/v2"
+	"github.com/we11adam/uddns/internal/dnsname"
 	"github.com/we11adam/uddns/internal/redact"
 	"github.com/we11adam/uddns/provider"
 	"github.com/we11adam/uddns/updater"
@@ -36,17 +37,27 @@ func init() {
 		if cfg.Domain == "" || cfg.Token == "" {
 			return nil, fmt.Errorf("missing required DuckDNS fields")
 		}
-		return New(&cfg), nil
+		return New(&cfg)
 	})
 }
 
-func New(cfg *Config) *DuckDNS {
+func New(cfg *Config) (*DuckDNS, error) {
+	if cfg == nil {
+		return nil, fmt.Errorf("DuckDNS config is nil")
+	}
+	domain, err := dnsname.Normalize(cfg.Domain)
+	if err != nil {
+		return nil, fmt.Errorf("invalid DuckDNS domain: %w", err)
+	}
+	normalizedConfig := *cfg
+	normalizedConfig.Domain = domain
+
 	httpclient := resty.New().SetTimeout(10 * time.Second).
 		SetBaseURL("https://www.duckdns.org")
 	return &DuckDNS{
 		httpclient: httpclient,
-		config:     cfg,
-	}
+		config:     &normalizedConfig,
+	}, nil
 }
 
 func (c *DuckDNS) Update(ctx context.Context, ips *provider.IpResult) error {

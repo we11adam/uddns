@@ -20,7 +20,7 @@ func TestUpdateIPRedactsToken(t *testing.T) {
 	token := "duck+/token =secret"
 
 	t.Run("transport error", func(t *testing.T) {
-		duckDNS := New(&Config{Domain: "home", Token: token})
+		duckDNS := mustNewDuckDNS(t, &Config{Domain: "home", Token: token})
 		duckDNS.httpclient.SetTransport(roundTripFunc(func(_ *http.Request) (*http.Response, error) {
 			return nil, errors.New("request failed for " + url.PathEscape(token))
 		}))
@@ -33,7 +33,7 @@ func TestUpdateIPRedactsToken(t *testing.T) {
 	})
 
 	t.Run("response body", func(t *testing.T) {
-		duckDNS := New(&Config{Domain: "home", Token: token})
+		duckDNS := mustNewDuckDNS(t, &Config{Domain: "home", Token: token})
 		duckDNS.httpclient.SetTransport(roundTripFunc(func(request *http.Request) (*http.Response, error) {
 			body := "invalid token " + token + " / " + url.QueryEscape(token)
 			return &http.Response{
@@ -56,7 +56,7 @@ func TestUpdateIPPropagatesContext(t *testing.T) {
 	type contextKey struct{}
 	key := contextKey{}
 	ctx := context.WithValue(context.Background(), key, "request-value")
-	duckDNS := New(&Config{Domain: "home", Token: "token"})
+	duckDNS := mustNewDuckDNS(t, &Config{Domain: "home", Token: "token"})
 	duckDNS.httpclient.SetTransport(roundTripFunc(func(request *http.Request) (*http.Response, error) {
 		if got := request.Context().Value(key); got != "request-value" {
 			t.Fatalf("expected request context value, got %#v", got)
@@ -72,6 +72,38 @@ func TestUpdateIPPropagatesContext(t *testing.T) {
 	if err := duckDNS.updateIP(ctx, "192.0.2.1"); err != nil {
 		t.Fatalf("update IP: %v", err)
 	}
+}
+
+func TestNewNormalizesAndValidatesDomain(t *testing.T) {
+	duckDNS := mustNewDuckDNS(t, &Config{Domain: " Home.DuckDNS.org. ", Token: "token"})
+	if duckDNS.config.Domain != "home.duckdns.org" {
+		t.Fatalf("domain = %q, want %q", duckDNS.config.Domain, "home.duckdns.org")
+	}
+
+	for _, domain := range []string{
+		"",
+		"   ",
+		"home..duckdns.org",
+		"home_name.duckdns.org",
+		"-home.duckdns.org",
+		"home-.duckdns.org",
+		"home/duckdns.org",
+	} {
+		t.Run(domain, func(t *testing.T) {
+			if _, err := New(&Config{Domain: domain, Token: "token"}); err == nil {
+				t.Fatalf("expected domain %q to be rejected", domain)
+			}
+		})
+	}
+}
+
+func mustNewDuckDNS(t *testing.T, cfg *Config) *DuckDNS {
+	t.Helper()
+	duckDNS, err := New(cfg)
+	if err != nil {
+		t.Fatalf("new DuckDNS updater: %v", err)
+	}
+	return duckDNS
 }
 
 func assertTokenRedacted(t *testing.T, value, token string) {
