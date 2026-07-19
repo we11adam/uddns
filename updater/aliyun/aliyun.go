@@ -22,6 +22,7 @@ const (
 	readTimeout     = 10 * time.Second
 	responseBodyMax = 1 << 20
 	recordPageSize  = 100
+	recordPageLimit = 100
 	recordTypeA     = "A"
 	recordTypeAAAA  = "AAAA"
 )
@@ -250,7 +251,7 @@ func (a *Aliyun) listDNSRecords(ctx context.Context, recordType string) ([]*alid
 	var records []*alidns.DescribeSubDomainRecordsResponseBodyDomainRecordsRecord
 	var fetched int64
 
-	for page := int64(1); ; page++ {
+	for page := int64(1); page <= recordPageLimit; page++ {
 		request := (&alidns.DescribeSubDomainRecordsRequest{}).
 			SetSubDomain(a.config.Domain).
 			SetType(recordType).
@@ -274,6 +275,8 @@ func (a *Aliyun) listDNSRecords(ctx context.Context, recordType string) ([]*alid
 			return records, nil
 		}
 	}
+
+	return nil, fmt.Errorf("DNS record pagination exceeded %d pages", recordPageLimit)
 }
 
 func responseRecords(response *alidns.DescribeSubDomainRecordsResponse) []*alidns.DescribeSubDomainRecordsResponseBodyDomainRecordsRecord {

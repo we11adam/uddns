@@ -3,6 +3,7 @@ package aliyun
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -242,6 +243,98 @@ func TestDuplicateDNSRecordsAreReconciledAndMixedValuesTriggerRepair(t *testing.
 	}
 }
 
+func TestListDNSRecordsPaginates(t *testing.T) {
+	aliyun := newTestAliyun(t)
+	var requestedPages []string
+	aliyun.client.HttpClient = httpClientFunc(func(request *http.Request, _ *http.Transport) (*http.Response, error) {
+		parameters, err := aliyunRequestParameters(request)
+		if err != nil {
+			return nil, err
+		}
+		pageNumber := parameters.Get("PageNumber")
+		requestedPages = append(requestedPages, pageNumber)
+
+		count := 0
+		switch pageNumber {
+		case "1":
+			count = recordPageSize
+		case "2":
+			count = 1
+		default:
+			return nil, fmt.Errorf("unexpected page number: %s", pageNumber)
+		}
+		return aliyunJSONResponse(request, describeSubDomainRecordsResponse(101, pageNumber, count)), nil
+	})
+
+	records, err := aliyun.listDNSRecords(context.Background(), recordTypeA)
+	if err != nil {
+		t.Fatalf("list paginated records: %v", err)
+	}
+	if len(records) != 101 {
+		t.Fatalf("record count = %d, want 101", len(records))
+	}
+	if len(requestedPages) != 2 || requestedPages[0] != "1" || requestedPages[1] != "2" {
+		t.Fatalf("requested pages = %v, want [1 2]", requestedPages)
+	}
+	if got := dara.StringValue(records[0].RecordId); got != "1-0" {
+		t.Fatalf("first record ID = %q, want 1-0", got)
+	}
+	if got := dara.StringValue(records[len(records)-1].RecordId); got != "2-0" {
+		t.Fatalf("last record ID = %q, want 2-0", got)
+	}
+}
+
+func TestListDNSRecordsRejectsExcessivePages(t *testing.T) {
+	aliyun := newTestAliyun(t)
+	requests := 0
+	aliyun.client.HttpClient = httpClientFunc(func(request *http.Request, _ *http.Transport) (*http.Response, error) {
+		parameters, err := aliyunRequestParameters(request)
+		if err != nil {
+			return nil, err
+		}
+		requests++
+		return aliyunJSONResponse(request, describeSubDomainRecordsResponse(0, parameters.Get("PageNumber"), recordPageSize)), nil
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	records, err := aliyun.listDNSRecords(ctx, recordTypeA)
+	if err == nil || !strings.Contains(err.Error(), fmt.Sprintf("exceeded %d pages", recordPageLimit)) {
+		t.Fatalf("expected pagination limit error, got %v", err)
+	}
+	if records != nil {
+		t.Fatalf("expected partial records to be discarded, got %d", len(records))
+	}
+	if requests != recordPageLimit {
+		t.Fatalf("request count = %d, want %d", requests, recordPageLimit)
+	}
+}
+
+func TestListDNSRecordsAllowsCompletePageLimit(t *testing.T) {
+	aliyun := newTestAliyun(t)
+	requests := 0
+	total := int64(recordPageSize * recordPageLimit)
+	aliyun.client.HttpClient = httpClientFunc(func(request *http.Request, _ *http.Transport) (*http.Response, error) {
+		parameters, err := aliyunRequestParameters(request)
+		if err != nil {
+			return nil, err
+		}
+		requests++
+		return aliyunJSONResponse(request, describeSubDomainRecordsResponse(total, parameters.Get("PageNumber"), recordPageSize)), nil
+	})
+
+	records, err := aliyun.listDNSRecords(context.Background(), recordTypeA)
+	if err != nil {
+		t.Fatalf("list records ending at page limit: %v", err)
+	}
+	if int64(len(records)) != total {
+		t.Fatalf("record count = %d, want %d", len(records), total)
+	}
+	if requests != recordPageLimit {
+		t.Fatalf("request count = %d, want %d", requests, recordPageLimit)
+	}
+}
+
 func TestCurrentRequestsOnlySelectedFamilies(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -325,5 +418,62 @@ func TestCurrentRequestsOnlySelectedFamilies(t *testing.T) {
 				t.Fatalf("current records = %+v, want IPv4=%q IPv6=%q", current, tt.wantIPv4, tt.wantIPv6)
 			}
 		})
+	}
+}
+
+func newTestAliyun(t *testing.T) *Aliyun {
+	t.Helper()
+	aliyun, err := New(&Config{
+		AccessKeyID:     "access-key-id",
+		AccessKeySecret: "access-key-secret",
+		Domain:          "home.example.com",
+	})
+	if err != nil {
+		t.Fatalf("create Aliyun updater: %v", err)
+	}
+	return aliyun
+}
+
+func aliyunRequestParameters(request *http.Request) (url.Values, error) {
+	parameters := request.URL.Query()
+	if request.Body == nil {
+		return parameters, nil
+	}
+
+	encoded, err := io.ReadAll(request.Body)
+	if err != nil {
+		return nil, err
+	}
+	bodyParameters, err := url.ParseQuery(string(encoded))
+	if err != nil {
+		return nil, err
+	}
+	for key, values := range bodyParameters {
+		for _, value := range values {
+			parameters.Add(key, value)
+		}
+	}
+	return parameters, nil
+}
+
+func describeSubDomainRecordsResponse(total int64, pageNumber string, count int) string {
+	records := make([]string, count)
+	for i := 0; i < count; i++ {
+		records[i] = fmt.Sprintf(`{"RecordId":"%s-%d","Value":"192.0.2.10"}`, pageNumber, i)
+	}
+	return fmt.Sprintf(`{
+		"TotalCount":%d,
+		"PageNumber":%s,
+		"PageSize":%d,
+		"DomainRecords":{"Record":[%s]}
+	}`, total, pageNumber, count, strings.Join(records, ","))
+}
+
+func aliyunJSONResponse(request *http.Request, body string) *http.Response {
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(body)),
+		Request:    request,
 	}
 }
