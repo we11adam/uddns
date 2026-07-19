@@ -19,12 +19,13 @@ import (
 )
 
 const (
-	defaultTTL      = 60
-	recordTypeA     = "A"
-	recordTypeAAAA  = "AAAA"
-	requestTimeout  = 15 * time.Second
-	retryBodyDrain  = 64 << 10
-	responseBodyMax = 1 << 20
+	defaultTTL                  = 60
+	recordTypeA                 = "A"
+	recordTypeAAAA              = "AAAA"
+	requestTimeout              = 15 * time.Second
+	retryBodyDrain              = 64 << 10
+	responseBodyMax             = 1 << 20
+	invalidObjectIdentifierCode = 7003
 )
 
 type Config struct {
@@ -157,57 +158,86 @@ func isRetryableStatus(statusCode int) bool {
 }
 
 func (c *Cloudflare) Update(ctx context.Context, ips *provider.IpResult) error {
-	if err := c.ensureZoneID(ctx); err != nil {
-		return err
-	}
+	return c.retryWithFreshZoneID(ctx, func() error {
+		if ips.IPv4 != "" {
+			if !provider.IsValidIPv4(ips.IPv4) {
+				return fmt.Errorf("invalid IPv4 address: %s", ips.IPv4)
+			}
+			if err := c.updateDNSRecord(ctx, recordTypeA, ips.IPv4); err != nil {
+				return fmt.Errorf("failed to update Cloudflare IPv4 record: %w", err)
+			}
+		}
 
-	if ips.IPv4 != "" {
-		if !provider.IsValidIPv4(ips.IPv4) {
-			return fmt.Errorf("invalid IPv4 address: %s", ips.IPv4)
+		if ips.IPv6 != "" {
+			if !provider.IsValidIPv6(ips.IPv6) {
+				return fmt.Errorf("invalid IPv6 address: %s", ips.IPv6)
+			}
+			if err := c.updateDNSRecord(ctx, recordTypeAAAA, ips.IPv6); err != nil {
+				return fmt.Errorf("failed to update Cloudflare IPv6 record: %w", err)
+			}
 		}
-		if err := c.updateDNSRecord(ctx, recordTypeA, ips.IPv4); err != nil {
-			return fmt.Errorf("failed to update Cloudflare IPv4 record: %w", err)
-		}
-	}
 
-	if ips.IPv6 != "" {
-		if !provider.IsValidIPv6(ips.IPv6) {
-			return fmt.Errorf("invalid IPv6 address: %s", ips.IPv6)
-		}
-		if err := c.updateDNSRecord(ctx, recordTypeAAAA, ips.IPv6); err != nil {
-			return fmt.Errorf("failed to update Cloudflare IPv6 record: %w", err)
-		}
-	}
-
-	return nil
+		return nil
+	})
 }
 
 func (c *Cloudflare) Current(ctx context.Context, families provider.FamilyRequest) (*provider.IpResult, error) {
 	if !families.IPv4 && !families.IPv6 {
 		return nil, fmt.Errorf("no IP families requested")
 	}
-	if err := c.ensureZoneID(ctx); err != nil {
+	var result *provider.IpResult
+	err := c.retryWithFreshZoneID(ctx, func() error {
+		result = &provider.IpResult{}
+		if families.IPv4 {
+			ipv4, err := c.currentDNSRecord(ctx, recordTypeA)
+			if err != nil {
+				return fmt.Errorf("failed to get Cloudflare IPv4 record: %w", err)
+			}
+			result.IPv4 = ipv4
+		}
+
+		if families.IPv6 {
+			ipv6, err := c.currentDNSRecord(ctx, recordTypeAAAA)
+			if err != nil {
+				return fmt.Errorf("failed to get Cloudflare IPv6 record: %w", err)
+			}
+			result.IPv6 = ipv6
+		}
+		return nil
+	})
+	if err != nil {
 		return nil, err
-	}
-	result := &provider.IpResult{}
-
-	if families.IPv4 {
-		ipv4, err := c.currentDNSRecord(ctx, recordTypeA)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get Cloudflare IPv4 record: %w", err)
-		}
-		result.IPv4 = ipv4
-	}
-
-	if families.IPv6 {
-		ipv6, err := c.currentDNSRecord(ctx, recordTypeAAAA)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get Cloudflare IPv6 record: %w", err)
-		}
-		result.IPv6 = ipv6
 	}
 
 	return result, nil
+}
+
+func (c *Cloudflare) retryWithFreshZoneID(ctx context.Context, operation func() error) error {
+	if err := c.ensureZoneID(ctx); err != nil {
+		return err
+	}
+
+	err := operation()
+	if !isStaleZoneIDError(err) {
+		return err
+	}
+
+	c.zoneID = ""
+	if err := c.ensureZoneID(ctx); err != nil {
+		return err
+	}
+
+	err = operation()
+	if isStaleZoneIDError(err) {
+		c.zoneID = ""
+	}
+	return err
+}
+
+func isStaleZoneIDError(err error) bool {
+	var apiErr *cloudflare.Error
+	return errors.As(err, &apiErr) &&
+		(apiErr.StatusCode == http.StatusNotFound || apiErr.InternalErrorCodeIs(invalidObjectIdentifierCode))
 }
 
 func (c *Cloudflare) ensureZoneID(ctx context.Context) error {

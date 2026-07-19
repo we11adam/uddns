@@ -313,6 +313,164 @@ func TestCurrentRequestsOnlySelectedFamilies(t *testing.T) {
 	}
 }
 
+func TestUpdateRefreshesStaleZoneID(t *testing.T) {
+	var staleLists, zoneLookups, freshLists, creates int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/zones/stale-zone/dns_records":
+			staleLists++
+			writeCloudflareError(w, http.StatusBadRequest, invalidObjectIdentifierCode)
+		case "/zones":
+			zoneLookups++
+			if got := request.URL.Query().Get("name"); got != "example.com" {
+				t.Errorf("zone lookup name = %q, want example.com", got)
+			}
+			writeCloudflareResult(w, []map[string]any{{"id": "fresh-zone", "name": "example.com"}}, 1)
+		case "/zones/fresh-zone/dns_records":
+			switch request.Method {
+			case http.MethodGet:
+				freshLists++
+				writeCloudflareResult(w, []any{}, 0)
+			case http.MethodPost:
+				creates++
+				writeCloudflareResult(w, map[string]any{"id": "record-id"}, 1)
+			default:
+				t.Errorf("unexpected fresh-zone method: %s", request.Method)
+				w.WriteHeader(http.StatusMethodNotAllowed)
+			}
+		default:
+			t.Errorf("unexpected request: %s %s", request.Method, request.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	cloudflare := newCloudflareTestUpdater(t, server, "stale-zone")
+	if err := cloudflare.Update(context.Background(), &provider.IpResult{IPv4: "192.0.2.10"}); err != nil {
+		t.Fatalf("update with stale zone ID: %v", err)
+	}
+	if cloudflare.zoneID != "fresh-zone" {
+		t.Fatalf("zone ID = %q, want fresh-zone", cloudflare.zoneID)
+	}
+	if staleLists != 1 || zoneLookups != 1 || freshLists != 1 || creates != 1 {
+		t.Fatalf("request counts stale=%d lookup=%d fresh=%d create=%d, want all 1", staleLists, zoneLookups, freshLists, creates)
+	}
+}
+
+func TestCurrentRefreshesStaleZoneID(t *testing.T) {
+	var staleLists, zoneLookups, freshLists int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/zones/stale-zone/dns_records":
+			staleLists++
+			writeCloudflareError(w, http.StatusNotFound, 10000)
+		case "/zones":
+			zoneLookups++
+			writeCloudflareResult(w, []map[string]any{{"id": "fresh-zone", "name": "example.com"}}, 1)
+		case "/zones/fresh-zone/dns_records":
+			freshLists++
+			writeCloudflareResult(w, []map[string]any{{
+				"id": "record-id", "type": "A", "name": "home.example.com", "content": "192.0.2.10",
+			}}, 1)
+		default:
+			t.Errorf("unexpected request: %s %s", request.Method, request.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	cloudflare := newCloudflareTestUpdater(t, server, "stale-zone")
+	current, err := cloudflare.Current(context.Background(), provider.FamilyRequest{IPv4: true})
+	if err != nil {
+		t.Fatalf("read with stale zone ID: %v", err)
+	}
+	if current.IPv4 != "192.0.2.10" {
+		t.Fatalf("current IPv4 = %q, want 192.0.2.10", current.IPv4)
+	}
+	if cloudflare.zoneID != "fresh-zone" {
+		t.Fatalf("zone ID = %q, want fresh-zone", cloudflare.zoneID)
+	}
+	if staleLists != 1 || zoneLookups != 1 || freshLists != 1 {
+		t.Fatalf("request counts stale=%d lookup=%d fresh=%d, want all 1", staleLists, zoneLookups, freshLists)
+	}
+}
+
+func TestStaleZoneIDRefreshRetriesOnlyOnce(t *testing.T) {
+	var staleLists, zoneLookups, freshLists int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/zones/stale-zone/dns_records":
+			staleLists++
+			writeCloudflareError(w, http.StatusBadRequest, invalidObjectIdentifierCode)
+		case "/zones":
+			zoneLookups++
+			writeCloudflareResult(w, []map[string]any{{"id": "fresh-zone", "name": "example.com"}}, 1)
+		case "/zones/fresh-zone/dns_records":
+			freshLists++
+			writeCloudflareError(w, http.StatusNotFound, 10000)
+		default:
+			t.Errorf("unexpected request: %s %s", request.Method, request.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	cloudflare := newCloudflareTestUpdater(t, server, "stale-zone")
+	if _, err := cloudflare.Current(context.Background(), provider.FamilyRequest{IPv4: true}); err == nil {
+		t.Fatal("expected refreshed stale zone ID to return an error")
+	}
+	if cloudflare.zoneID != "" {
+		t.Fatalf("zone ID = %q, want cleared cache after second stale error", cloudflare.zoneID)
+	}
+	if staleLists != 1 || zoneLookups != 1 || freshLists != 1 {
+		t.Fatalf("request counts stale=%d lookup=%d fresh=%d, want all 1", staleLists, zoneLookups, freshLists)
+	}
+}
+
+func TestZoneIDIsNotRefreshedForUnrelatedAPIErrors(t *testing.T) {
+	tests := []struct {
+		name       string
+		statusCode int
+		errorCode  int
+	}{
+		{name: "unauthorized", statusCode: http.StatusUnauthorized, errorCode: 9109},
+		{name: "forbidden", statusCode: http.StatusForbidden, errorCode: 9109},
+		{name: "rate limited", statusCode: http.StatusTooManyRequests, errorCode: 1015},
+		{name: "other bad request", statusCode: http.StatusBadRequest, errorCode: 10000},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var recordLists, zoneLookups int
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+				switch request.URL.Path {
+				case "/zones/cached-zone/dns_records":
+					recordLists++
+					writeCloudflareError(w, tt.statusCode, tt.errorCode)
+				case "/zones":
+					zoneLookups++
+					writeCloudflareResult(w, []map[string]any{{"id": "fresh-zone", "name": "example.com"}}, 1)
+				default:
+					t.Errorf("unexpected request: %s %s", request.Method, request.URL.Path)
+					w.WriteHeader(http.StatusNotFound)
+				}
+			}))
+			defer server.Close()
+
+			cloudflare := newCloudflareTestUpdater(t, server, "cached-zone")
+			if _, err := cloudflare.Current(context.Background(), provider.FamilyRequest{IPv4: true}); err == nil {
+				t.Fatal("expected API error")
+			}
+			if cloudflare.zoneID != "cached-zone" {
+				t.Fatalf("zone ID = %q, want cached-zone", cloudflare.zoneID)
+			}
+			if recordLists != 1 || zoneLookups != 0 {
+				t.Fatalf("request counts records=%d lookup=%d, want 1 and 0", recordLists, zoneLookups)
+			}
+		})
+	}
+}
+
 func TestZoneLookupUsesContext(t *testing.T) {
 	api, err := cloudflareapi.NewWithAPIToken("token", cloudflareapi.HTTPClient(&http.Client{}))
 	if err != nil {
@@ -329,4 +487,48 @@ func TestZoneLookupUsesContext(t *testing.T) {
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected canceled zone lookup, got %v", err)
 	}
+}
+
+func newCloudflareTestUpdater(t *testing.T, server *httptest.Server, zoneID string) *Cloudflare {
+	t.Helper()
+	api, err := cloudflareapi.NewWithAPIToken(
+		"token",
+		cloudflareapi.HTTPClient(server.Client()),
+		cloudflareapi.UsingRateLimit(100000),
+		cloudflareapi.UsingRetryPolicy(0, 0, 0),
+	)
+	if err != nil {
+		t.Fatalf("create Cloudflare API client: %v", err)
+	}
+	api.BaseURL = server.URL
+	return &Cloudflare{
+		config: &Config{Domain: "home.example.com"},
+		client: api,
+		zoneID: zoneID,
+	}
+}
+
+func writeCloudflareError(w http.ResponseWriter, statusCode, errorCode int) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Connection", "close")
+	w.WriteHeader(statusCode)
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"success":  false,
+		"errors":   []map[string]any{{"code": errorCode, "message": "test error"}},
+		"messages": []any{},
+		"result":   nil,
+	})
+}
+
+func writeCloudflareResult(w http.ResponseWriter, result any, count int) {
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"success":  true,
+		"errors":   []any{},
+		"messages": []any{},
+		"result":   result,
+		"result_info": map[string]any{
+			"page": 1, "per_page": 100, "count": count, "total_count": count, "total_pages": 1,
+		},
+	})
 }
