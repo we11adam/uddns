@@ -6,6 +6,14 @@ All notable changes to UDDNS are documented here, based on the Git commit histor
 
 No changes yet.
 
+## v1.7.2 - 2026-07-20
+
+### Fixed
+
+- Fixed the RouterOS provider to ignore disabled IPv4 and IPv6 addresses when selecting PPPoE addresses.
+- Bounded Aliyun DNS record pagination so malformed full-page responses cannot cause unending requests or return partial results.
+- Refreshed stale Cloudflare zone IDs after invalid-identifier or not-found responses, with a single targeted retry for zones that were removed and recreated.
+
 ## v1.7.1 - 2026-07-13
 
 ### Fixed
