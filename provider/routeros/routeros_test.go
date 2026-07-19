@@ -96,3 +96,55 @@ func TestGetIPsRequestsOnlySelectedFamilies(t *testing.T) {
 		})
 	}
 }
+
+func TestGetIPsSkipsDisabledAddresses(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch request.URL.Path {
+		case "/interface":
+			_, _ = w.Write([]byte(`[{"name":"pppoe-out1","type":"pppoe-out"}]`))
+		case "/ip/address":
+			_, _ = w.Write([]byte(`[
+				{"interface":"pppoe-out1","address":"192.0.2.10/32","disabled":"true"},
+				{"interface":"pppoe-out1","address":"192.0.2.20/32","disabled":"false"}
+			]`))
+		case "/ipv6/address":
+			_, _ = w.Write([]byte(`[
+				{"interface":"pppoe-out1","address":"2001:db8::10/64","disabled":"true"},
+				{"interface":"pppoe-out1","address":"2001:db8::20/64","disabled":"false"}
+			]`))
+		default:
+			http.NotFound(w, request)
+		}
+	}))
+	defer server.Close()
+
+	router := &RouterOS{httpClient: resty.New().SetBaseURL(server.URL)}
+	result, err := router.GetIPs(context.Background(), provider.FamilyRequest{IPv4: true, IPv6: true})
+	if err != nil {
+		t.Fatalf("get IPs: %v", err)
+	}
+	if result.IPv4 != "192.0.2.20" || result.IPv6 != "2001:db8::20" {
+		t.Fatalf("result = %+v, want enabled IPv4 and IPv6 addresses", result)
+	}
+}
+
+func TestGetIPsRejectsOnlyDisabledAddresses(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch request.URL.Path {
+		case "/interface":
+			_, _ = w.Write([]byte(`[{"name":"pppoe-out1","type":"pppoe-out"}]`))
+		case "/ip/address":
+			_, _ = w.Write([]byte(`[{"interface":"pppoe-out1","address":"192.0.2.10/32","disabled":"true"}]`))
+		default:
+			http.NotFound(w, request)
+		}
+	}))
+	defer server.Close()
+
+	router := &RouterOS{httpClient: resty.New().SetBaseURL(server.URL)}
+	if _, err := router.GetIPs(context.Background(), provider.FamilyRequest{IPv4: true}); err == nil {
+		t.Fatal("expected disabled-only address list to return an error")
+	}
+}

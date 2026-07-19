@@ -120,7 +120,7 @@ func (r *RouterOS) GetIPs(ctx context.Context, families provider.FamilyRequest) 
 		}
 
 		for _, raddr := range raddrs {
-			if raddr.Interface == pppoeIfName {
+			if raddr.Interface == pppoeIfName && raddr.Disabled != "true" {
 				result.IPv4 = strings.Split(raddr.Address, "/")[0]
 				break
 			}
@@ -135,7 +135,7 @@ func (r *RouterOS) GetIPs(ctx context.Context, families provider.FamilyRequest) 
 		}
 
 		for _, raddr := range raddrs6 {
-			if raddr.Interface == pppoeIfName {
+			if raddr.Interface == pppoeIfName && raddr.Disabled != "true" {
 				result.IPv6 = strings.Split(raddr.Address, "/")[0]
 				break
 			}
