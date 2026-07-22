@@ -9,8 +9,8 @@ require (
 	github.com/cloudflare/cloudflare-go v0.117.0
 	github.com/go-resty/resty/v2 v2.17.2
 	github.com/lmittmann/tint v1.2.0
-	github.com/mattn/go-isatty v0.0.22
 	github.com/spf13/viper v1.21.0
+	golang.org/x/sys v0.47.0
 )
 
 require (
@@ -36,7 +36,6 @@ require (
 	github.com/tjfoc/gmsm v1.4.1 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/net v0.57.0 // indirect
-	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/text v0.40.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
 	gopkg.in/ini.v1 v1.67.3 // indirect

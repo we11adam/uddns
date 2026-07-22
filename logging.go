@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/lmittmann/tint"
-	"github.com/mattn/go-isatty"
+	"golang.org/x/sys/unix"
 )
 
 const (
@@ -52,7 +52,7 @@ func configureLoggerFromConfig(v logConfigReader) {
 	level, levelOK := parseLogLevel(config.level.value)
 	handlers := []slog.Handler{
 		tint.NewTextHandler(os.Stdout, &tint.Options{
-			NoColor:    !isatty.IsTerminal(os.Stdout.Fd()),
+			NoColor:    !isTerminal(os.Stdout.Fd()),
 			Level:      level,
 			TimeFormat: time.DateTime,
 		}),
@@ -371,4 +371,10 @@ func parseRotatedLogDate(name, prefix string) (time.Time, bool) {
 func dateOnly(t time.Time) time.Time {
 	year, month, day := t.Date()
 	return time.Date(year, month, day, 0, 0, 0, 0, t.Location())
+}
+
+// IsTerminal return true if the file descriptor is a terminal.
+func isTerminal(fd uintptr) bool {
+	_, err := unix.IoctlGetTermios(int(fd), unix.TCGETS)
+	return err == nil
 }
