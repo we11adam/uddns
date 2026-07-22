@@ -10,7 +10,7 @@ notifications when the IP address or update status changes.
 
 - IPv4 and IPv6 update support.
 - Providers: RouterOS, external IP services, and local network interfaces.
-- Updaters: Cloudflare, Aliyun, DuckDNS, and LightDNS.
+- Updaters: Cloudflare, Aliyun, DuckDNS, LightDNS and Scaleway.
 - Notifier: Telegram.
 - Configurable update interval.
 - Structured logs with optional daily rotated file logging and retention.
@@ -300,6 +300,13 @@ fails.
 - `lightdns`:
   - `key`: LightDNS DDNS key.
   - `domain`: DNS record to update.
+- `scaleway`:
+  - `accesskey`: Scaleway access key.
+  - `secretkey`: Scaleway secret key.
+  - `projectid`: Scaleway project ID.
+  - `domain`: DNS record to update.
+  - `zone`: Optional DNS zone, for example `example.co.uk`.
+  - `ttl`: Optional DNS record TTL in seconds, defaults to `150`.
 
 ### Notifiers
 
