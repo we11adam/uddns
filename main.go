@@ -25,6 +25,7 @@ import (
 	_ "github.com/we11adam/uddns/updater/cloudflare"
 	_ "github.com/we11adam/uddns/updater/duckdns"
 	_ "github.com/we11adam/uddns/updater/lightdns"
+	_ "github.com/we11adam/uddns/updater/scaleway"
 )
 
 func init() {
