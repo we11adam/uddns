@@ -175,6 +175,32 @@ jobs:
 	}
 }
 
+func TestRunConfigCheckSupportsScaleway(t *testing.T) {
+	t.Setenv("UDDNS_INTERVAL", "")
+	path := writeTempConfig(t, `
+providers:
+  ip_service:
+    - ifconfig.me
+updaters:
+  scaleway:
+    access_key: SCW1234567890ABCDEFG
+    secret_key: 7363616c-6577-6573-6862-6f7579616161
+    project_id: 6170692e-7363-616c-6577-61792e636f6e
+jobs:
+  - name: home
+    provider: ip_service
+    updater: scaleway
+    record: home.dev.example.com
+    zone: dev.example.com
+    verify: updater_api
+`)
+
+	code := run([]string{"config", "check", "-c", path})
+	if code != 0 {
+		t.Fatalf("expected Scaleway config check to succeed, got exit code %d", code)
+	}
+}
+
 func TestJobOverridesOnlySelectedUpdater(t *testing.T) {
 	overrides, err := jobOverrides(config.Job{
 		Provider: "ip_service",

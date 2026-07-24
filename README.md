@@ -225,10 +225,10 @@ Job fields:
 - `provider`: Provider implementation to use, for example `ip_service`,
   `routeros`, or `netif`.
 - `updater`: Updater implementation to use, for example `cloudflare`,
-  `aliyun`, `duckdns`, or `lightdns`.
+  `aliyun`, `duckdns`, `lightdns`, or `scaleway`.
 - `record`: DNS record to update. For DuckDNS this is the subdomain without
   `.duckdns.org`.
-- `zone`: Optional DNS zone override for Cloudflare and Aliyun.
+- `zone`: Optional DNS zone override for Cloudflare, Aliyun, and Scaleway.
 - `families`: Optional address families. Supported values are `ipv4` and
   `ipv6`; omitted means both.
 - `verify`: Optional verification mode. Supported values are `auto`, `off`, and
@@ -253,8 +253,8 @@ Verify behavior:
   otherwise skip verification.
 - `off`: Do not verify DNS records before deciding whether to update.
 - `updater_api`: Require the selected updater to query the current DNS record
-  through its DNS provider API. Cloudflare and Aliyun support this. DuckDNS and
-  LightDNS do not, so `config check` fails if they are used with
+  through its DNS provider API. Cloudflare, Aliyun, and Scaleway support this.
+  DuckDNS and LightDNS do not, so `config check` fails if they are used with
   `verify: updater_api`.
 
 When updater API verification is active, UDDNS updates if the detected IP
@@ -301,9 +301,9 @@ fails.
   - `key`: LightDNS DDNS key.
   - `domain`: DNS record to update.
 - `scaleway`:
-  - `accesskey`: Scaleway access key.
-  - `secretkey`: Scaleway secret key.
-  - `projectid`: Scaleway project ID.
+  - `access_key`: Scaleway access key.
+  - `secret_key`: Scaleway secret key.
+  - `project_id`: Scaleway project ID.
   - `domain`: DNS record to update.
   - `zone`: Optional DNS zone, for example `example.co.uk`.
   - `ttl`: Optional DNS record TTL in seconds, defaults to `150`.

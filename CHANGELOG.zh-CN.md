@@ -6,6 +6,18 @@
 
 暂无变更。
 
+## v1.8.0 - 2026-07-24
+
+### 新增
+
+- 新增 Scaleway DNS 支持，可更新 IPv4 和 IPv6、配置 TTL、用于高级 jobs，并通过 updater API 验证当前记录。
+
+### 修复
+
+- 修复 Scaleway 更新请求，按记录名称和类型分别定位 A 与 AAAA 记录集，生成有效的 DNS API 请求。
+- 规范化 Scaleway 记录名和 zone；未配置时自动推导根 zone，保留显式子 zone，并拒绝不属于所配置 zone 的记录。
+- 统一 Scaleway 凭据配置键与解析逻辑，并同步更新中英文 provider 文档。
+
 ## v1.7.2 - 2026-07-20
 
 ### 修复

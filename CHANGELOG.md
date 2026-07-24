@@ -6,6 +6,18 @@ All notable changes to UDDNS are documented here, based on the Git commit histor
 
 No changes yet.
 
+## v1.8.0 - 2026-07-24
+
+### Added
+
+- Added Scaleway DNS support for IPv4 and IPv6 updates, configurable TTLs, advanced jobs, and updater API verification.
+
+### Fixed
+
+- Fixed Scaleway updates to target A and AAAA record sets separately by record name and type, producing valid DNS API requests.
+- Normalized Scaleway record and zone names, inferred omitted root zones, preserved explicit sub-zones, and rejected records outside their configured zone.
+- Aligned the documented Scaleway credential keys with configuration parsing and updated the English and Chinese provider documentation.
+
 ## v1.7.2 - 2026-07-20
 
 ### Fixed

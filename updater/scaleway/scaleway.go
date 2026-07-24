@@ -5,15 +5,20 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/scaleway/scaleway-sdk-go/api/domain/v2beta1"
 	"github.com/scaleway/scaleway-sdk-go/scw"
 	"golang.org/x/net/publicsuffix"
 
+	"github.com/we11adam/uddns/internal/dnsname"
 	"github.com/we11adam/uddns/provider"
 	"github.com/we11adam/uddns/updater"
+)
+
+const (
+	defaultTTL     = 150
+	requestTimeout = 10 * time.Second
 )
 
 type Config struct {
@@ -29,8 +34,9 @@ type Config struct {
 }
 
 type Scaleway struct {
-	client *scw.Client
-	config *Config
+	client     *scw.Client
+	config     *Config
+	recordName string
 }
 
 func init() {
@@ -56,27 +62,51 @@ func New(cfg *Config) (sw *Scaleway, err error) {
 		return nil, fmt.Errorf("missing required Scaleway fields")
 	}
 
-	if cfg.Zone != "" {
-		cfg.Zone, err = publicsuffix.EffectiveTLDPlusOne(cfg.Zone)
-		if err != nil {
-			return nil, fmt.Errorf("could not retrieve Scaleway zone: %w", err)
-		}
-	}
-	if cfg.TTL == nil {
-		cfg.TTL = new(150)
-	}
-	if *cfg.TTL < 0 {
-		return nil, fmt.Errorf("invalid TTL value: %d", *cfg.TTL)
+	normalizedConfig := *cfg
+	normalizedConfig.Domain, err = dnsname.Normalize(cfg.Domain)
+	if err != nil {
+		return nil, fmt.Errorf("invalid Scaleway domain: %w", err)
 	}
 
+	if cfg.Zone == "" {
+		normalizedConfig.Zone, err = publicsuffix.EffectiveTLDPlusOne(normalizedConfig.Domain)
+		if err != nil {
+			return nil, fmt.Errorf("could not infer Scaleway zone: %w", err)
+		}
+	} else {
+		normalizedConfig.Zone, err = dnsname.Normalize(cfg.Zone)
+		if err != nil {
+			return nil, fmt.Errorf("invalid Scaleway zone: %w", err)
+		}
+	}
+
+	var swRecordName string
+	normalizedConfig.Zone, swRecordName, err = dnsname.SplitRecord(normalizedConfig.Domain, normalizedConfig.Zone)
+	if err != nil {
+		return nil, fmt.Errorf("invalid Scaleway DNS record: %w", err)
+	}
+	if swRecordName == "@" {
+		swRecordName = ""
+	}
+
+	ttl := defaultTTL
+	if cfg.TTL != nil {
+		ttl = *cfg.TTL
+	}
+	if ttl < 0 || uint64(ttl) > uint64(^uint32(0)) {
+		return nil, fmt.Errorf("invalid TTL value: %d", ttl)
+	}
+	normalizedConfig.TTL = &ttl
+
 	sw = &Scaleway{
-		config: cfg,
+		config:     &normalizedConfig,
+		recordName: swRecordName,
 	}
 	sw.client, err = scw.NewClient(
-		scw.WithAuth(cfg.AccessKey, cfg.SecretKey),
-		scw.WithDefaultProjectID(cfg.ProjectID),
+		scw.WithAuth(normalizedConfig.AccessKey, normalizedConfig.SecretKey),
+		scw.WithDefaultProjectID(normalizedConfig.ProjectID),
 		scw.WithHTTPClient(&http.Client{
-			Timeout: 10 * time.Second,
+			Timeout: requestTimeout,
 		}),
 	)
 	if err != nil {
@@ -87,37 +117,55 @@ func New(cfg *Config) (sw *Scaleway, err error) {
 }
 
 func (s *Scaleway) Update(ctx context.Context, ips *provider.IpResult) error {
+	if ips == nil {
+		return fmt.Errorf("Scaleway IP result is nil")
+	}
+
 	api := domain.NewAPI(s.client)
 
-	name := getRecordName(s.config.Domain, s.config.Zone)
-
-	records := []*domain.Record{}
-	if ips.IPv4 != "" {
-		records = append(records, &domain.Record{
-			Name: name,
-			Type: domain.RecordTypeA,
-			Data: ips.IPv4,
+	records := make([]*domain.Record, 0, 2)
+	changes := make([]*domain.RecordChange, 0, 2)
+	addChange := func(recordType domain.RecordType, data string) {
+		record := &domain.Record{
+			Name: s.recordName,
+			Type: recordType,
+			Data: data,
 			TTL:  uint32(*s.config.TTL),
+		}
+		records = append(records, record)
+		changes = append(changes, &domain.RecordChange{
+			Set: &domain.RecordChangeSet{
+				IDFields: &domain.RecordIdentifier{
+					Name: s.recordName,
+					Type: recordType,
+				},
+				Records: []*domain.Record{record},
+			},
 		})
+	}
+
+	if ips.IPv4 != "" {
+		if !provider.IsValidIPv4(ips.IPv4) {
+			return fmt.Errorf("invalid IPv4 address: %s", ips.IPv4)
+		}
+		addChange(domain.RecordTypeA, ips.IPv4)
 	}
 	if ips.IPv6 != "" {
-		records = append(records, &domain.Record{
-			Name: name,
-			Type: domain.RecordTypeAAAA,
-			Data: ips.IPv6,
-			TTL:  uint32(*s.config.TTL),
-		})
+		if !provider.IsValidIPv6(ips.IPv6) {
+			return fmt.Errorf("invalid IPv6 address: %s", ips.IPv6)
+		}
+		addChange(domain.RecordTypeAAAA, ips.IPv6)
+	}
+	if len(changes) == 0 {
+		return nil
 	}
 
+	returnAllRecords := false
 	_, err := api.UpdateDNSZoneRecords(&domain.UpdateDNSZoneRecordsRequest{
-		DNSZone: s.config.Zone,
-		Changes: []*domain.RecordChange{
-			{
-				Set: &domain.RecordChangeSet{
-					Records: records,
-				},
-			},
-		},
+		DNSZone:                 s.config.Zone,
+		Changes:                 changes,
+		ReturnAllRecords:        &returnAllRecords,
+		DisallowNewZoneCreation: true,
 	}, scw.WithContext(ctx))
 	if err != nil {
 		return fmt.Errorf("failed to update Scaleway DNS records: %w", err)
@@ -149,9 +197,9 @@ func (s *Scaleway) Current(ctx context.Context, families provider.FamilyRequest)
 
 	res, err := api.ListDNSZoneRecords(&domain.ListDNSZoneRecordsRequest{
 		DNSZone: s.config.Zone,
-		Name:    getRecordName(s.config.Domain, s.config.Zone),
+		Name:    s.recordName,
 		Type:    recordType,
-	}, scw.WithContext(ctx))
+	}, scw.WithAllPages(), scw.WithContext(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("failed to get Scaleway DNS records: %w", err)
 	}
@@ -175,12 +223,4 @@ func (s *Scaleway) Current(ctx context.Context, families provider.FamilyRequest)
 	}
 
 	return result, nil
-}
-
-func getRecordName(domain string, zone string) string {
-	name := ""
-	if domain != zone {
-		return strings.TrimSuffix(domain, "."+zone)
-	}
-	return name
 }
