@@ -18,6 +18,7 @@ import (
 	"github.com/we11adam/uddns/provider"
 	"github.com/we11adam/uddns/updater"
 
+	_ "github.com/we11adam/uddns/notifier/discord"
 	_ "github.com/we11adam/uddns/notifier/telegram"
 	_ "github.com/we11adam/uddns/provider/ip_service"
 	_ "github.com/we11adam/uddns/provider/netif"
