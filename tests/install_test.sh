@@ -434,7 +434,9 @@ expect_tar_rejected "$tar_test_dir/symlink.tar.gz" "symlink target escape"
 mkdir -p "$tar_test_dir/hardlink-source"
 printf 'hardlink\n' >"$tar_test_dir/hardlink-source/target"
 ln "$tar_test_dir/hardlink-source/target" "$tar_test_dir/hardlink-source/uddns"
-tar -cf "$tar_test_dir/hardlink-with-target.tar" -C "$tar_test_dir/hardlink-source" target uddns
+# Use a fixed header format so macOS metadata does not insert PAX records before
+# the target; the block offset below must expose the hardlink as the first entry.
+tar --format=ustar -cf "$tar_test_dir/hardlink-with-target.tar" -C "$tar_test_dir/hardlink-source" target uddns
 dd if="$tar_test_dir/hardlink-with-target.tar" of="$tar_test_dir/hardlink.tar" bs=512 skip=2 2>/dev/null
 gzip -c "$tar_test_dir/hardlink.tar" >"$tar_test_dir/hardlink.tar.gz"
 hardlink_type="$(LC_ALL=C tar -tvzf "$tar_test_dir/hardlink.tar.gz" | cut -c 1)"

@@ -14,6 +14,7 @@ UDDNS 是一个轻量的动态 DNS 更新器。它会从 provider 获取当前�
 - 支持通过环境变量配置更新间隔。
 - 结构化日志，支持按自然日轮转文件日志和保留天数清理。
 - 支持 curl 安装器，并可选择安装为 systemd 服务。
+- 内置 release 更新检查，并在 Unix 上支持可回滚的原子自升级。
 - 使用 GoReleaser 发布多平台二进制文件，并提供 SBOM 和 GitHub Actions
   来源证明。
 
@@ -72,6 +73,55 @@ go install github.com/we11adam/uddns@latest
 ```
 
 或者从 [releases 页面](https://github.com/we11adam/uddns/releases/)下载二进制文件。
+
+## 自升级
+
+查看当前构建版本，或只检查最新稳定版而不修改文件：
+
+```shell
+uddns version
+uddns version --json
+uddns self-update --check
+uddns self-update --check --json
+```
+
+Linux、macOS 和 FreeBSD 可以直接安装最新稳定版：
+
+```shell
+uddns self-update
+```
+
+升级器会精确选择当前平台对应的 GoReleaser 资产，通过 HTTPS 下载，根据
+`checksums.txt` 校验 SHA-256，严格验证归档只包含一个可执行文件，并确认暂存
+二进制报告的版本。随后它会在原文件旁创建 `.previous` 备份，并以原子操作替换
+已安装的可执行文件。解析后的目标必须是普通文件。由于操作系统可能在 UDDNS 检查
+启动路径前就解析符号链接，升级器无法可靠识别所有由包管理器管理的安装；这类情况
+请改用对应包管理器的升级命令。
+
+如果可执行文件位于 root 持有的目录，请通过绝对路径使用 `sudo`，例如：
+
+```shell
+sudo /usr/local/bin/uddns self-update
+sudo systemctl restart uddns.service
+```
+
+首个自升级版本不会自动重启正在运行的服务。升级成功后需要重启服务，才能运行新
+二进制。可用以下命令恢复上一个版本：
+
+```shell
+sudo /usr/local/bin/uddns self-update --rollback
+sudo systemctl restart uddns.service
+```
+
+如果替换过程被意外中断，可能会留下 `<binary>.update-pending`。它保存升级前的
+二进制，升级器不会自动丢弃。请分别执行两份文件的 `version --json`：如果已安装
+目标是新版本，将 `.update-pending` 移动为 `.previous`；如果两个文件完全相同，
+只删除 `.update-pending`。再次升级或回滚前必须先处理该恢复文件。
+
+可以用 `--version v1.9.0` 选择指定的稳定版。降级必须额外传入
+`--allow-downgrade`，且只能降到 v1.9.0 或更新版本，因为更早的二进制无法完成
+暂存版本检查；如需更早版本请手动安装。版本为 `dev` 的开发构建必须传入
+`--allow-dev`。Windows 目前可以检查 release，但还不能替换正在运行的可执行文件。
 
 ## 配置
 

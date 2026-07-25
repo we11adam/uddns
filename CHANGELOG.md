@@ -6,6 +6,17 @@ All notable changes to UDDNS are documented here, based on the Git commit histor
 
 No changes yet.
 
+## v1.9.0 - 2026-07-25
+
+### Added
+
+- Added `uddns version` with human-readable and JSON output.
+- Added stable release checks on every release target, plus atomic self-updates
+  with rollback on Linux, macOS, and FreeBSD. Updates use exact platform
+  assets, SHA-256 verification, strict single-file archive validation,
+  staged-binary version and platform checks, and an adjacent `.previous`
+  backup.
+
 ## v1.8.0 - 2026-07-24
 
 ### Added

@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -28,10 +29,6 @@ import (
 	_ "github.com/we11adam/uddns/updater/scaleway"
 )
 
-func init() {
-	configureLogger()
-}
-
 func main() {
 	os.Exit(run(os.Args[1:]))
 }
@@ -44,10 +41,40 @@ type runtimeConfig struct {
 }
 
 func run(args []string) int {
-	if len(args) > 0 && args[0] == "config" {
-		return runConfigCommand(args[1:])
+	return runWithIO(args, os.Stdout, os.Stderr, defaultCommandDependencies())
+}
+
+func runWithIO(
+	args []string,
+	stdout io.Writer,
+	stderr io.Writer,
+	dependencies commandDependencies,
+) int {
+	if len(args) > 0 {
+		switch args[0] {
+		case "config":
+			configureLogger()
+			return runConfigCommand(args[1:])
+		case "version":
+			return runVersionCommand(args[1:], stdout, stderr)
+		case "self-update":
+			ctx, stop := signal.NotifyContext(
+				context.Background(),
+				os.Interrupt,
+				syscall.SIGTERM,
+			)
+			defer stop()
+			return runSelfUpdateCommand(
+				ctx,
+				args[1:],
+				stdout,
+				stderr,
+				dependencies,
+			)
+		}
 	}
 
+	configureLogger()
 	rt, ok := loadRuntimeFromFlags("uddns", args)
 	if !ok {
 		return 2

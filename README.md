@@ -15,6 +15,7 @@ notifications when the IP address or update status changes.
 - Configurable update interval.
 - Structured logs with optional daily rotated file logging and retention.
 - Curl installer with optional systemd service installation.
+- Built-in release update checks and atomic self-updates with rollback on Unix.
 - GoReleaser-based release artifacts for multiple platforms, with SBOMs and
   GitHub Actions provenance attestations.
 
@@ -79,6 +80,64 @@ go install github.com/we11adam/uddns@latest
 ```
 
 Or download a binary from the [releases page](https://github.com/we11adam/uddns/releases/).
+
+## Self-update
+
+Print the running build version or check for a newer stable release without
+changing any files:
+
+```shell
+uddns version
+uddns version --json
+uddns self-update --check
+uddns self-update --check --json
+```
+
+On Linux, macOS, and FreeBSD, install the latest stable release with:
+
+```shell
+uddns self-update
+```
+
+The updater selects the exact GoReleaser asset for the current platform,
+downloads it over HTTPS, verifies its SHA-256 value from `checksums.txt`,
+strictly validates the single-file archive, and confirms the staged binary's
+reported version. It then creates an adjacent `.previous` backup and atomically
+replaces the installed executable. The resolved target must be a regular file.
+Because the operating system may resolve a symlink before UDDNS can inspect the
+launch path, the updater cannot reliably identify every package-manager
+installation. Use the package manager's own upgrade command when it manages the
+installed binary.
+
+If the executable is installed in a root-owned directory, run its absolute path
+with `sudo`, for example:
+
+```shell
+sudo /usr/local/bin/uddns self-update
+sudo systemctl restart uddns.service
+```
+
+The first self-update release does not restart a running service automatically.
+Restart the service after a successful update to run the new binary. Restore
+the previous binary with:
+
+```shell
+sudo /usr/local/bin/uddns self-update --rollback
+sudo systemctl restart uddns.service
+```
+
+An interrupted replacement may leave `<binary>.update-pending`, which contains
+the pre-update executable and is intentionally never discarded automatically.
+Inspect both files with `version --json`. If the installed target is the new
+version, move `.update-pending` to `.previous`; if the two files are identical,
+remove only `.update-pending`. Resolve this recovery file before running another
+update or rollback.
+
+Use `--version v1.9.0` to select a specific stable release. Downgrades require
+`--allow-downgrade` and are limited to v1.9.0 or newer because earlier binaries
+cannot perform the staged version check; install an older release manually if
+needed. Builds reporting version `dev` require `--allow-dev`. Windows can check
+releases but cannot yet replace a running executable.
 
 ## Configuration
 
