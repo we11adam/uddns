@@ -44,7 +44,8 @@ gh attestation verify /path/to/archive --repo we11adam/uddns
 
 安装器会检测 systemd，并询问是否安装为 systemd 服务。生成的 unit 会以专用的非特权
 `uddns` 用户运行，并通过受保护的 systemd credential 传入配置，因此源配置文件可以继续
-由 root 持有并使用 `0600` 权限。非交互安装 systemd 服务：
+由 root 持有并使用 `0600` 权限。安装器会在启动主进程前验证配置；启动失败时会恢复原有
+可执行文件、unit 及服务状态。非交互安装 systemd 服务：
 
 ```shell
 curl -fsSL https://github.com/we11adam/uddns/releases/latest/download/install.sh | sh -s -- --systemd --config /etc/uddns.yaml
@@ -118,7 +119,7 @@ sudo systemctl restart uddns.service
 目标是新版本，将 `.update-pending` 移动为 `.previous`；如果两个文件完全相同，
 只删除 `.update-pending`。再次升级或回滚前必须先处理该恢复文件。
 
-可以用 `--version v1.9.0` 选择指定的稳定版。降级必须额外传入
+可以用 `--version v1.9.1` 选择指定的稳定版。降级必须额外传入
 `--allow-downgrade`，且只能降到 v1.9.0 或更新版本，因为更早的二进制无法完成
 暂存版本检查；如需更早版本请手动安装。版本为 `dev` 的开发构建必须传入
 `--allow-dev`。Windows 目前可以检查 release，但还不能替换正在运行的可执行文件。
@@ -140,6 +141,10 @@ UDDNS 不会自动加载 `.env` 文件；请通过 shell 或服务管理器设�
 ```shell
 chmod 600 /etc/uddns.yaml
 ```
+
+systemd credential 提供的受保护副本属于例外：systemd 可能把仅授予服务用户的 ACL
+显示为 `0440`。UDDNS 只接受 `$CREDENTIALS_DIRECTORY` 下由 root 严格控制的直系
+credential 文件；普通的组可读配置仍会被拒绝。
 
 ### 简单模式
 

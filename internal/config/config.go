@@ -36,32 +36,46 @@ func Load(providedPath string) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := validateFilePermissions(path); err != nil {
+
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read config file %s: %w", path, err)
+	}
+	defer file.Close()
+
+	info, err := file.Stat()
+	if err != nil {
+		return nil, fmt.Errorf("failed to inspect config file %s: %w", path, err)
+	}
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("config file %s is not a regular file", path)
+	}
+	if err := validateFilePermissions(path, info); err != nil {
 		return nil, err
 	}
 
 	v := viper.New()
 	v.SetConfigFile(path)
-	if err := v.ReadInConfig(); err != nil {
+	if err := v.ReadConfig(file); err != nil {
 		return nil, fmt.Errorf("failed to read config file %s: %w", path, err)
 	}
 
 	return &Config{path: path, v: v}, nil
 }
 
-func validateFilePermissions(path string) error {
+func validateFilePermissions(path string, info os.FileInfo) error {
 	if runtime.GOOS == "windows" {
 		return nil
 	}
 
-	info, err := os.Stat(path)
-	if err != nil {
-		return fmt.Errorf("failed to inspect config file %s: %w", path, err)
+	permissions := info.Mode().Perm()
+	if permissions&0077 == 0 {
+		return nil
 	}
-	if permissions := info.Mode().Perm(); permissions&0077 != 0 {
-		return fmt.Errorf("config file %s permissions %04o expose credentials; use 0600", path, permissions)
+	if isSystemdCredential(path, info) {
+		return nil
 	}
-	return nil
+	return fmt.Errorf("config file %s permissions %04o expose credentials; use 0600", path, permissions)
 }
 
 func FindFile(providedPath string) (string, error) {

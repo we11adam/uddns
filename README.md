@@ -49,8 +49,10 @@ gh attestation verify /path/to/archive --repo we11adam/uddns
 The installer detects systemd and asks whether to install UDDNS as a systemd
 service. The generated unit runs as the dedicated unprivileged `uddns` user and
 passes the configuration through a protected systemd credential, so the source
-config can remain owned by root with mode `0600`. For non-interactive systemd
-installation:
+config can remain owned by root with mode `0600`. The installer validates the
+configuration before starting the main process and restores the previous
+executable, unit, and service state if startup fails. For non-interactive
+systemd installation:
 
 ```shell
 curl -fsSL https://github.com/we11adam/uddns/releases/latest/download/install.sh | sh -s -- --systemd --config /etc/uddns.yaml
@@ -133,7 +135,7 @@ version, move `.update-pending` to `.previous`; if the two files are identical,
 remove only `.update-pending`. Resolve this recovery file before running another
 update or rollback.
 
-Use `--version v1.9.0` to select a specific stable release. Downgrades require
+Use `--version v1.9.1` to select a specific stable release. Downgrades require
 `--allow-downgrade` and are limited to v1.9.0 or newer because earlier binaries
 cannot perform the staged version check; install an older release manually if
 needed. Builds reporting version `dev` require `--allow-dev`. Windows can check
@@ -158,6 +160,11 @@ users. Secure it before starting UDDNS:
 ```shell
 chmod 600 /etc/uddns.yaml
 ```
+
+The protected copy supplied through systemd credentials is an exception:
+systemd may represent its service-user ACL as mode `0440`. UDDNS accepts only
+the tightly controlled, root-owned file directly under
+`$CREDENTIALS_DIRECTORY`; an ordinary group-readable config remains rejected.
 
 ### Simple Mode
 

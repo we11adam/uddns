@@ -65,6 +65,23 @@ func TestLoadRejectsConfigExposedToOtherUsers(t *testing.T) {
 	}
 }
 
+func TestLoadRejectsOrdinaryGroupReadableConfig(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows does not expose Unix permission bits")
+	}
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "uddns.yaml")
+	if err := os.WriteFile(path, []byte("providers: {}\n"), 0440); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	t.Setenv("CREDENTIALS_DIRECTORY", dir)
+
+	if _, err := Load(path); err == nil {
+		t.Fatal("expected an ordinary 0440 config to be rejected")
+	}
+}
+
 func TestIntervalUsesDefault(t *testing.T) {
 	t.Setenv("UDDNS_INTERVAL", "")
 	cfg := &Config{}

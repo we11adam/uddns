@@ -280,6 +280,14 @@ chmod 0600 "$unreadable_config"
 
 calls_file="$test_dir/run-as-root-calls"
 unit_exists=0
+systemctl_initial_active_status=0
+systemctl_health_status=0
+systemctl_enabled_status=0
+systemctl_start_status=0
+systemctl_stop_status=0
+systemctl_enable_status=0
+systemctl_is_active_calls=0
+run_as_root_execute_files=0
 systemd_unit_exists() {
 	[ "$unit_exists" -eq 1 ]
 }
@@ -297,6 +305,36 @@ config_file_available_to_service() {
 }
 run_as_root() {
 	printf '%s\n' "$*" >>"$calls_file"
+	if [ "$run_as_root_execute_files" -eq 1 ] && [ "$1" != "systemctl" ]; then
+		"$@"
+		return
+	fi
+	if [ "$1" = "systemctl" ]; then
+		case "$2" in
+			is-active)
+				systemctl_is_active_calls=$((systemctl_is_active_calls + 1))
+				if [ "$unit_exists" -eq 1 ] && [ "$systemctl_is_active_calls" -eq 1 ]; then
+					return "$systemctl_initial_active_status"
+				fi
+				return "$systemctl_health_status"
+				;;
+			is-enabled)
+				return "$systemctl_enabled_status"
+				;;
+			start)
+				return "$systemctl_start_status"
+				;;
+			stop)
+				return "$systemctl_stop_status"
+				;;
+			enable)
+				return "$systemctl_enable_status"
+				;;
+		esac
+	fi
+}
+sleep() {
+	printf 'sleep %s\n' "$*" >>"$calls_file"
 }
 assert_systemctl_calls() {
 	expected="$1"
@@ -306,32 +344,119 @@ assert_systemctl_calls() {
 		exit 1
 	fi
 }
+assert_call_before() {
+	first_call="$1"
+	second_call="$2"
+	first_line="$(grep -n -F -x "$first_call" "$calls_file" | head -n 1 | cut -d: -f1)"
+	second_line="$(grep -n -F -x "$second_call" "$calls_file" | tail -n 1 | cut -d: -f1)"
+	if [ -z "$first_line" ] || [ -z "$second_line" ] || [ "$first_line" -ge "$second_line" ]; then
+		printf 'expected call before later call:\n  %s\n  %s\n' "$first_call" "$second_call" >&2
+		exit 1
+	fi
+}
 
 safe_inputs
 CONFIG_FILE_SET=1
 tmpdir="$test_dir"
 
+saved_install_dir="$INSTALL_DIR"
+saved_repo="$REPO"
+transaction_install_dir="$test_dir/existing binary"
+mkdir -p "$transaction_install_dir"
+printf 'old binary\n' >"$transaction_install_dir/uddns"
+INSTALL_DIR="$transaction_install_dir"
+REPO="uddns"
+run_as_root_execute_files=1
+: >"$calls_file"
+prepare_systemd_binary_rollback
+expected_backup_call="install -m 0755 $transaction_install_dir/uddns $test_dir/uddns.previous"
+actual_backup_call="$(sed -n '1p' "$calls_file")"
+if [ "$actual_backup_call" != "$expected_backup_call" ] ||
+	[ "$systemd_binary_had_existing" -ne 1 ] ||
+	[ "$systemd_binary_rollback_ready" -ne 1 ]; then
+	printf 'existing binary was not prepared for systemd rollback\n' >&2
+	exit 1
+fi
+printf 'new binary\n' >"$transaction_install_dir/uddns"
+rollback_installed_binary
+if [ "$(sed -n '1p' "$transaction_install_dir/uddns")" != 'old binary' ]; then
+	printf 'existing binary contents were not restored\n' >&2
+	exit 1
+fi
+
+fresh_install_dir="$test_dir/fresh binary"
+mkdir -p "$fresh_install_dir"
+INSTALL_DIR="$fresh_install_dir"
+: >"$calls_file"
+prepare_systemd_binary_rollback
+if [ -s "$calls_file" ] ||
+	[ "$systemd_binary_had_existing" -ne 0 ] ||
+	[ "$systemd_binary_rollback_ready" -ne 1 ]; then
+	printf 'fresh binary transaction did not track an absent target\n' >&2
+	exit 1
+fi
+printf 'new binary\n' >"$fresh_install_dir/uddns"
+rollback_installed_binary
+if [ -e "$fresh_install_dir/uddns" ]; then
+	printf 'fresh binary was not removed during rollback\n' >&2
+	exit 1
+fi
+run_as_root_execute_files=0
+INSTALL_DIR="$saved_install_dir"
+REPO="$saved_repo"
+
+unit_restore_dir="$test_dir/unit rollback"
+mkdir -p "$unit_restore_dir"
+printf 'previous unit\n' >"$unit_restore_dir/previous.service"
+printf 'new unit\n' >"$unit_restore_dir/uddns.service"
+: >"$calls_file"
+run_as_root_execute_files=1
+rollback_systemd_service \
+	"$unit_restore_dir/uddns.service" \
+	"$unit_restore_dir/previous.service" \
+	1 1 1 1 1 >/dev/null 2>&1
+run_as_root_execute_files=0
+if [ "$(sed -n '1p' "$unit_restore_dir/uddns.service")" != 'previous unit' ]; then
+	printf 'previous local systemd unit contents were not restored\n' >&2
+	exit 1
+fi
+assert_systemctl_calls "$(printf '%s\n' \
+	'systemctl stop uddns-test@blue_1.service' \
+	'systemctl daemon-reload' \
+	'systemctl enable uddns-test@blue_1.service' \
+	'systemctl start uddns-test@blue_1.service')"
+
 : >"$calls_file"
 unit_exists=0
+systemctl_is_active_calls=0
 install_systemd_service >/dev/null 2>&1
 assert_systemctl_calls "$(printf '%s\n' \
 	'systemctl daemon-reload' \
-	'systemctl enable --now uddns-test@blue_1.service')"
+	'systemctl start uddns-test@blue_1.service' \
+	'systemctl is-active --quiet uddns-test@blue_1.service' \
+	'systemctl enable uddns-test@blue_1.service')"
 
 : >"$calls_file"
 unit_exists=1
+systemctl_is_active_calls=0
 install_systemd_service >/dev/null 2>&1
 assert_systemctl_calls "$(printf '%s\n' \
+	'systemctl is-active --quiet uddns-test@blue_1.service' \
+	'systemctl is-enabled --quiet uddns-test@blue_1.service' \
+	'systemctl stop uddns-test@blue_1.service' \
 	'systemctl daemon-reload' \
-	'systemctl enable uddns-test@blue_1.service' \
-	'systemctl restart uddns-test@blue_1.service')"
+	'systemctl start uddns-test@blue_1.service' \
+	'systemctl is-active --quiet uddns-test@blue_1.service' \
+	'systemctl enable uddns-test@blue_1.service')"
 
 unit_file="$test_dir/uddns-test@blue_1.service"
 for expected_line in \
+	'Type=exec' \
 	'User=uddns' \
 	'Group=uddns' \
 	'LoadCredential="uddns.yaml:/etc/UD DNS/config \"blue\".yaml"' \
 	'Environment="UDDNS_CONFIG=%d/uddns.yaml"' \
+	'ExecStartPre="/opt/UD DNS/bin/uddns repo" config check' \
 	'CapabilityBoundingSet=' \
 	'RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6' \
 	'LogsDirectory=uddns' \
@@ -341,6 +466,97 @@ for expected_line in \
 		exit 1
 	fi
 done
+
+failure_output="$test_dir/systemd-start-failure-output"
+: >"$calls_file"
+unit_exists=1
+systemctl_is_active_calls=0
+systemctl_stop_status=1
+systemd_binary_rollback_ready=1
+systemd_binary_had_existing=1
+systemd_binary_target="/opt/UD DNS/bin/uddns repo"
+systemd_binary_backup="$test_dir/uddns.previous"
+if (install_systemd_service) >"$failure_output" 2>&1; then
+	printf 'installer succeeded when the existing service could not be stopped\n' >&2
+	exit 1
+fi
+systemctl_stop_status=0
+systemd_binary_rollback_ready=0
+assert_systemctl_calls "$(printf '%s\n' \
+	'systemctl is-active --quiet uddns-test@blue_1.service' \
+	'systemctl is-enabled --quiet uddns-test@blue_1.service' \
+	'systemctl stop uddns-test@blue_1.service' \
+	'systemctl start uddns-test@blue_1.service')"
+assert_call_before \
+	"install -m 0755 $test_dir/uddns.previous /opt/UD DNS/bin/uddns repo" \
+	'systemctl start uddns-test@blue_1.service'
+if ! grep -Fq 'failed to stop existing systemd service' "$failure_output"; then
+	printf 'installer did not explain the existing service stop failure\n' >&2
+	exit 1
+fi
+
+: >"$calls_file"
+unit_exists=0
+systemctl_is_active_calls=0
+systemctl_start_status=1
+systemd_binary_rollback_ready=1
+systemd_binary_had_existing=0
+systemd_binary_target="/opt/UD DNS/bin/uddns repo"
+systemd_binary_backup="$test_dir/uddns.previous"
+if (install_systemd_service) >"$failure_output" 2>&1; then
+	printf 'installer succeeded when systemctl start failed\n' >&2
+	exit 1
+fi
+systemctl_start_status=0
+systemd_binary_rollback_ready=0
+assert_systemctl_calls "$(printf '%s\n' \
+	'systemctl daemon-reload' \
+	'systemctl start uddns-test@blue_1.service' \
+	'systemctl status --no-pager --full uddns-test@blue_1.service' \
+	'systemctl stop uddns-test@blue_1.service' \
+	'systemctl disable uddns-test@blue_1.service' \
+	'systemctl daemon-reload')"
+assert_call_before \
+	'rm -f /opt/UD DNS/bin/uddns repo' \
+	'systemctl stop uddns-test@blue_1.service'
+if ! grep -Fq 'systemd service failed its startup checks' "$failure_output"; then
+	printf 'installer did not explain the synchronous systemd start failure\n' >&2
+	exit 1
+fi
+
+: >"$calls_file"
+unit_exists=1
+systemctl_is_active_calls=0
+systemctl_health_status=3
+systemd_binary_rollback_ready=1
+systemd_binary_had_existing=1
+systemd_binary_target="/opt/UD DNS/bin/uddns repo"
+systemd_binary_backup="$test_dir/uddns.previous"
+if (install_systemd_service) >"$failure_output" 2>&1; then
+	printf 'installer succeeded when the service exited immediately\n' >&2
+	exit 1
+fi
+systemctl_health_status=0
+systemd_binary_rollback_ready=0
+assert_systemctl_calls "$(printf '%s\n' \
+	'systemctl is-active --quiet uddns-test@blue_1.service' \
+	'systemctl is-enabled --quiet uddns-test@blue_1.service' \
+	'systemctl stop uddns-test@blue_1.service' \
+	'systemctl daemon-reload' \
+	'systemctl start uddns-test@blue_1.service' \
+	'systemctl is-active --quiet uddns-test@blue_1.service' \
+	'systemctl status --no-pager --full uddns-test@blue_1.service' \
+	'systemctl stop uddns-test@blue_1.service' \
+	'systemctl daemon-reload' \
+	'systemctl enable uddns-test@blue_1.service' \
+	'systemctl start uddns-test@blue_1.service')"
+assert_call_before \
+	"install -m 0755 $test_dir/uddns.previous /opt/UD DNS/bin/uddns repo" \
+	'systemctl stop uddns-test@blue_1.service'
+if ! grep -Fq 'systemd service did not remain active after startup' "$failure_output"; then
+	printf 'installer did not explain the post-exec systemd health failure\n' >&2
+	exit 1
+fi
 
 download_release_body="$(sed -n '/^download_release() {/,/^}/p' "$root_dir/install.sh")"
 download_calls="$(printf '%s\n' "$download_release_body" | grep -c '^[[:space:]]*download_file ' || true)"

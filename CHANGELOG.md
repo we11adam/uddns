@@ -6,6 +6,16 @@ All notable changes to UDDNS are documented here, based on the Git commit histor
 
 No changes yet.
 
+## v1.9.1 - 2026-07-25
+
+### Fixed
+
+- Accepted the root-owned `0440` ACL representation used by systemd credentials
+  without weakening private-permission checks for ordinary configuration files.
+- Generated systemd services now validate their credentials and configuration
+  before startup, report process-setup failures synchronously, and restore the
+  previous executable, unit, and service state when an installation fails.
+
 ## v1.9.0 - 2026-07-25
 
 ### Added

@@ -19,6 +19,10 @@ LOG_RETENTION_DAYS="${UDDNS_LOG_RETENTION_DAYS:-}"
 INSTALL_SYSTEMD="${UDDNS_INSTALL_SYSTEMD:-}"
 SERVICE_USER="uddns"
 SERVICE_CREDENTIAL="uddns.yaml"
+systemd_binary_rollback_ready=0
+systemd_binary_had_existing=0
+systemd_binary_target=""
+systemd_binary_backup=""
 
 usage() {
 	cat <<EOF
@@ -295,6 +299,109 @@ systemd_env_line() {
 	value="$2"
 
 	printf 'Environment=%s\n' "$(systemd_quote "${name}=${value}")"
+}
+
+rollback_systemd_service() {
+	rollback_unit_path="$1"
+	rollback_unit_backup="$2"
+	rollback_had_local_unit="$3"
+	rollback_update_service="$4"
+	rollback_was_active="$5"
+	rollback_was_enabled="$6"
+	rollback_stop_new_service="$7"
+	rollback_unit="${SERVICE_NAME}.service"
+
+	log "Restoring the previous systemd service state after the failed installation"
+
+	if [ "$rollback_stop_new_service" -eq 1 ]; then
+		if ! run_as_root systemctl stop "$rollback_unit"; then
+			log "Warning: failed to stop ${rollback_unit} during rollback"
+		fi
+	fi
+
+	if [ "$rollback_update_service" -eq 0 ] || [ "$rollback_was_enabled" -eq 0 ]; then
+		if ! run_as_root systemctl disable "$rollback_unit"; then
+			log "Warning: failed to restore the disabled state of ${rollback_unit}"
+		fi
+	fi
+
+	if [ "$rollback_had_local_unit" -eq 1 ]; then
+		if ! run_as_root install -m 0644 "$rollback_unit_backup" "$rollback_unit_path"; then
+			log "Warning: failed to restore ${rollback_unit_path}"
+		fi
+	else
+		if ! run_as_root rm -f "$rollback_unit_path"; then
+			log "Warning: failed to remove ${rollback_unit_path}"
+		fi
+	fi
+
+	if ! run_as_root systemctl daemon-reload; then
+		log "Warning: systemd daemon-reload failed during rollback"
+	fi
+
+	if [ "$rollback_update_service" -eq 1 ]; then
+		if [ "$rollback_was_enabled" -eq 1 ]; then
+			if ! run_as_root systemctl enable "$rollback_unit"; then
+				log "Warning: failed to restore the enabled state of ${rollback_unit}"
+			fi
+		fi
+
+		if [ "$rollback_was_active" -eq 1 ]; then
+			if ! run_as_root systemctl start "$rollback_unit"; then
+				log "Warning: failed to restart the previous ${rollback_unit}"
+			fi
+		fi
+	fi
+}
+
+report_systemd_start_failure() {
+	unit="$1"
+
+	log "systemd service failed to start: ${unit}"
+	run_as_root systemctl status --no-pager --full "$unit" || true
+}
+
+prepare_systemd_binary_rollback() {
+	systemd_binary_target="$(installed_binary_path)"
+	systemd_binary_backup="${tmpdir}/${REPO}.previous"
+	systemd_binary_had_existing=0
+
+	if [ -e "$systemd_binary_target" ]; then
+		run_as_root install -m 0755 "$systemd_binary_target" "$systemd_binary_backup"
+		systemd_binary_had_existing=1
+	fi
+	systemd_binary_rollback_ready=1
+}
+
+rollback_installed_binary() {
+	[ "$systemd_binary_rollback_ready" -eq 1 ] || return 0
+
+	if [ "$systemd_binary_had_existing" -eq 1 ]; then
+		if ! run_as_root install -m 0755 "$systemd_binary_backup" "$systemd_binary_target"; then
+			log "Warning: failed to restore the previous binary at ${systemd_binary_target}"
+		fi
+	else
+		if ! run_as_root rm -f "$systemd_binary_target"; then
+			log "Warning: failed to remove the newly installed binary at ${systemd_binary_target}"
+		fi
+	fi
+	systemd_binary_rollback_ready=0
+}
+
+rollback_systemd_installation() {
+	# Restore the executable before restarting any previous unit. Otherwise the
+	# rollback could launch the incompatible binary that caused the failure.
+	rollback_installed_binary
+
+	if [ "$systemd_unit_change_attempted" -eq 1 ]; then
+		rollback_systemd_service "$unit_path" "$unit_backup" "$had_local_unit" \
+			"$update_service" "$was_active" "$was_enabled" \
+			"$new_service_start_attempted"
+	elif [ "$service_stop_attempted" -eq 1 ] && [ "$was_active" -eq 1 ]; then
+		if ! run_as_root systemctl start "$unit"; then
+			log "Warning: failed to restart the previous ${unit}"
+		fi
+	fi
 }
 
 ask_systemd_preference() {
@@ -643,16 +750,32 @@ install_binary() {
 	else
 		log "Installing ${REPO} to ${target}"
 	fi
-	run_as_root mkdir -p "$INSTALL_DIR"
+	run_as_root mkdir -p "$INSTALL_DIR" || return
 	run_as_root install -m 0755 "$binary" "$target"
 }
 
-install_systemd_service() {
+install_systemd_service() (
 	binary_path="${INSTALL_DIR}/${REPO}"
 	unit_path="/etc/systemd/system/${SERVICE_NAME}.service"
 	unit_file="${tmpdir}/${SERVICE_NAME}.service"
+	unit_backup="${tmpdir}/${SERVICE_NAME}.service.previous"
+	unit="${SERVICE_NAME}.service"
 	update_service=0
 	needs_config_write=1
+	start_service=0
+	had_local_unit=0
+	was_active=0
+	was_enabled=0
+	service_stop_attempted=0
+	systemd_unit_change_attempted=0
+	new_service_start_attempted=0
+	systemd_install_status=0
+
+	# The function's subshell keeps this transaction trap scoped locally. Every
+	# failure path, including an unexpected command error, restores the binary
+	# before repairing/restarting the previous unit.
+	trap 'systemd_install_status=$?; trap - 0 HUP INT TERM; rollback_systemd_installation; exit "$systemd_install_status"' 0
+	trap 'exit 1' HUP INT TERM
 
 	if systemd_unit_exists; then
 		update_service=1
@@ -675,6 +798,9 @@ install_systemd_service() {
 	validate_systemd_inputs
 	ensure_service_user
 	warn_config_write_permission "$CONFIG_FILE" "$needs_config_write"
+	if config_file_available_to_service "$CONFIG_FILE"; then
+		start_service=1
+	fi
 
 	{
 		cat <<EOF
@@ -685,7 +811,7 @@ Wants=network-online.target
 After=network-online.target
 
 [Service]
-Type=simple
+Type=exec
 User=${SERVICE_USER}
 Group=${SERVICE_USER}
 EOF
@@ -702,6 +828,7 @@ EOF
 		fi
 
 		cat <<EOF
+ExecStartPre=$(systemd_quote "$binary_path") config check
 ExecStart=$(systemd_quote "$binary_path")
 Restart=on-failure
 RestartSec=10s
@@ -739,28 +866,76 @@ EOF
 	} >"$unit_file"
 
 	if [ "$update_service" -eq 1 ]; then
+		if run_as_root systemctl is-active --quiet "$unit"; then
+			was_active=1
+		fi
+		if run_as_root systemctl is-enabled --quiet "$unit"; then
+			was_enabled=1
+		fi
+		if [ -L "$unit_path" ]; then
+			fail "refusing to replace symlinked systemd unit: ${unit_path}"
+		fi
+		if [ -e "$unit_path" ]; then
+			run_as_root install -m 0644 "$unit_path" "$unit_backup"
+			had_local_unit=1
+		fi
+
+		if [ "$start_service" -eq 1 ]; then
+			service_stop_attempted=1
+			if ! run_as_root systemctl stop "$unit"; then
+				fail "failed to stop existing systemd service: ${unit}"
+			fi
+		fi
+	fi
+
+	if [ "$update_service" -eq 1 ]; then
 		log "Updating systemd unit at ${unit_path}"
 	else
 		log "Installing systemd unit to ${unit_path}"
 	fi
-	run_as_root install -m 0644 "$unit_file" "$unit_path"
-	run_as_root systemctl daemon-reload
+	systemd_unit_change_attempted=1
+	if ! run_as_root install -m 0644 "$unit_file" "$unit_path"; then
+		fail "failed to install systemd unit: ${unit_path}"
+	fi
+	if ! run_as_root systemctl daemon-reload; then
+		fail "systemd daemon-reload failed"
+	fi
 
-	if config_file_available_to_service "$CONFIG_FILE"; then
+	if [ "$start_service" -eq 1 ]; then
+		new_service_start_attempted=1
+		if ! run_as_root systemctl start "$unit"; then
+			report_systemd_start_failure "$unit"
+			fail "systemd service failed its startup checks: ${unit}"
+		fi
+
+		# Type=exec and ExecStartPre make setup/configuration failures synchronous.
+		# The short settling window also catches a main process that exits
+		# immediately without penalising a healthy long-running service.
+		sleep 1
+		if ! run_as_root systemctl is-active --quiet "$unit"; then
+			report_systemd_start_failure "$unit"
+			fail "systemd service did not remain active after startup: ${unit}"
+		fi
+
+		if ! run_as_root systemctl enable "$unit"; then
+			fail "failed to enable systemd service: ${unit}"
+		fi
+
 		if [ "$update_service" -eq 1 ]; then
-			run_as_root systemctl enable "${SERVICE_NAME}.service"
-			run_as_root systemctl restart "${SERVICE_NAME}.service"
-			log "systemd service enabled and restarted: ${SERVICE_NAME}.service"
+			log "systemd service enabled and restarted: ${unit}"
 		else
-			run_as_root systemctl enable --now "${SERVICE_NAME}.service"
-			log "systemd service enabled and started: ${SERVICE_NAME}.service"
+			log "systemd service enabled and started: ${unit}"
 		fi
 	else
-		run_as_root systemctl enable "${SERVICE_NAME}.service"
+		if ! run_as_root systemctl enable "$unit"; then
+			fail "failed to enable systemd service: ${unit}"
+		fi
 		log "systemd service enabled but not started because ${CONFIG_FILE} is not a readable regular file for systemd"
 		log "Create a readable regular config file, then run: sudo systemctl start ${SERVICE_NAME}.service"
 	fi
-}
+
+	trap - 0 HUP INT TERM
+)
 
 parse_args "$@"
 
@@ -791,7 +966,14 @@ os="$(detect_os)"
 arch="$(detect_arch)"
 binary="$(download_release "$tmpdir" "$os" "$arch")"
 
-install_binary "$binary"
+if [ "$want_systemd" -eq 1 ]; then
+	prepare_systemd_binary_rollback
+fi
+
+if ! install_binary "$binary"; then
+	rollback_installed_binary
+	fail "failed to install ${REPO} at $(installed_binary_path)"
+fi
 
 if [ "$want_systemd" -eq 1 ]; then
 	install_systemd_service
