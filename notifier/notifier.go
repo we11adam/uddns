@@ -6,9 +6,18 @@ import (
 	"github.com/we11adam/uddns/internal/registry"
 )
 
+type Reason string
+
+const (
+	ReasonIPChange      Reason = "ip_change"
+	ReasonUpdateSuccess Reason = "update_success"
+	ReasonUpdateFailure Reason = "update_failure"
+)
+
 type Notification struct {
 	Title   string
 	Message string
+	Reason  Reason
 }
 
 type Notifier interface {
