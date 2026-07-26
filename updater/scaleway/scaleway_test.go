@@ -217,6 +217,75 @@ func TestCurrentUsesNormalizedZoneAndRecord(t *testing.T) {
 	}
 }
 
+func TestCurrentRequiresDuplicateRecordsToAgree(t *testing.T) {
+	tests := []struct {
+		name     string
+		records  string
+		wantIPv4 string
+		wantIPv6 string
+	}{
+		{
+			name: "identical duplicates",
+			records: `[
+				{"name":"home","type":"A","data":"203.0.113.20","ttl":150},
+				{"name":"home","type":"A","data":"203.0.113.20","ttl":300},
+				{"name":"home","type":"AAAA","data":"2001:db8::20","ttl":150},
+				{"name":"home","type":"AAAA","data":"2001:db8::20","ttl":300}
+			]`,
+			wantIPv4: "203.0.113.20",
+			wantIPv6: "2001:db8::20",
+		},
+		{
+			name: "conflicting IPv4 duplicates",
+			records: `[
+				{"name":"home","type":"A","data":"203.0.113.20","ttl":150},
+				{"name":"home","type":"A","data":"203.0.113.21","ttl":150},
+				{"name":"home","type":"AAAA","data":"2001:db8::20","ttl":150}
+			]`,
+			wantIPv6: "2001:db8::20",
+		},
+		{
+			name: "conflicting IPv6 duplicates",
+			records: `[
+				{"name":"home","type":"A","data":"203.0.113.20","ttl":150},
+				{"name":"home","type":"AAAA","data":"2001:db8::21","ttl":150},
+				{"name":"home","type":"AAAA","data":"2001:db8::20","ttl":150}
+			]`,
+			wantIPv4: "203.0.113.20",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			responseBody := `{"total_count":4,"records":` + tt.records + `}`
+			transport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
+				return jsonResponse(request, responseBody), nil
+			})
+			scalewayUpdater, err := New(testConfig("home.example.com", ""))
+			if err != nil {
+				t.Fatalf("New returned an error: %v", err)
+			}
+			scalewayUpdater.client = newTestClient(t, transport)
+
+			current, err := scalewayUpdater.Current(
+				context.Background(),
+				provider.FamilyRequest{IPv4: true, IPv6: true},
+			)
+			if err != nil {
+				t.Fatalf("Current returned an error: %v", err)
+			}
+			if current.IPv4 != tt.wantIPv4 || current.IPv6 != tt.wantIPv6 {
+				t.Fatalf(
+					"current addresses = %#v, want IPv4=%q IPv6=%q",
+					current,
+					tt.wantIPv4,
+					tt.wantIPv6,
+				)
+			}
+		})
+	}
+}
+
 func assertSetChange(
 	t *testing.T,
 	change *domain.RecordChange,

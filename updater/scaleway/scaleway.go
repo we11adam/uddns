@@ -176,8 +176,6 @@ func (s *Scaleway) Current(ctx context.Context, families provider.FamilyRequest)
 	if !families.IPv4 && !families.IPv6 {
 		return nil, fmt.Errorf("no IP families requested")
 	}
-	var result *provider.IpResult
-
 	api := domain.NewAPI(s.client)
 
 	recordType := domain.RecordTypeUnknown
@@ -202,19 +200,32 @@ func (s *Scaleway) Current(ctx context.Context, families provider.FamilyRequest)
 		return &provider.IpResult{}, nil
 	}
 
-	result = &provider.IpResult{}
-	for _, record := range res.Records {
-		switch record.Type {
-		case domain.RecordTypeA:
-			if families.IPv4 {
-				result.IPv4 = record.Data
-			}
-		case domain.RecordTypeAAAA:
-			if families.IPv6 {
-				result.IPv6 = record.Data
-			}
-		}
+	result := &provider.IpResult{}
+	if families.IPv4 {
+		result.IPv4 = consistentRecordData(res.Records, domain.RecordTypeA)
+	}
+	if families.IPv6 {
+		result.IPv6 = consistentRecordData(res.Records, domain.RecordTypeAAAA)
 	}
 
 	return result, nil
+}
+
+func consistentRecordData(records []*domain.Record, recordType domain.RecordType) string {
+	value := ""
+	found := false
+	for _, record := range records {
+		if record == nil || record.Type != recordType {
+			continue
+		}
+		if !found {
+			value = record.Data
+			found = true
+			continue
+		}
+		if record.Data != value {
+			return ""
+		}
+	}
+	return value
 }
