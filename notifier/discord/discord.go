@@ -18,6 +18,7 @@ import (
 const (
 	requestTimeout    = 10 * time.Second
 	responseBodyLimit = 256 << 10
+	userAgent         = "DiscordBot (https://github.com/we11adam/uddns, 1.0)"
 )
 
 type Discord struct {
@@ -93,6 +94,7 @@ func (d *Discord) newHTTPClient() (*resty.Client, error) {
 		SetTimeout(requestTimeout).
 		SetResponseBodyLimit(responseBodyLimit).
 		SetHeader("Content-Type", "application/json").
+		SetHeader("User-Agent", userAgent).
 		SetBaseURL(webhookURL)
 
 	if d.Proxy != "" {
@@ -127,24 +129,24 @@ func (d *Discord) Notify(ctx context.Context, notification notifier.Notification
 		},
 	}).Post("")
 	if err != nil {
-		return redact.Error(err, d.Token)
+		return d.redactError(err)
 	}
 
 	switch resp.StatusCode() {
 	case http.StatusOK, http.StatusNoContent:
 		return nil
 	case http.StatusTooManyRequests:
-		return fmt.Errorf("Discord API request failed, rate limited, retry after %s", resp.Header().Get("Retry-After"))
+		return d.redactError(fmt.Errorf("Discord API request failed, rate limited, retry after %s", resp.Header().Get("Retry-After")))
 	}
 	apiResp := apiResponse{}
 	decodeErr := json.Unmarshal(resp.Body(), &apiResp)
 	if !resp.IsSuccess() {
-		return d.apiError(resp.StatusCode(), apiResp)
+		return d.redactError(d.apiError(resp.StatusCode(), apiResp))
 	}
 	if decodeErr != nil {
-		return redact.Error(fmt.Errorf("failed to decode Discord API response: %w", decodeErr), d.Token)
+		return d.redactError(fmt.Errorf("failed to decode Discord API response: %w", decodeErr))
 	}
-	return d.apiError(resp.StatusCode(), apiResp)
+	return d.redactError(d.apiError(resp.StatusCode(), apiResp))
 }
 
 func (d *Discord) apiError(statusCode int, response apiResponse) error {
@@ -152,4 +154,8 @@ func (d *Discord) apiError(statusCode int, response apiResponse) error {
 		return fmt.Errorf("Discord API request failed: HTTP status %d, code %d", statusCode, response.Code)
 	}
 	return fmt.Errorf("Discord API request failed: HTTP status %d, code %d, message %q", statusCode, response.Code, response.Message)
+}
+
+func (d *Discord) redactError(err error) error {
+	return redact.Error(err, d.Token, d.URL)
 }

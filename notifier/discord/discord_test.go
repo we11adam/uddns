@@ -88,6 +88,9 @@ func TestClientBaseURL(t *testing.T) {
 				if baseURL != tt.wantBase {
 					t.Errorf("New() BaseURL = %v, want %v", baseURL, tt.wantBase)
 				}
+				if got := client.hc.Header.Get("User-Agent"); got != userAgent {
+					t.Errorf("New() User-Agent = %q, want %q", got, userAgent)
+				}
 			}
 		})
 	}
@@ -103,6 +106,23 @@ func TestNotifyRedactTokenFromTransportError(t *testing.T) {
 		t.Fatalf("failed to create Discord client: %v", err)
 	}
 	discord.hc.SetTransport(failingTransport{message: "request failed for " + url.QueryEscape(discord.Token)})
+
+	err = discord.Notify(context.Background(), notifier.Notification{Message: "test"})
+	if err == nil {
+		t.Fatal("expected transport error")
+	}
+	testutil.AssertTokenRedacted(t, err.Error(), token)
+}
+
+func TestNotifyRedactsTokenFromURLTransportError(t *testing.T) {
+	token := "discord-webhook-token"
+	discord, err := New(&Discord{
+		URL: "https://discord.com/api/webhooks/123456/" + token,
+	})
+	if err != nil {
+		t.Fatalf("failed to create Discord client: %v", err)
+	}
+	discord.hc.SetTransport(failingTransport{message: "request failed"})
 
 	err = discord.Notify(context.Background(), notifier.Notification{Message: "test"})
 	if err == nil {
