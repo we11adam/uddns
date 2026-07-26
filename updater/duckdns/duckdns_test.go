@@ -93,6 +93,7 @@ func TestUpdateIPRequiresHTTP200AndOKBody(t *testing.T) {
 		wantAttempts int32
 	}{
 		{name: "HTTP 200 and OK", status: http.StatusOK, body: "OK", wantAttempts: 1},
+		{name: "HTTP 200 and OK with newline", status: http.StatusOK, body: "OK\n", wantAttempts: 1},
 		{name: "HTTP 500 and OK", status: http.StatusInternalServerError, body: "OK", wantErr: true, wantAttempts: int32(restyretry.MaxRetries + 1)},
 		{name: "HTTP 200 and KO", status: http.StatusOK, body: "KO", wantErr: true, wantAttempts: 1},
 	}
