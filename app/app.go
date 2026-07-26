@@ -307,19 +307,8 @@ func (a *App) runJob(ctx context.Context, job *Job) {
 		)...,
 	)
 
-	if ipv4NotificationNeeded {
-		if a.notify(ctx, job, notifier.Notification{Message: jobNotificationMessage(job, fmt.Sprintf("IPv4 address changed to %s", ipResult.IPv4)), Reason: notifier.ReasonIPChange}) {
-			job.lastNotifiedIPv4 = ipResult.IPv4
-		}
-	}
-
-	if ipv6NotificationNeeded {
-		if a.notify(ctx, job, notifier.Notification{Message: jobNotificationMessage(job, fmt.Sprintf("IPv6 address changed to %s", ipResult.IPv6)), Reason: notifier.ReasonIPChange}) {
-			job.lastNotifiedIPv6 = ipResult.IPv6
-		}
-	}
-
 	if !updateNeeded {
+		a.notifyIPChanges(ctx, job, ipResult)
 		status = jobStatusUnchanged
 		return
 	}
@@ -366,7 +355,22 @@ func (a *App) runJob(ctx context.Context, job *Job) {
 			"ipv6", ipResult.IPv6,
 		)...,
 	)
+	a.notifyIPChanges(ctx, job, ipResult)
 	a.notify(ctx, job, notifier.Notification{Message: jobNotificationMessage(job, fmt.Sprintf("DNS records updated for %s", notificationIPSummary(ipResult))), Reason: notifier.ReasonUpdateSuccess})
+}
+
+func (a *App) notifyIPChanges(ctx context.Context, job *Job, ipResult *provider.IpResult) {
+	if ipResult.IPv4 != "" && ipResult.IPv4 != job.lastNotifiedIPv4 {
+		if a.notify(ctx, job, notifier.Notification{Message: jobNotificationMessage(job, fmt.Sprintf("IPv4 address changed to %s", ipResult.IPv4)), Reason: notifier.ReasonIPChange}) {
+			job.lastNotifiedIPv4 = ipResult.IPv4
+		}
+	}
+
+	if ipResult.IPv6 != "" && ipResult.IPv6 != job.lastNotifiedIPv6 {
+		if a.notify(ctx, job, notifier.Notification{Message: jobNotificationMessage(job, fmt.Sprintf("IPv6 address changed to %s", ipResult.IPv6)), Reason: notifier.ReasonIPChange}) {
+			job.lastNotifiedIPv6 = ipResult.IPv6
+		}
+	}
 }
 
 func isBackoffFailure(status jobStatus) bool {

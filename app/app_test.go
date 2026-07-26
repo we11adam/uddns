@@ -37,12 +37,16 @@ func (c *fakeClock) Advance(duration time.Duration) {
 }
 
 type recordingUpdater struct {
-	calls int
-	last  *provider.IpResult
-	err   error
+	calls        int
+	last         *provider.IpResult
+	err          error
+	beforeUpdate func()
 }
 
 func (u *recordingUpdater) Update(_ context.Context, ips *provider.IpResult) error {
+	if u.beforeUpdate != nil {
+		u.beforeUpdate()
+	}
 	u.calls++
 	u.last = ips
 	return u.err
@@ -96,6 +100,11 @@ func TestRunOnceUpdatesDNSWhenIPChanges(t *testing.T) {
 	p := &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10"}}
 	u := &recordingUpdater{}
 	n := &recordingNotifier{}
+	u.beforeUpdate = func() {
+		if len(n.notifications) != 0 {
+			t.Fatalf("received notification before DNS update: %+v", n.notifications)
+		}
+	}
 	a := newTestApp(p, u, n, AllFamilies())
 
 	a.runOnce(context.Background())
@@ -209,11 +218,14 @@ func TestRunOnceDoesNotAdvanceLastIPWhenUpdateFails(t *testing.T) {
 	if a.jobs[0].lastAppliedIPv4 != "" {
 		t.Fatalf("expected lastAppliedIPv4 to remain empty after failed update, got %q", a.jobs[0].lastAppliedIPv4)
 	}
-	if len(n.notifications) != 2 {
-		t.Fatalf("expected IP change and update failure notifications, got %d", len(n.notifications))
+	if a.jobs[0].lastNotifiedIPv4 != "" {
+		t.Fatalf("expected lastNotifiedIPv4 to remain empty after failed update, got %q", a.jobs[0].lastNotifiedIPv4)
 	}
-	if n.notifications[1].Message != "DNS update failed for IPv4 192.0.2.10: update failed" {
-		t.Fatalf("expected update failure notification message, got %q", n.notifications[1].Message)
+	if len(n.notifications) != 1 {
+		t.Fatalf("expected only an update failure notification, got %d", len(n.notifications))
+	}
+	if n.notifications[0].Message != "DNS update failed for IPv4 192.0.2.10: update failed" {
+		t.Fatalf("expected update failure notification message, got %q", n.notifications[0].Message)
 	}
 }
 
@@ -236,14 +248,11 @@ func TestRunOnceDeduplicatesRepeatedUpdateFailures(t *testing.T) {
 	if u.calls != 3 {
 		t.Fatalf("expected three update attempts, got %d", u.calls)
 	}
-	if len(n.notifications) != 2 {
-		t.Fatalf("expected one IP change and one failure notification, got %d attempts", len(n.notifications))
+	if len(n.notifications) != 1 {
+		t.Fatalf("expected one failure notification, got %d attempts", len(n.notifications))
 	}
-	if n.notifications[0].Message != "IPv4 address changed to 192.0.2.10" {
-		t.Fatalf("unexpected IP change notification: %q", n.notifications[0].Message)
-	}
-	if n.notifications[1].Message != "DNS update failed for IPv4 192.0.2.10: update failed" {
-		t.Fatalf("unexpected failure notification: %q", n.notifications[1].Message)
+	if n.notifications[0].Message != "DNS update failed for IPv4 192.0.2.10: update failed" {
+		t.Fatalf("unexpected failure notification: %q", n.notifications[0].Message)
 	}
 }
 
@@ -264,10 +273,10 @@ func TestRunOnceNotifiesWhenUpdateErrorChanges(t *testing.T) {
 	u.err = errors.New("second error")
 	a.runOnce(context.Background())
 
-	if len(n.notifications) != 3 {
-		t.Fatalf("expected IP change and two distinct failure notifications, got %d", len(n.notifications))
+	if len(n.notifications) != 2 {
+		t.Fatalf("expected two distinct failure notifications, got %d", len(n.notifications))
 	}
-	if got := n.notifications[2].Message; got != "DNS update failed for IPv4 192.0.2.10: second error" {
+	if got := n.notifications[1].Message; got != "DNS update failed for IPv4 192.0.2.10: second error" {
 		t.Fatalf("unexpected changed-error notification: %q", got)
 	}
 }
@@ -303,48 +312,52 @@ func TestRunOnceSuccessfulUpdateClearsFailureDeduplication(t *testing.T) {
 	}
 }
 
-func TestRunOnceRetriesNotificationsThatWereNotDelivered(t *testing.T) {
+func TestRunOnceRetriesIPChangeNotificationThatWasNotDelivered(t *testing.T) {
 	notifyErr := errors.New("notification failed")
-	tests := []struct {
-		name         string
-		notifierErrs []error
-		wantRetry    string
-	}{
-		{
-			name:         "IP change",
-			notifierErrs: []error{notifyErr, nil},
-			wantRetry:    "IPv4 address changed to 192.0.2.10",
-		},
-		{
-			name:         "update failure",
-			notifierErrs: []error{nil, notifyErr},
-			wantRetry:    "DNS update failed for IPv4 192.0.2.10: update failed",
-		},
+	p := &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10"}}
+	u := &recordingUpdater{}
+	n := &recordingNotifier{errs: []error{notifyErr, nil}}
+	a := newTestApp(p, u, n, AllFamilies())
+
+	a.runOnce(context.Background())
+	a.runOnce(context.Background())
+
+	if u.calls != 1 {
+		t.Fatalf("expected notification retry not to repeat the DNS update, got %d updates", u.calls)
+	}
+	if len(n.notifications) != 3 {
+		t.Fatalf("expected failed IP notification, update success, and IP retry, got %d attempts", len(n.notifications))
+	}
+	if got := n.notifications[2].Message; got != "IPv4 address changed to 192.0.2.10" {
+		t.Fatalf("unexpected IP notification retry: %q", got)
+	}
+	if a.jobs[0].lastNotifiedIPv4 != "192.0.2.10" {
+		t.Fatalf("lastNotifiedIPv4 = %q, want retried address", a.jobs[0].lastNotifiedIPv4)
+	}
+}
+
+func TestRunOnceRetriesUpdateFailureNotificationThatWasNotDelivered(t *testing.T) {
+	notifyErr := errors.New("notification failed")
+	p := &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10"}}
+	u := &recordingUpdater{err: errors.New("update failed")}
+	n := &recordingNotifier{errs: []error{notifyErr, nil}}
+	a := newTestApp(p, u, n, AllFamilies())
+	clock := &fakeClock{now: time.Unix(1_700_000_000, 0)}
+	a.clock = clock
+	a.jitter = func() float64 { return 1 }
+
+	for range 3 {
+		a.runOnce(context.Background())
+		clock.now = a.jobs[0].retryAfter
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			p := &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10"}}
-			u := &recordingUpdater{err: errors.New("update failed")}
-			n := &recordingNotifier{errs: append([]error(nil), tt.notifierErrs...)}
-			a := newTestApp(p, u, n, AllFamilies())
-			clock := &fakeClock{now: time.Unix(1_700_000_000, 0)}
-			a.clock = clock
-			a.jitter = func() float64 { return 1 }
-
-			a.runOnce(context.Background())
-			clock.now = a.jobs[0].retryAfter
-			a.runOnce(context.Background())
-			clock.now = a.jobs[0].retryAfter
-			a.runOnce(context.Background())
-
-			if len(n.notifications) != 3 {
-				t.Fatalf("expected one failed delivery, its retry, and the other notification, got %d attempts", len(n.notifications))
-			}
-			if got := n.notifications[2].Message; got != tt.wantRetry {
-				t.Fatalf("expected retry %q, got %q", tt.wantRetry, got)
-			}
-		})
+	if len(n.notifications) != 2 {
+		t.Fatalf("expected failed update notification and one retry, got %d attempts", len(n.notifications))
+	}
+	for _, notification := range n.notifications {
+		if notification.Message != "DNS update failed for IPv4 192.0.2.10: update failed" {
+			t.Fatalf("unexpected update failure notification: %q", notification.Message)
+		}
 	}
 }
 
