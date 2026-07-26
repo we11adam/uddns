@@ -173,14 +173,14 @@ updaters:
     # email: user@example.com
     # apikey: your-cloudflare-api-key
     domain: ddns.example.com
-    # 可选。DNS zone 无法从最后两段推断时设置。
+    # 可选。覆盖通过公共后缀列表推断出的 DNS zone。
     # zone: example.com
     proxy: http://127.0.0.1:2080
   aliyun:
     accesskeyid: your-access-key-id
     accesskeysecret: your-access-key-secret
     domain: ddns.example.com
-    # 可选。DNS zone 无法从最后两段推断时设置。
+    # 可选。覆盖通过公共后缀列表推断出的 DNS zone。
     # zone: example.com
     regionid: cn-hangzhou
   duckdns:
@@ -239,7 +239,7 @@ jobs:
     provider: ip_service
     updater: cloudflare
     record: home.example.com
-    # 可选。DNS zone 无法从最后两段推断时设置。
+    # 可选。覆盖通过公共后缀列表推断出的 DNS zone。
     zone: example.com
     families: [ipv4, ipv6]
     verify: updater_api

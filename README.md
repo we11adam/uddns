@@ -193,14 +193,14 @@ updaters:
     # email: user@example.com
     # apikey: your-cloudflare-api-key
     domain: ddns.example.com
-    # Optional. Set when the DNS zone cannot be inferred from the last two labels.
+    # Optional. Override the zone inferred from the Public Suffix List.
     # zone: example.com
     proxy: http://127.0.0.1:2080
   aliyun:
     accesskeyid: your-access-key-id
     accesskeysecret: your-access-key-secret
     domain: ddns.example.com
-    # Optional. Set when the DNS zone cannot be inferred from the last two labels.
+    # Optional. Override the zone inferred from the Public Suffix List.
     # zone: example.com
     regionid: cn-hangzhou
   duckdns:
@@ -261,7 +261,7 @@ jobs:
     provider: ip_service
     updater: cloudflare
     record: home.example.com
-    # Optional. Set when the DNS zone cannot be inferred from the last two labels.
+    # Optional. Override the zone inferred from the Public Suffix List.
     zone: example.com
     families: [ipv4, ipv6]
     verify: updater_api

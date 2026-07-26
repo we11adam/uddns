@@ -9,7 +9,6 @@ import (
 
 	"github.com/scaleway/scaleway-sdk-go/api/domain/v2beta1"
 	"github.com/scaleway/scaleway-sdk-go/scw"
-	"golang.org/x/net/publicsuffix"
 
 	"github.com/we11adam/uddns/internal/dnsname"
 	"github.com/we11adam/uddns/provider"
@@ -68,12 +67,7 @@ func New(cfg *Config) (sw *Scaleway, err error) {
 		return nil, fmt.Errorf("invalid Scaleway domain: %w", err)
 	}
 
-	if cfg.Zone == "" {
-		normalizedConfig.Zone, err = publicsuffix.EffectiveTLDPlusOne(normalizedConfig.Domain)
-		if err != nil {
-			return nil, fmt.Errorf("could not infer Scaleway zone: %w", err)
-		}
-	} else {
+	if cfg.Zone != "" {
 		normalizedConfig.Zone, err = dnsname.Normalize(cfg.Zone)
 		if err != nil {
 			return nil, fmt.Errorf("invalid Scaleway zone: %w", err)

@@ -3,6 +3,8 @@ package dnsname
 import (
 	"fmt"
 	"strings"
+
+	"golang.org/x/net/publicsuffix"
 )
 
 func Normalize(name string) (string, error) {
@@ -39,17 +41,15 @@ func SplitRecord(recordName, zoneName string) (string, string, error) {
 		return splitRecordWithZone(record, zone)
 	}
 
-	labels := strings.Split(record, ".")
-	if len(labels) < 2 {
-		return "", "", fmt.Errorf("DNS record %q must contain at least two labels or set zone explicitly", record)
+	zone, err := publicsuffix.EffectiveTLDPlusOne(record)
+	if err != nil {
+		return "", "", fmt.Errorf(
+			"cannot infer DNS zone for record %q; set zone explicitly: %w",
+			record,
+			err,
+		)
 	}
-
-	zone := strings.Join(labels[len(labels)-2:], ".")
-	rr := strings.Join(labels[:len(labels)-2], ".")
-	if rr == "" {
-		rr = "@"
-	}
-	return zone, rr, nil
+	return splitRecordWithZone(record, zone)
 }
 
 func splitRecordWithZone(record, zone string) (string, string, error) {
