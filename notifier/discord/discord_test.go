@@ -140,6 +140,24 @@ func TestNotifyDiscordAPIResponse(t *testing.T) {
 		wantErr    bool
 	}{
 		{
+			name:       "http 200",
+			statusCode: http.StatusOK,
+			body:       `{"id":"message-id"}`,
+		},
+		{
+			name:       "http 204",
+			statusCode: http.StatusNoContent,
+		},
+		{
+			name:       "http 201",
+			statusCode: http.StatusCreated,
+			body:       `{"id":"message-id"}`,
+		},
+		{
+			name:       "http 202 with empty body",
+			statusCode: http.StatusAccepted,
+		},
+		{
 			name:       "http 400",
 			statusCode: http.StatusBadRequest,
 			body:       `{"code":0,"message":""}`,

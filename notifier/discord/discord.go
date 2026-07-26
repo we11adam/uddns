@@ -138,14 +138,12 @@ func (d *Discord) Notify(ctx context.Context, notification notifier.Notification
 	case http.StatusTooManyRequests:
 		return d.redactError(fmt.Errorf("Discord API request failed, rate limited, retry after %s", resp.Header().Get("Retry-After")))
 	}
+	if resp.IsSuccess() {
+		return nil
+	}
+
 	apiResp := apiResponse{}
-	decodeErr := json.Unmarshal(resp.Body(), &apiResp)
-	if !resp.IsSuccess() {
-		return d.redactError(d.apiError(resp.StatusCode(), apiResp))
-	}
-	if decodeErr != nil {
-		return d.redactError(fmt.Errorf("failed to decode Discord API response: %w", decodeErr))
-	}
+	_ = json.Unmarshal(resp.Body(), &apiResp)
 	return d.redactError(d.apiError(resp.StatusCode(), apiResp))
 }
 
