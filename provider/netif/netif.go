@@ -10,7 +10,8 @@ import (
 )
 
 type Netif struct {
-	iface *net.Interface
+	name            string
+	interfaceByName func(string) (*net.Interface, error)
 }
 
 type Config struct {
@@ -36,15 +37,22 @@ func init() {
 }
 
 func New(cfg *Config) (*Netif, error) {
+	return newNetif(cfg, net.InterfaceByName)
+}
+
+func newNetif(
+	cfg *Config,
+	interfaceByName func(string) (*net.Interface, error),
+) (*Netif, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("network interface config is nil")
 	}
-	iface, err := net.InterfaceByName(cfg.Name)
-	if err != nil {
+	if _, err := interfaceByName(cfg.Name); err != nil {
 		return nil, err
 	}
 	return &Netif{
-		iface: iface,
+		name:            cfg.Name,
+		interfaceByName: interfaceByName,
 	}, nil
 }
 
@@ -55,7 +63,11 @@ func (n *Netif) GetIPs(ctx context.Context, families provider.FamilyRequest) (*p
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	addrs, err := n.iface.Addrs()
+	iface, err := n.interfaceByName(n.name)
+	if err != nil {
+		return nil, err
+	}
+	addrs, err := iface.Addrs()
 	if err != nil {
 		return nil, err
 	}
@@ -63,7 +75,7 @@ func (n *Netif) GetIPs(ctx context.Context, families provider.FamilyRequest) (*p
 	result := selectPublishableIPs(addrs, families)
 
 	if result.IPv4 == "" && result.IPv6 == "" {
-		return nil, fmt.Errorf("no IP address found on network interface %s", n.iface.Name)
+		return nil, fmt.Errorf("no IP address found on network interface %s", n.name)
 	}
 
 	return result, nil

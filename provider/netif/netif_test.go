@@ -1,6 +1,7 @@
 package netif
 
 import (
+	"errors"
 	"net"
 	"testing"
 
@@ -12,6 +13,34 @@ var allFamilies = provider.FamilyRequest{IPv4: true, IPv6: true}
 func TestNewRejectsNilConfig(t *testing.T) {
 	if _, err := New(nil); err == nil {
 		t.Fatal("expected nil config to be rejected")
+	}
+}
+
+func TestGetIPsResolvesInterfaceByNameOnEveryCall(t *testing.T) {
+	const name = "pppoe0"
+	lookupErr := errors.New("interface temporarily unavailable")
+	lookups := 0
+	netif, err := newNetif(&Config{Name: name}, func(gotName string) (*net.Interface, error) {
+		if gotName != name {
+			t.Fatalf("interface name = %q, want %q", gotName, name)
+		}
+		lookups++
+		if lookups == 1 {
+			return &net.Interface{Name: name, Index: 1}, nil
+		}
+		return nil, lookupErr
+	})
+	if err != nil {
+		t.Fatalf("newNetif returned error: %v", err)
+	}
+
+	for range 2 {
+		if _, err := netif.GetIPs(t.Context(), allFamilies); !errors.Is(err, lookupErr) {
+			t.Fatalf("GetIPs error = %v, want %v", err, lookupErr)
+		}
+	}
+	if lookups != 3 {
+		t.Fatalf("interface lookups = %d, want one construction lookup and one per GetIPs call", lookups)
 	}
 }
 
