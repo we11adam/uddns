@@ -1,0 +1,51 @@
+name: Commit message policy
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+
+permissions:
+  contents: read
+
+jobs:
+  commit-message:
+    name: commit-message
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Validate PR title and commits
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          pattern='^(feat|fix|docs|ci|refactor|test|build|chore|perf|revert)(\([^)]+\))?!?:[[:space:]].+'
+          failed=0
+
+          if [[ ! "$PR_TITLE" =~ $pattern ]]; then
+            printf 'Invalid PR title: %s\n' "$PR_TITLE"
+            failed=1
+          fi
+
+          while IFS= read -r line; do
+            sha=${line%% *}
+            subject=${line#* }
+
+            if [[ ! "$subject" =~ $pattern ]]; then
+              printf 'Invalid commit message: %s %s\n' "$sha" "$subject"
+              failed=1
+            fi
+          done < <(git log --format='%H %s' "$BASE_SHA..$HEAD_SHA")
+
+          if (( failed )); then
+            printf '%s\n' \
+              'Expected: type(scope): description' \
+              'Allowed types: feat, fix, docs, ci, refactor, test, build, chore, perf, revert'
+            exit 1
+          fi
