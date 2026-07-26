@@ -158,7 +158,7 @@ providers:
     endpoint: https://192.168.88.1
     username: admin
     password: ""
-    insecure: true
+    insecure: false
   ip_service:
     - ifconfig.me
     - ip.fm
@@ -305,7 +305,7 @@ verify 行为：
   - `endpoint`：RouterOS API 地址。
   - `username`：RouterOS 用户名。
   - `password`：RouterOS 密码。
-  - `insecure`：跳过 TLS 校验。可选，默认 `true`。
+  - `insecure`：跳过 TLS 校验。可选，默认 `false`。
 - `ip_service`：从外部服务读取公网 IP。
   - 支持：`ip.fm`、`ifconfig.me`、`ip.sb`、`3322.org`。
   - 仅接受可在公网路由的地址。

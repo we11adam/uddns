@@ -178,7 +178,7 @@ providers:
     endpoint: https://192.168.88.1
     username: admin
     password: ""
-    insecure: true
+    insecure: false
   ip_service:
     - ifconfig.me
     - ip.fm
@@ -339,7 +339,7 @@ fails.
   - `endpoint`: RouterOS API endpoint.
   - `username`: RouterOS username.
   - `password`: RouterOS password.
-  - `insecure`: Skip TLS verification. Optional, defaults to `true`.
+  - `insecure`: Skip TLS verification. Optional, defaults to `false`.
 - `ip_service`: Reads the public IP from external services.
   - Supported services: `ip.fm`, `ifconfig.me`, `ip.sb`, `3322.org`.
   - Only public, globally routable addresses are accepted.

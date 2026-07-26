@@ -61,20 +61,19 @@ func init() {
 }
 
 func New(config *Config) (*RouterOS, error) {
-	if config.Insecure == nil {
-		insecure := true
-		config.Insecure = &insecure
-	}
 	baseURL, err := routerOSRestURL(config.Endpoint)
 	if err != nil {
 		return nil, err
 	}
+	insecure := config.Insecure != nil && *config.Insecure
+	normalizedConfig := *config
+	normalizedConfig.Insecure = &insecure
 	httpClient := resty.New().SetBasicAuth(config.Username, config.Password).
-		SetTLSClientConfig(&tls.Config{InsecureSkipVerify: *config.Insecure}).
+		SetTLSClientConfig(&tls.Config{InsecureSkipVerify: insecure}).
 		SetBaseURL(baseURL).
 		SetTimeout(10 * time.Second)
 	return &RouterOS{
-		config:     *config,
+		config:     normalizedConfig,
 		httpClient: httpClient,
 	}, nil
 }

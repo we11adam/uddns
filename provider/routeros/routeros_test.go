@@ -41,6 +41,49 @@ func TestRouterOSRestURL(t *testing.T) {
 	}
 }
 
+func TestNewVerifiesTLSByDefault(t *testing.T) {
+	router, err := New(&Config{
+		Username: "admin",
+		Password: "secret",
+		Endpoint: "https://router.example.com",
+	})
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+
+	if router.config.Insecure == nil || *router.config.Insecure {
+		t.Fatalf("normalized insecure setting = %v, want false", router.config.Insecure)
+	}
+	transport, ok := router.httpClient.GetClient().Transport.(*http.Transport)
+	if !ok {
+		t.Fatalf("HTTP transport type = %T, want *http.Transport", router.httpClient.GetClient().Transport)
+	}
+	if transport.TLSClientConfig == nil || transport.TLSClientConfig.InsecureSkipVerify {
+		t.Fatal("TLS certificate verification is not enabled by default")
+	}
+}
+
+func TestNewAllowsExplicitInsecureTLS(t *testing.T) {
+	insecure := true
+	router, err := New(&Config{
+		Username: "admin",
+		Password: "secret",
+		Endpoint: "https://router.example.com",
+		Insecure: &insecure,
+	})
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+
+	transport, ok := router.httpClient.GetClient().Transport.(*http.Transport)
+	if !ok {
+		t.Fatalf("HTTP transport type = %T, want *http.Transport", router.httpClient.GetClient().Transport)
+	}
+	if transport.TLSClientConfig == nil || !transport.TLSClientConfig.InsecureSkipVerify {
+		t.Fatal("explicit insecure setting was not applied")
+	}
+}
+
 func TestGetIPsRequestsOnlySelectedFamilies(t *testing.T) {
 	tests := []struct {
 		name      string
