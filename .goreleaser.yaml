@@ -13,7 +13,10 @@ builds:
     binary: uddns
     flags: [-trimpath, -mod=readonly]
     ldflags:
-      - -s -w -X main.version={{ .Version }}
+      - >-
+        -s -w
+        -X main.version={{ .Version }}
+        -X github.com/we11adam/uddns/internal/selfupdate.releasePublicKeys={{ .Env.UDDNS_MINISIGN_PUBLIC_KEYS }}
     env:
       - CGO_ENABLED=0
     targets:
@@ -27,6 +30,21 @@ builds:
       - windows_arm64
 checksum:
   name_template: 'checksums.txt'
+
+signs:
+  - id: checksums-minisign
+    cmd: minisign
+    signature: '${artifact}.minisig'
+    artifacts: checksum
+    args:
+      - -S
+      - -s
+      - '{{ .Env.MINISIGN_SECRET_KEY }}'
+      - -m
+      - '${artifact}'
+      - -x
+      - '${signature}'
+    stdin: "{{ .Env.MINISIGN_PASSWORD }}\n"
 
 sboms:
   - id: archives

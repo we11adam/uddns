@@ -294,6 +294,13 @@ func TestUpdaterCheckUsesProductionDownloadURLAllowlist(t *testing.T) {
 			wantErrContains: "invalid checksum URL",
 		},
 		{
+			name: "untrusted checksum signature URL",
+			mutate: func(release *releaseMetadata) {
+				release.Assets[2].BrowserDownloadURL = "https://example.com/checksums.txt.minisig"
+			},
+			wantErrContains: "invalid checksum signature URL",
+		},
+		{
 			name: "different repository",
 			mutate: func(release *releaseMetadata) {
 				release.Assets[0].BrowserDownloadURL =
@@ -354,6 +361,10 @@ func releaseTestMetadata() releaseMetadata {
 			{
 				Name:               "checksums.txt",
 				BrowserDownloadURL: releaseBaseURL + "checksums.txt",
+			},
+			{
+				Name:               checksumSignatureName,
+				BrowserDownloadURL: releaseBaseURL + checksumSignatureName,
 			},
 		},
 	}

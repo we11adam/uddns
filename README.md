@@ -102,10 +102,13 @@ uddns self-update
 ```
 
 The updater selects the exact GoReleaser asset for the current platform,
-downloads it over HTTPS, verifies its SHA-256 value from `checksums.txt`,
-strictly validates the single-file archive, and confirms the staged binary's
-reported version. It then creates an adjacent `.previous` backup and atomically
-replaces the installed executable. The resolved target must be a regular file.
+downloads it over HTTPS, verifies `checksums.txt.minisig` against the release
+public keys embedded in the running binary, and only then uses `checksums.txt`
+to verify the archive's SHA-256 value. It strictly validates the single-file
+archive and confirms the staged binary's reported version. It then creates an
+adjacent `.previous` backup and atomically replaces the installed executable.
+Unsigned historical releases are rejected as self-update targets. The resolved
+target must be a regular file.
 Because the operating system may resolve a symlink before UDDNS can inspect the
 launch path, the updater cannot reliably identify every package-manager
 installation. Use the package manager's own upgrade command when it manages the
@@ -470,6 +473,9 @@ Chinese release notes are available in [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
 
 Pull requests are welcome. For major changes, please open an issue first to
 discuss what you would like to change.
+
+Maintainers should follow [the release-signing runbook](docs/release-signing.md)
+before creating a release.
 
 ## License
 

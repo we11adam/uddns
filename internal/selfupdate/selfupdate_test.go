@@ -44,6 +44,13 @@ func TestUpdaterCheckBuildsCompletePlan(t *testing.T) {
 			release.Assets[1].BrowserDownloadURL,
 		)
 	}
+	if plan.signatureURL != release.Assets[2].BrowserDownloadURL {
+		t.Errorf(
+			"signatureURL = %q, want %q",
+			plan.signatureURL,
+			release.Assets[2].BrowserDownloadURL,
+		)
+	}
 	if got := plan.target.canonical(); got != "v1.9.0" {
 		t.Errorf("target canonical version = %q, want %q", got, "v1.9.0")
 	}
@@ -302,6 +309,20 @@ func TestUpdaterCheckRequiresUniqueExactAssets(t *testing.T) {
 			wantErrContains: "duplicate checksums.txt assets",
 		},
 		{
+			name: "missing checksum signature",
+			mutate: func(release *releaseMetadata) {
+				release.Assets = release.Assets[:2]
+			},
+			wantErrContains: "release does not contain " + checksumSignatureName,
+		},
+		{
+			name: "duplicate checksum signature",
+			mutate: func(release *releaseMetadata) {
+				release.Assets = append(release.Assets, release.Assets[2])
+			},
+			wantErrContains: "duplicate " + checksumSignatureName + " assets",
+		},
+		{
 			name: "archive missing URL",
 			mutate: func(release *releaseMetadata) {
 				release.Assets[0].BrowserDownloadURL = ""
@@ -314,6 +335,13 @@ func TestUpdaterCheckRequiresUniqueExactAssets(t *testing.T) {
 				release.Assets[1].BrowserDownloadURL = ""
 			},
 			wantErrContains: "checksums.txt is missing its download URL",
+		},
+		{
+			name: "checksum signature missing URL",
+			mutate: func(release *releaseMetadata) {
+				release.Assets[2].BrowserDownloadURL = ""
+			},
+			wantErrContains: checksumSignatureName + " is missing its download URL",
 		},
 	}
 
@@ -366,6 +394,7 @@ func TestUpdaterApplyRejectsLegacyReleaseBeforeDownload(t *testing.T) {
 		AssetName:      name,
 		assetURL:       "https://github.com/unused",
 		checksumURL:    "https://github.com/unused",
+		signatureURL:   "https://github.com/unused",
 		target:         target,
 	}, ApplyOptions{AllowDowngrade: true})
 	if err == nil || !strings.Contains(err.Error(), "predates self-update support") {

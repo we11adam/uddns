@@ -63,6 +63,26 @@ jobs:
       - name: Shellcheck release scripts
         run: shellcheck install.sh tests/release_archive_test.sh
 
+      - name: Install minisign
+        run: |
+          go install aead.dev/minisign/cmd/minisign@v0.3.0
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: Create snapshot signing key
+        shell: bash
+        run: |
+          key_dir="$RUNNER_TEMP/uddns-snapshot-minisign"
+          mkdir -m 700 "$key_dir"
+          minisign -G -W \
+            -p "$key_dir/minisign.pub" \
+            -s "$key_dir/minisign.key"
+          public_key=$(sed -n '2p' "$key_dir/minisign.pub")
+          {
+            printf 'MINISIGN_SECRET_KEY=%s\n' "$key_dir/minisign.key"
+            printf 'MINISIGN_PASSWORD=\n'
+            printf 'UDDNS_MINISIGN_PUBLIC_KEYS=%s\n' "$public_key"
+          } >> "$GITHUB_ENV"
+
       - name: Build snapshot release archives
         uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7
         with:
@@ -77,6 +97,7 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
     needs: test
     runs-on: ubuntu-latest
+    environment: release
     permissions:
       contents: write
       id-token: write
@@ -98,6 +119,51 @@ jobs:
         with:
           syft-version: v1.46.0
 
+      - name: Install minisign
+        run: |
+          go install aead.dev/minisign/cmd/minisign@v0.3.0
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: Prepare release signing key
+        shell: bash
+        env:
+          MINISIGN_SECRET_KEY_B64: ${{ secrets.UDDNS_MINISIGN_SECRET_KEY_B64 }}
+          MINISIGN_PASSWORD: ${{ secrets.UDDNS_MINISIGN_PASSWORD }}
+          UDDNS_MINISIGN_PUBLIC_KEYS: ${{ vars.UDDNS_MINISIGN_PUBLIC_KEYS }}
+        run: |
+          if [[ -z "$MINISIGN_SECRET_KEY_B64" ||
+                -z "$MINISIGN_PASSWORD" ||
+                -z "$UDDNS_MINISIGN_PUBLIC_KEYS" ]]; then
+            echo "release minisign credentials are not configured" >&2
+            exit 1
+          fi
+
+          key_dir="$RUNNER_TEMP/uddns-release-minisign"
+          mkdir -m 700 "$key_dir"
+          key_file="$key_dir/minisign.key"
+          printf '%s' "$MINISIGN_SECRET_KEY_B64" | base64 --decode > "$key_file"
+          chmod 600 "$key_file"
+
+          printf '%s\n' "$MINISIGN_PASSWORD" |
+            minisign -R -s "$key_file" -p "$key_dir/minisign.pub"
+          signer_public_key=$(sed -n '2p' "$key_dir/minisign.pub")
+          signer_is_trusted=false
+          IFS=',' read -r -a trusted_keys <<< "$UDDNS_MINISIGN_PUBLIC_KEYS"
+          for trusted_key in "${trusted_keys[@]}"; do
+            if [[ "$trusted_key" == "$signer_public_key" ]]; then
+              signer_is_trusted=true
+              break
+            fi
+          done
+          if [[ "$signer_is_trusted" != true ]]; then
+            echo "release signing key is not in UDDNS_MINISIGN_PUBLIC_KEYS" >&2
+            exit 1
+          fi
+
+          printf 'MINISIGN_SECRET_KEY=%s\n' "$key_file" >> "$GITHUB_ENV"
+          printf 'UDDNS_MINISIGN_PUBLIC_KEYS=%s\n' \
+            "$UDDNS_MINISIGN_PUBLIC_KEYS" >> "$GITHUB_ENV"
+
       - name: Create release on GitHub
         uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7
         with:
@@ -106,6 +172,7 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MINISIGN_PASSWORD: ${{ secrets.UDDNS_MINISIGN_PASSWORD }}
 
       - name: Attest release provenance
         uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1

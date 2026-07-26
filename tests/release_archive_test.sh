@@ -32,6 +32,39 @@ archive_count=0
 tar_count=0
 zip_count=0
 
+checksum_file="$archive_dir/checksums.txt"
+signature_file="$archive_dir/checksums.txt.minisig"
+if [ ! -s "$checksum_file" ] || [ ! -s "$signature_file" ]; then
+	printf 'release checksums or minisign signature is missing\n' >&2
+	exit 1
+fi
+if ! command -v minisign >/dev/null 2>&1; then
+	printf 'minisign is required to validate the release signature\n' >&2
+	exit 1
+fi
+if [ -z "${UDDNS_MINISIGN_PUBLIC_KEYS:-}" ]; then
+	printf 'UDDNS_MINISIGN_PUBLIC_KEYS is required\n' >&2
+	exit 1
+fi
+
+signature_verified=false
+old_ifs=$IFS
+IFS=,
+for public_key in $UDDNS_MINISIGN_PUBLIC_KEYS; do
+	if minisign -V -q \
+		-P "$public_key" \
+		-m "$checksum_file" \
+		-x "$signature_file"; then
+		signature_verified=true
+		break
+	fi
+done
+IFS=$old_ifs
+if [ "$signature_verified" != true ]; then
+	printf 'release checksum signature verification failed\n' >&2
+	exit 1
+fi
+
 for archive in "$archive_dir"/*.tar.gz "$archive_dir"/*.tgz "$archive_dir"/*.zip; do
 	[ -f "$archive" ] || continue
 	archive_count=$((archive_count + 1))

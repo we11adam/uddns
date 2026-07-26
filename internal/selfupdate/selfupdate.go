@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+
+	"aead.dev/minisign"
 )
 
 const (
@@ -39,6 +41,8 @@ type Config struct {
 
 	HTTPClient *http.Client
 	APIBaseURL string
+
+	TrustedPublicKeys []string
 }
 
 type Plan struct {
@@ -47,9 +51,10 @@ type Plan struct {
 	Status         Status `json:"status"`
 	AssetName      string `json:"asset_name"`
 
-	assetURL    string
-	checksumURL string
-	target      semanticVersion
+	assetURL     string
+	checksumURL  string
+	signatureURL string
+	target       semanticVersion
 }
 
 type ApplyOptions struct {
@@ -78,15 +83,16 @@ type Result struct {
 }
 
 type Updater struct {
-	currentVersion string
-	executablePath string
-	goos           string
-	goarch         string
-	httpClient     *http.Client
-	apiBaseURL     string
-	testEndpoint   bool
-	verifyBinary   binaryVerifier
-	verifyPlatform binaryPlatformVerifier
+	currentVersion    string
+	executablePath    string
+	goos              string
+	goarch            string
+	httpClient        *http.Client
+	apiBaseURL        string
+	testEndpoint      bool
+	trustedPublicKeys []minisign.PublicKey
+	verifyBinary      binaryVerifier
+	verifyPlatform    binaryPlatformVerifier
 }
 
 func New(config Config) (*Updater, error) {
@@ -101,6 +107,10 @@ func New(config Config) (*Updater, error) {
 	}
 	if config.GOOS == "" || config.GOARCH == "" {
 		return nil, fmt.Errorf("runtime target must not be empty")
+	}
+	trustedPublicKeys, err := parseTrustedPublicKeys(config.TrustedPublicKeys)
+	if err != nil {
+		return nil, err
 	}
 
 	apiBaseURL := strings.TrimRight(config.APIBaseURL, "/")
@@ -120,15 +130,16 @@ func New(config Config) (*Updater, error) {
 	client = hardenedHTTPClient(client, testEndpoint)
 
 	return &Updater{
-		currentVersion: config.CurrentVersion,
-		executablePath: filepath.Clean(config.ExecutablePath),
-		goos:           config.GOOS,
-		goarch:         config.GOARCH,
-		httpClient:     client,
-		apiBaseURL:     apiBaseURL,
-		testEndpoint:   testEndpoint,
-		verifyBinary:   inspectBinaryVersion,
-		verifyPlatform: inspectBinaryPlatform,
+		currentVersion:    config.CurrentVersion,
+		executablePath:    filepath.Clean(config.ExecutablePath),
+		goos:              config.GOOS,
+		goarch:            config.GOARCH,
+		httpClient:        client,
+		apiBaseURL:        apiBaseURL,
+		testEndpoint:      testEndpoint,
+		trustedPublicKeys: trustedPublicKeys,
+		verifyBinary:      inspectBinaryVersion,
+		verifyPlatform:    inspectBinaryPlatform,
 	}, nil
 }
 
@@ -139,10 +150,11 @@ func NewForCurrentExecutable(currentVersion string) (*Updater, error) {
 	}
 
 	return New(Config{
-		CurrentVersion: currentVersion,
-		ExecutablePath: executablePath,
-		GOOS:           runtime.GOOS,
-		GOARCH:         runtime.GOARCH,
+		CurrentVersion:    currentVersion,
+		ExecutablePath:    executablePath,
+		GOOS:              runtime.GOOS,
+		GOARCH:            runtime.GOARCH,
+		TrustedPublicKeys: embeddedReleasePublicKeys(),
 	})
 }
 
@@ -190,6 +202,10 @@ func (u *Updater) Check(ctx context.Context, requestedVersion string) (Plan, err
 	if err != nil {
 		return Plan{}, err
 	}
+	signatureURL, err := uniqueAssetURL(release.Assets, checksumSignatureName)
+	if err != nil {
+		return Plan{}, err
+	}
 	if err := u.validateReleaseAssetURL(
 		assetURL,
 		release.TagName,
@@ -204,6 +220,13 @@ func (u *Updater) Check(ctx context.Context, requestedVersion string) (Plan, err
 	); err != nil {
 		return Plan{}, fmt.Errorf("invalid checksum URL: %w", err)
 	}
+	if err := u.validateReleaseAssetURL(
+		signatureURL,
+		release.TagName,
+		checksumSignatureName,
+	); err != nil {
+		return Plan{}, fmt.Errorf("invalid checksum signature URL: %w", err)
+	}
 
 	status, err := updateStatus(u.currentVersion, target)
 	if err != nil {
@@ -217,6 +240,7 @@ func (u *Updater) Check(ctx context.Context, requestedVersion string) (Plan, err
 		AssetName:      name,
 		assetURL:       assetURL,
 		checksumURL:    checksumURL,
+		signatureURL:   signatureURL,
 		target:         target,
 	}, nil
 }
@@ -234,7 +258,8 @@ func (u *Updater) Apply(ctx context.Context, plan Plan, options ApplyOptions) (R
 	if !canApplyOnCurrentPlatform() {
 		return Result{}, fmt.Errorf("self-update is not supported on %s", runtime.GOOS)
 	}
-	if plan.assetURL == "" || plan.checksumURL == "" || plan.AssetName == "" {
+	if plan.assetURL == "" || plan.checksumURL == "" ||
+		plan.signatureURL == "" || plan.AssetName == "" {
 		return Result{}, fmt.Errorf("update plan is incomplete")
 	}
 
@@ -263,6 +288,9 @@ func (u *Updater) Apply(ctx context.Context, plan Plan, options ApplyOptions) (R
 			plan.target.canonical(),
 			earliestSelfUpdateRelease.canonical(),
 		)
+	}
+	if len(u.trustedPublicKeys) == 0 {
+		return Result{}, fmt.Errorf("self-update has no trusted release signing key")
 	}
 
 	expectedName, err := assetName(

@@ -5,6 +5,7 @@ package selfupdate
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
@@ -14,6 +15,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+
+	"aead.dev/minisign"
 )
 
 func TestUpdaterApplyEndToEnd(t *testing.T) {
@@ -37,20 +40,25 @@ func TestUpdaterApplyEndToEnd(t *testing.T) {
 	}
 	archive := buildIntegrationArchive(t, name, newBinary)
 	checksum := sha256.Sum256(archive)
+	checksums := []byte(fmt.Sprintf("%x  %s\n", checksum, name))
+	publicKey, privateKey, err := minisign.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("generate signing key: %v", err)
+	}
+	signature := minisign.Sign(privateKey, checksums)
 	releaseBaseURL := "https://github.com/we11adam/uddns/releases/download/v1.9.0/"
 	release := releaseMetadata{
 		TagName: "v1.9.0",
 		Assets: []releaseAsset{
 			{Name: name, BrowserDownloadURL: releaseBaseURL + name},
 			{Name: "checksums.txt", BrowserDownloadURL: releaseBaseURL + "checksums.txt"},
+			{Name: checksumSignatureName, BrowserDownloadURL: releaseBaseURL + checksumSignatureName},
 		},
 	}
 	releaseJSON, err := json.Marshal(release)
 	if err != nil {
 		t.Fatalf("marshal release metadata: %v", err)
 	}
-	checksums := []byte(fmt.Sprintf("%x  %s\n", checksum, name))
-
 	transport := releaseTestRoundTripFunc(func(request *http.Request) (*http.Response, error) {
 		var body []byte
 		switch request.URL.String() {
@@ -58,6 +66,8 @@ func TestUpdaterApplyEndToEnd(t *testing.T) {
 			body = releaseJSON
 		case releaseBaseURL + "checksums.txt":
 			body = checksums
+		case releaseBaseURL + checksumSignatureName:
+			body = signature
 		case releaseBaseURL + name:
 			body = archive
 		default:
@@ -73,11 +83,12 @@ func TestUpdaterApplyEndToEnd(t *testing.T) {
 	})
 
 	updater, err := New(Config{
-		CurrentVersion: "1.8.0",
-		ExecutablePath: targetPath,
-		GOOS:           runtime.GOOS,
-		GOARCH:         runtime.GOARCH,
-		HTTPClient:     &http.Client{Transport: transport},
+		CurrentVersion:    "1.8.0",
+		ExecutablePath:    targetPath,
+		GOOS:              runtime.GOOS,
+		GOARCH:            runtime.GOARCH,
+		HTTPClient:        &http.Client{Transport: transport},
+		TrustedPublicKeys: []string{publicKey.String()},
 	})
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)

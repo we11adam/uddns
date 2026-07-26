@@ -13,8 +13,9 @@ import (
 )
 
 const (
-	maxArchiveSize  = 128 << 20
-	maxChecksumSize = 1 << 20
+	maxArchiveSize   = 128 << 20
+	maxChecksumSize  = 1 << 20
+	maxSignatureSize = 16 << 10
 )
 
 func (u *Updater) downloadCandidate(
@@ -25,6 +26,23 @@ func (u *Updater) downloadCandidate(
 	checksumPath := filepath.Join(stagingDirectory, "checksums.txt")
 	if err := u.downloadFile(ctx, plan.checksumURL, checksumPath, maxChecksumSize); err != nil {
 		return "", fmt.Errorf("download checksums: %w", err)
+	}
+
+	signaturePath := filepath.Join(stagingDirectory, checksumSignatureName)
+	if err := u.downloadFile(
+		ctx,
+		plan.signatureURL,
+		signaturePath,
+		maxSignatureSize,
+	); err != nil {
+		return "", fmt.Errorf("download checksum signature: %w", err)
+	}
+	if err := verifyChecksumSignature(
+		checksumPath,
+		signaturePath,
+		u.trustedPublicKeys,
+	); err != nil {
+		return "", fmt.Errorf("verify checksums signature: %w", err)
 	}
 
 	expectedChecksum, err := checksumForAsset(checksumPath, plan.AssetName)
