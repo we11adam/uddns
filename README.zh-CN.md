@@ -10,7 +10,7 @@ UDDNS 是一个轻量的动态 DNS 更新器。它会从 provider 获取当前�
 - 支持 IPv4 和 IPv6。
 - Provider：RouterOS、外部 IP 服务、本机网络接口。
 - Updater：Cloudflare、Aliyun、DuckDNS、LightDNS、Scaleway。
-- Notifier：Telegram。
+- Notifier：Telegram、Discord。
 - 支持通过环境变量配置更新间隔。
 - 结构化日志，支持按自然日轮转文件日志和保留天数清理。
 - 支持 curl 安装器，并可选择安装为 systemd 服务。
@@ -346,9 +346,14 @@ verify 行为：
   - `token`：Telegram bot token。
   - `chat_id`：Telegram chat ID。
   - `proxy`：可选 HTTP 或 HTTPS 代理。
+- `discord`：
+  - `url`：Discord webhook URL。
+  - `id`：Discord webhook ID（也可以用 `url`）。
+  - `token`：Discord webhook token（也可以用 `url`）。
+  - `proxy`：可选 HTTP 或 HTTPS 代理。
 
-Cloudflare 和 Telegram 的代理地址必须是包含主机名的绝对 URL。支持在 URL userinfo
-中提供代理凭据；除 `/` 外不得包含其他路径，也不得包含 query 或 fragment。
+Cloudflare、Discord 和 Telegram 的代理地址必须是包含主机名的绝对 URL。支持在 URL
+userinfo 中提供代理凭据；除 `/` 外不得包含其他路径，也不得包含 query 或 fragment。
 
 ## 运行
 

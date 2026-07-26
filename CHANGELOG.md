@@ -6,6 +6,19 @@ All notable changes to UDDNS are documented here, based on the Git commit histor
 
 No changes yet.
 
+## v1.10.0 - 2026-07-26
+
+### Added
+
+- Added Discord webhook notifications, configurable with a complete webhook URL
+  or separate webhook ID and token, with event-specific embed colors.
+- Exposed typed notification reasons to notifier integrations.
+
+### Fixed
+
+- Redacted complete Discord webhook URLs from notifier errors and sent the
+  Discord-compliant HTTP user agent required by the API.
+
 ## v1.9.1 - 2026-07-25
 
 ### Fixed

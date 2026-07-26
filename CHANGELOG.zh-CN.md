@@ -6,6 +6,19 @@
 
 暂无变更。
 
+## v1.10.0 - 2026-07-26
+
+### 新增
+
+- 新增 Discord webhook 通知，支持配置完整 webhook URL，或分别配置 webhook ID
+  与 token，并根据通知原因显示不同的嵌入消息颜色。
+- 向 notifier 集成公开类型化的通知原因。
+
+### 修复
+
+- 从 notifier 错误中脱敏完整 Discord webhook URL，并发送 Discord API 要求的
+  合规 HTTP User-Agent。
+
 ## v1.9.1 - 2026-07-25
 
 ### 修复

@@ -11,7 +11,7 @@ notifications when the IP address or update status changes.
 - IPv4 and IPv6 update support.
 - Providers: RouterOS, external IP services, and local network interfaces.
 - Updaters: Cloudflare, Aliyun, DuckDNS, LightDNS and Scaleway.
-- Notifier: Telegram.
+- Notifiers: Telegram and Discord.
 - Configurable update interval.
 - Structured logs with optional daily rotated file logging and retention.
 - Curl installer with optional systemd service installation.
