@@ -9,8 +9,11 @@ import (
 	"time"
 
 	"github.com/go-resty/resty/v2"
+	"github.com/we11adam/uddns/internal/redact"
 	"github.com/we11adam/uddns/provider"
 )
+
+const errorBodyLimit = 4 << 10
 
 type RouterOS struct {
 	config     Config
@@ -96,8 +99,7 @@ func (r *RouterOS) GetIPs(ctx context.Context, families provider.FamilyRequest) 
 		return nil, fmt.Errorf("no IP families requested")
 	}
 	var rfaces []rosInterface
-	_, err := r.httpClient.R().SetContext(ctx).SetResult(&rfaces).Get("/interface")
-	if err != nil {
+	if err := r.get(ctx, "/interface", &rfaces); err != nil {
 		return nil, err
 	}
 
@@ -113,8 +115,7 @@ func (r *RouterOS) GetIPs(ctx context.Context, families provider.FamilyRequest) 
 
 	if families.IPv4 {
 		var raddrs []rosAddress
-		_, err = r.httpClient.R().SetContext(ctx).SetResult(&raddrs).Get("/ip/address")
-		if err != nil {
+		if err := r.get(ctx, "/ip/address", &raddrs); err != nil {
 			return nil, err
 		}
 
@@ -128,8 +129,7 @@ func (r *RouterOS) GetIPs(ctx context.Context, families provider.FamilyRequest) 
 
 	if families.IPv6 {
 		var raddrs6 []rosAddress
-		_, err = r.httpClient.R().SetContext(ctx).SetResult(&raddrs6).Get("/ipv6/address")
-		if err != nil {
+		if err := r.get(ctx, "/ipv6/address", &raddrs6); err != nil {
 			return nil, err
 		}
 
@@ -146,4 +146,35 @@ func (r *RouterOS) GetIPs(ctx context.Context, families provider.FamilyRequest) 
 	}
 
 	return result, nil
+}
+
+func (r *RouterOS) get(ctx context.Context, requestPath string, result any) error {
+	resp, err := r.httpClient.R().
+		SetContext(ctx).
+		SetResult(result).
+		Get(requestPath)
+	if err != nil {
+		return err
+	}
+	if resp.IsSuccess() {
+		return nil
+	}
+
+	body := redact.String(strings.TrimSpace(string(resp.Body())), r.config.Password)
+	if len(body) > errorBodyLimit {
+		body = body[:errorBodyLimit] + "..."
+	}
+	if body == "" {
+		return fmt.Errorf(
+			"RouterOS REST GET %s failed: HTTP status %d",
+			requestPath,
+			resp.StatusCode(),
+		)
+	}
+	return fmt.Errorf(
+		"RouterOS REST GET %s failed: HTTP status %d: %q",
+		requestPath,
+		resp.StatusCode(),
+		body,
+	)
 }

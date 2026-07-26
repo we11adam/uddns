@@ -2,12 +2,16 @@ package routeros
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/go-resty/resty/v2"
+	"github.com/we11adam/uddns/internal/testutil"
 	"github.com/we11adam/uddns/provider"
 )
 
@@ -189,5 +193,92 @@ func TestGetIPsRejectsOnlyDisabledAddresses(t *testing.T) {
 	router := &RouterOS{httpClient: resty.New().SetBaseURL(server.URL)}
 	if _, err := router.GetIPs(context.Background(), provider.FamilyRequest{IPv4: true}); err == nil {
 		t.Fatal("expected disabled-only address list to return an error")
+	}
+}
+
+func TestGetIPsReportsHTTPFailures(t *testing.T) {
+	tests := []struct {
+		name       string
+		failureAt  string
+		statusCode int
+		families   provider.FamilyRequest
+	}{
+		{
+			name:       "interface redirect",
+			failureAt:  "/interface",
+			statusCode: http.StatusFound,
+			families:   provider.FamilyRequest{IPv4: true},
+		},
+		{
+			name:       "interface unauthorized",
+			failureAt:  "/interface",
+			statusCode: http.StatusUnauthorized,
+			families:   provider.FamilyRequest{IPv4: true},
+		},
+		{
+			name:       "IPv4 forbidden",
+			failureAt:  "/ip/address",
+			statusCode: http.StatusForbidden,
+			families:   provider.FamilyRequest{IPv4: true},
+		},
+		{
+			name:       "IPv6 service unavailable",
+			failureAt:  "/ipv6/address",
+			statusCode: http.StatusServiceUnavailable,
+			families:   provider.FamilyRequest{IPv6: true},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			password := "router+/password =secret"
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+				if request.URL.Path == tt.failureAt {
+					w.WriteHeader(tt.statusCode)
+					_, _ = fmt.Fprintf(
+						w,
+						"request failed for %s / %s / %s",
+						password,
+						url.QueryEscape(password),
+						url.PathEscape(password),
+					)
+					return
+				}
+
+				w.Header().Set("Content-Type", "application/json")
+				switch request.URL.Path {
+				case "/interface":
+					_, _ = w.Write([]byte(`[{"name":"pppoe-out1","type":"pppoe-out"}]`))
+				case "/ip/address":
+					_, _ = w.Write([]byte(`[{"interface":"pppoe-out1","address":"192.0.2.10/32"}]`))
+				case "/ipv6/address":
+					_, _ = w.Write([]byte(`[{"interface":"pppoe-out1","address":"2001:db8::10/64"}]`))
+				default:
+					http.NotFound(w, request)
+				}
+			}))
+			defer server.Close()
+
+			router := &RouterOS{
+				config:     Config{Password: password},
+				httpClient: resty.New().SetBaseURL(server.URL),
+			}
+			_, err := router.GetIPs(context.Background(), tt.families)
+			if err == nil {
+				t.Fatal("GetIPs returned nil error")
+			}
+			for _, want := range []string{
+				tt.failureAt,
+				fmt.Sprintf("HTTP status %d", tt.statusCode),
+			} {
+				if !strings.Contains(err.Error(), want) {
+					t.Fatalf("GetIPs error = %q, want substring %q", err, want)
+				}
+			}
+			if strings.Contains(err.Error(), "no IP address found") {
+				t.Fatalf("HTTP failure was reported as an empty address result: %q", err)
+			}
+			testutil.AssertTokenRedacted(t, err.Error(), password)
+		})
 	}
 }
