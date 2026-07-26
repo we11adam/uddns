@@ -308,13 +308,13 @@ func (a *App) runJob(ctx context.Context, job *Job) {
 	)
 
 	if ipv4NotificationNeeded {
-		if a.notify(ctx, "ip_change", job, notifier.Notification{Message: jobNotificationMessage(job, fmt.Sprintf("IPv4 address changed to %s", ipResult.IPv4))}) {
+		if a.notify(ctx, job, notifier.Notification{Message: jobNotificationMessage(job, fmt.Sprintf("IPv4 address changed to %s", ipResult.IPv4)), Reason: notifier.ReasonIPChange}) {
 			job.lastNotifiedIPv4 = ipResult.IPv4
 		}
 	}
 
 	if ipv6NotificationNeeded {
-		if a.notify(ctx, "ip_change", job, notifier.Notification{Message: jobNotificationMessage(job, fmt.Sprintf("IPv6 address changed to %s", ipResult.IPv6))}) {
+		if a.notify(ctx, job, notifier.Notification{Message: jobNotificationMessage(job, fmt.Sprintf("IPv6 address changed to %s", ipResult.IPv6)), Reason: notifier.ReasonIPChange}) {
 			job.lastNotifiedIPv6 = ipResult.IPv6
 		}
 	}
@@ -342,8 +342,8 @@ func (a *App) runJob(ctx context.Context, job *Job) {
 				"error", err,
 			)...,
 		)
-		failureNotification := notifier.Notification{Message: jobNotificationMessage(job, fmt.Sprintf("DNS update failed for %s: %s", notificationIPSummary(ipResult), err))}
-		if failureNotification.Message != job.lastNotifiedUpdateFailure && a.notify(ctx, "update_failure", job, failureNotification) {
+		failureNotification := notifier.Notification{Message: jobNotificationMessage(job, fmt.Sprintf("DNS update failed for %s: %s", notificationIPSummary(ipResult), err)), Reason: notifier.ReasonUpdateFailure}
+		if failureNotification.Message != job.lastNotifiedUpdateFailure && a.notify(ctx, job, failureNotification) {
 			job.lastNotifiedUpdateFailure = failureNotification.Message
 		}
 		return
@@ -366,7 +366,7 @@ func (a *App) runJob(ctx context.Context, job *Job) {
 			"ipv6", ipResult.IPv6,
 		)...,
 	)
-	a.notify(ctx, "update_success", job, notifier.Notification{Message: jobNotificationMessage(job, fmt.Sprintf("DNS records updated for %s", notificationIPSummary(ipResult)))})
+	a.notify(ctx, job, notifier.Notification{Message: jobNotificationMessage(job, fmt.Sprintf("DNS records updated for %s", notificationIPSummary(ipResult))), Reason: notifier.ReasonUpdateSuccess})
 }
 
 func isBackoffFailure(status jobStatus) bool {
@@ -560,13 +560,13 @@ func (job *Job) logAttrs(args ...any) []any {
 	return append(attrs, args...)
 }
 
-func (a *App) notify(ctx context.Context, reason string, job *Job, notification notifier.Notification) bool {
+func (a *App) notify(ctx context.Context, job *Job, notification notifier.Notification) bool {
 	if err := a.notifier.Notify(ctx, notification); err != nil {
 		slog.Error(
 			"failed to send notification",
 			job.logAttrs(
 				"notifier", a.notifierName,
-				"reason", reason,
+				"reason", notification.Reason,
 				"error", err,
 			)...,
 		)
