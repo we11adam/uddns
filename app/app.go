@@ -58,6 +58,18 @@ type Job struct {
 	retryAfter                time.Time
 }
 
+type jobStatus string
+
+const (
+	jobStatusIPChange      jobStatus = "ip_change"
+	jobStatusOK            jobStatus = "ok"
+	jobStatusProviderError jobStatus = "provider_error"
+	jobStatusUnchanged     jobStatus = "unchanged"
+	jobStatusUpdaterError  jobStatus = "updater_error"
+	jobStatusUpdateSuccess jobStatus = "update_success"
+	jobStatusVerifyError   jobStatus = "verify_error"
+)
+
 type VerifyMode string
 
 const (
@@ -172,7 +184,7 @@ func (a *App) runOnce(ctx context.Context) {
 
 func (a *App) runJob(ctx context.Context, job *Job) {
 	startedAt := time.Now()
-	status := "ok"
+	status := jobStatusOK
 	updated := false
 	defer func() {
 		if isBackoffFailure(status) {
@@ -181,7 +193,7 @@ func (a *App) runJob(ctx context.Context, job *Job) {
 			if ctx.Err() == nil {
 				job.recordFailure(a.clock.Now(), a.interval, jobBackoffCap(a.interval), a.jitter())
 			}
-		} else if status == "ok" || status == "unchanged" {
+		} else if status == jobStatusOK || status == jobStatusUnchanged {
 			job.resetBackoff()
 		}
 		slog.Debug(
@@ -211,18 +223,18 @@ func (a *App) runJob(ctx context.Context, job *Job) {
 		IPv6: job.Families.IPv6,
 	})
 	if err != nil {
-		status = "provider_error"
+		status = jobStatusProviderError
 		slog.Error("failed to get IP addresses", job.logAttrs("error", err)...)
 		return
 	}
 	if ipResult == nil {
-		status = "provider_error"
+		status = jobStatusProviderError
 		slog.Error("provider returned no IP result", job.logAttrs()...)
 		return
 	}
 	ipResult = filterFamilies(ipResult, job.Families)
 	if err := ipResult.Validate(); err != nil {
-		status = "provider_error"
+		status = jobStatusProviderError
 		slog.Error("provider returned invalid IP result", job.logAttrs("error", err)...)
 		return
 	}
@@ -241,7 +253,7 @@ func (a *App) runJob(ctx context.Context, job *Job) {
 		currentIPResult, err = job.currentRecordIPs(ctx)
 		if err != nil {
 			if job.Verify == VerifyUpdaterAPI {
-				status = "verify_error"
+				status = jobStatusVerifyError
 				slog.Error("failed to verify current DNS records", job.logAttrs("verify", job.Verify, "error", err)...)
 				return
 			}
@@ -308,7 +320,7 @@ func (a *App) runJob(ctx context.Context, job *Job) {
 	}
 
 	if !updateNeeded {
-		status = "unchanged"
+		status = jobStatusUnchanged
 		return
 	}
 
@@ -321,7 +333,7 @@ func (a *App) runJob(ctx context.Context, job *Job) {
 	)
 
 	if err := job.Updater.Update(ctx, ipResult); err != nil {
-		status = "updater_error"
+		status = jobStatusUpdaterError
 		slog.Error(
 			"failed to update DNS records",
 			job.logAttrs(
@@ -357,9 +369,9 @@ func (a *App) runJob(ctx context.Context, job *Job) {
 	a.notify(ctx, "update_success", job, notifier.Notification{Message: jobNotificationMessage(job, fmt.Sprintf("DNS records updated for %s", notificationIPSummary(ipResult)))})
 }
 
-func isBackoffFailure(status string) bool {
+func isBackoffFailure(status jobStatus) bool {
 	switch status {
-	case "provider_error", "verify_error", "updater_error":
+	case jobStatusProviderError, jobStatusVerifyError, jobStatusUpdaterError:
 		return true
 	default:
 		return false
