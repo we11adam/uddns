@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/go-resty/resty/v2"
+
+	"github.com/we11adam/uddns/internal/testutil"
 	"github.com/we11adam/uddns/notifier"
 )
 
@@ -70,7 +72,7 @@ func TestNotifyRedactsTokenFromTransportError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected transport error")
 	}
-	assertTokenRedacted(t, err.Error(), token)
+	testutil.AssertTokenRedacted(t, err.Error(), token)
 }
 
 func TestNotifyChecksTelegramAPIResponse(t *testing.T) {
@@ -119,7 +121,7 @@ func TestNotifyChecksTelegramAPIResponse(t *testing.T) {
 				t.Fatalf("expected wantErr=%v, got err=%v", tt.wantErr, err)
 			}
 			if err != nil {
-				assertTokenRedacted(t, err.Error(), token)
+				testutil.AssertTokenRedacted(t, err.Error(), token)
 			}
 		})
 	}
@@ -160,14 +162,5 @@ func TestNotifyCancelsInFlightRequest(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("Telegram request did not return after context cancellation")
-	}
-}
-
-func assertTokenRedacted(t *testing.T, value, token string) {
-	t.Helper()
-	for _, sensitive := range []string{token, url.QueryEscape(token), url.PathEscape(token)} {
-		if strings.Contains(value, sensitive) {
-			t.Fatalf("error still contains token %q: %q", sensitive, value)
-		}
 	}
 }

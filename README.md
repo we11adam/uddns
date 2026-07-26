@@ -380,8 +380,13 @@ fails.
   - `token`: Telegram bot token.
   - `chat_id`: Telegram chat ID.
   - `proxy`: Optional HTTP or HTTPS proxy.
+- `discord`:
+  - `url`: Discord webhook URL.
+  - `id`: Discord webhook ID. (Alternatively to `url`)
+  - `token`: Discord webhook token. (Alternatively to `url`)
+  - `proxy`: Optional HTTP or HTTPS proxy.
 
-Cloudflare and Telegram proxy values must be absolute URLs with a host. URL
+Cloudflare, Discord and Telegram proxy values must be absolute URLs with a host. URL
 userinfo credentials are supported; paths other than `/`, queries, and
 fragments are rejected.
 
