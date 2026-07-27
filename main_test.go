@@ -11,6 +11,7 @@ import (
 )
 
 func TestParseLogLevel(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name  string
 		value string
@@ -27,6 +28,7 @@ func TestParseLogLevel(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			level, ok := parseLogLevel(tt.value)
 			if level != tt.level {
 				t.Fatalf("expected level %v, got %v", tt.level, level)
@@ -39,6 +41,7 @@ func TestParseLogLevel(t *testing.T) {
 }
 
 func TestParseLogRetentionDays(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name  string
 		value string
@@ -55,6 +58,7 @@ func TestParseLogRetentionDays(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			days, ok := parseLogRetentionDays(tt.value)
 			if days != tt.days {
 				t.Fatalf("expected days %d, got %d", tt.days, days)
@@ -202,6 +206,7 @@ jobs:
 }
 
 func TestJobOverridesOnlySelectedUpdater(t *testing.T) {
+	t.Parallel()
 	overrides, err := jobOverrides(config.Job{
 		Provider: "ip_service",
 		Updater:  "duckdns",
@@ -225,6 +230,7 @@ func TestJobOverridesOnlySelectedUpdater(t *testing.T) {
 }
 
 func TestJobOverridesClearInheritedZone(t *testing.T) {
+	t.Parallel()
 	overrides, err := jobOverrides(config.Job{
 		Provider: "ip_service",
 		Updater:  "cloudflare",

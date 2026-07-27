@@ -24,8 +24,10 @@ func (f roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) 
 }
 
 func TestServicesUseHTTPS(t *testing.T) {
+	t.Parallel()
 	for name, serviceURL := range SERVICES {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			parsed, err := url.Parse(serviceURL)
 			if err != nil {
 				t.Fatalf("parse service URL %q: %v", serviceURL, err)
@@ -38,12 +40,14 @@ func TestServicesUseHTTPS(t *testing.T) {
 }
 
 func TestNewRejectsNilServiceNames(t *testing.T) {
+	t.Parallel()
 	if _, err := New(nil); err == nil {
 		t.Fatal("expected nil service names to be rejected")
 	}
 }
 
 func TestServiceRedirectPolicy(t *testing.T) {
+	t.Parallel()
 	parseURL := func(rawURL string) *url.URL {
 		t.Helper()
 		parsed, err := url.Parse(rawURL)
@@ -100,6 +104,7 @@ func TestServiceRedirectPolicy(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			err := checkRedirect(request(tt.target), tt.via)
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("redirect policy error = %v, wantErr %v", err, tt.wantErr)
@@ -109,6 +114,7 @@ func TestServiceRedirectPolicy(t *testing.T) {
 }
 
 func TestServiceClientLimitsResponseBodies(t *testing.T) {
+	t.Parallel()
 	client := createClient("tcp4")
 	if client.ResponseBodyLimit != responseBodyLimit {
 		t.Fatalf("response body limit = %d, want %d", client.ResponseBodyLimit, responseBodyLimit)
@@ -116,6 +122,7 @@ func TestServiceClientLimitsResponseBodies(t *testing.T) {
 }
 
 func TestServiceClientRetryPolicy(t *testing.T) {
+	t.Parallel()
 	client := createClient("tcp4")
 	if client.RetryCount != restyretry.MaxRetries {
 		t.Fatalf("retry count = %d, want %d", client.RetryCount, restyretry.MaxRetries)
@@ -126,6 +133,7 @@ func TestServiceClientRetryPolicy(t *testing.T) {
 }
 
 func TestGetIPsRetriesTransientFailures(t *testing.T) {
+	t.Parallel()
 	var attempts atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		switch attempts.Add(1) {
@@ -154,6 +162,7 @@ func TestGetIPsRetriesTransientFailures(t *testing.T) {
 }
 
 func TestGetIPsDoesNotRetryPermanentClientError(t *testing.T) {
+	t.Parallel()
 	var attempts atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		attempts.Add(1)
@@ -172,6 +181,7 @@ func TestGetIPsDoesNotRetryPermanentClientError(t *testing.T) {
 }
 
 func TestGetIPsJoinsRedactedErrorsWhenAllServicesFail(t *testing.T) {
+	t.Parallel()
 	const (
 		firstName    = "first.test"
 		secondName   = "second.test"
@@ -220,6 +230,7 @@ func TestGetIPsJoinsRedactedErrorsWhenAllServicesFail(t *testing.T) {
 }
 
 func TestGetIPsReturnsFirstSuccessAfterEarlierFailure(t *testing.T) {
+	t.Parallel()
 	const (
 		firstName  = "first.test"
 		secondName = "second.test"
@@ -282,6 +293,7 @@ func setTestServices(t *testing.T, services map[string]string) {
 }
 
 func TestGetIPsStopsRetriesWhenContextIsCanceled(t *testing.T) {
+	t.Parallel()
 	var attempts atomic.Int32
 	firstResponse := make(chan struct{})
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -347,6 +359,7 @@ func testIPService(t *testing.T, serviceURL string) *IpService {
 }
 
 func TestGetIPsCancelsInFlightRequest(t *testing.T) {
+	t.Parallel()
 	requestStarted := make(chan struct{})
 	client := createClient("tcp4")
 	client.SetTransport(roundTripFunc(func(request *http.Request) (*http.Response, error) {
@@ -381,6 +394,7 @@ func TestGetIPsCancelsInFlightRequest(t *testing.T) {
 }
 
 func TestGetIPsRequestsOnlySelectedFamilies(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name      string
 		families  provider.FamilyRequest
@@ -404,6 +418,7 @@ func TestGetIPsRequestsOnlySelectedFamilies(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			calls := [2]int{}
 			client4 := createClient("tcp4")
 			client4.SetTransport(ipResponseTransport(&calls[0], "8.8.8.8"))
@@ -457,6 +472,7 @@ func (c testConfig) UnmarshalKey(_ string, rawVal any) error {
 }
 
 func TestGetProviderRejectsUnsupportedService(t *testing.T) {
+	t.Parallel()
 	_, _, err := provider.GetProvider(testConfig{services: ServiceNames{"missing"}})
 	if err == nil {
 		t.Fatal("expected unsupported service error")
@@ -467,6 +483,7 @@ func TestGetProviderRejectsUnsupportedService(t *testing.T) {
 }
 
 func TestIsValidIPFamily(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name   string
 		ip     string
@@ -503,6 +520,7 @@ func TestIsValidIPFamily(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			if got := isValidIPFamily(tt.ip, tt.family); got != tt.want {
 				t.Fatalf("isValidIPFamily(%q, %q) = %v, want %v", tt.ip, tt.family, got, tt.want)
 			}

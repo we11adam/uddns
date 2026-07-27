@@ -3,6 +3,7 @@ package dnsname
 import "testing"
 
 func TestSplitRecord(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name       string
 		recordName string
@@ -28,6 +29,7 @@ func TestSplitRecord(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			zone, rr, err := SplitRecord(tt.recordName, tt.zoneName)
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("expected wantErr=%v, got err=%v", tt.wantErr, err)

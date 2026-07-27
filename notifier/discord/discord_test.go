@@ -79,6 +79,7 @@ func TestClientBaseURL(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			client, err := New(tt.config)
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("New() error = %v, wantErr %v", err, tt.wantErr)
@@ -97,6 +98,7 @@ func TestClientBaseURL(t *testing.T) {
 }
 
 func TestNotifyRedactTokenFromTransportError(t *testing.T) {
+	t.Parallel()
 	token := "discord+/token =secret"
 	discord, err := New(&Discord{
 		ID:    "123456",
@@ -115,6 +117,7 @@ func TestNotifyRedactTokenFromTransportError(t *testing.T) {
 }
 
 func TestNotifyRedactsTokenFromURLTransportError(t *testing.T) {
+	t.Parallel()
 	token := "discord-webhook-token"
 	discord, err := New(&Discord{
 		URL: "https://discord.com/api/webhooks/123456/" + token,
@@ -132,6 +135,7 @@ func TestNotifyRedactsTokenFromURLTransportError(t *testing.T) {
 }
 
 func TestNotifyDiscordAPIResponse(t *testing.T) {
+	t.Parallel()
 	token := "discord+/token =secret"
 	tests := []struct {
 		name       string
@@ -167,6 +171,7 @@ func TestNotifyDiscordAPIResponse(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(tt.statusCode)
@@ -191,6 +196,7 @@ func TestNotifyDiscordAPIResponse(t *testing.T) {
 }
 
 func TestNotifyCancelsInFlightRequest(t *testing.T) {
+	t.Parallel()
 	requestStarted := make(chan struct{})
 	releaseRequest := make(chan struct{})
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {

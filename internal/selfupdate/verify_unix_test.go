@@ -11,6 +11,7 @@ import (
 )
 
 func TestInspectBinaryVersion(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name            string
 		script          string
@@ -41,6 +42,7 @@ func TestInspectBinaryVersion(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeVersionScript(t, test.script)
 			version, err := inspectBinaryVersion(context.Background(), path)
 			if test.wantErrContains == "" {
@@ -60,6 +62,7 @@ func TestInspectBinaryVersion(t *testing.T) {
 }
 
 func TestInspectBinaryPlatform(t *testing.T) {
+	t.Parallel()
 	path := writeVersionScript(
 		t,
 		`printf '%s\n' '{"version":"1.9.0","goos":"darwin","goarch":"amd64"}'`,
@@ -84,6 +87,7 @@ func TestInspectBinaryPlatform(t *testing.T) {
 }
 
 func TestInspectBinaryPlatformRequiresTargetFields(t *testing.T) {
+	t.Parallel()
 	path := writeVersionScript(
 		t,
 		`printf '%s\n' '{"version":"1.9.0"}'`,
@@ -100,6 +104,7 @@ func TestInspectBinaryPlatformRequiresTargetFields(t *testing.T) {
 }
 
 func TestInspectBinaryVersionBoundsOutput(t *testing.T) {
+	t.Parallel()
 	path := writeVersionScript(
 		t,
 		`while :; do printf 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'; done`,

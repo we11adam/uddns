@@ -9,6 +9,7 @@ import (
 )
 
 func TestCalendarRotatingWriterRotatesByDateAndRemovesExpiredLogs(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	now := time.Date(2026, 5, 21, 10, 0, 0, 0, time.Local)
 
@@ -52,6 +53,7 @@ func TestCalendarRotatingWriterRotatesByDateAndRemovesExpiredLogs(t *testing.T) 
 }
 
 func TestCalendarRotatingWriterCreatesPrivateDirectoryAndLogFile(t *testing.T) {
+	t.Parallel()
 	dir := filepath.Join(t.TempDir(), "logs")
 	now := time.Date(2026, 5, 21, 10, 0, 0, 0, time.Local)
 
@@ -82,6 +84,7 @@ func TestCalendarRotatingWriterCreatesPrivateDirectoryAndLogFile(t *testing.T) {
 }
 
 func TestCalendarRotatingWriterRestrictsExistingDirectory(t *testing.T) {
+	t.Parallel()
 	dir := filepath.Join(t.TempDir(), "logs")
 	if err := os.Mkdir(dir, 0777); err != nil {
 		t.Fatalf("create exposed log directory: %v", err)
@@ -108,6 +111,7 @@ func TestCalendarRotatingWriterRestrictsExistingDirectory(t *testing.T) {
 }
 
 func TestCalendarRotatingWriterRejectsLogDirectorySymlink(t *testing.T) {
+	t.Parallel()
 	target := t.TempDir()
 	dir := filepath.Join(t.TempDir(), "logs")
 	if err := os.Symlink(target, dir); err != nil {
@@ -123,6 +127,7 @@ func TestCalendarRotatingWriterRejectsLogDirectorySymlink(t *testing.T) {
 }
 
 func TestCalendarRotatingWriterRejectsCurrentLogSymlink(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	target := filepath.Join(t.TempDir(), "target.log")
 	writeTestFile(t, target, "unchanged\n")
@@ -148,6 +153,7 @@ func TestCalendarRotatingWriterRejectsCurrentLogSymlink(t *testing.T) {
 }
 
 func TestCalendarRotatingWriterCleanupRemainsInOpenedRoot(t *testing.T) {
+	t.Parallel()
 	baseDir := t.TempDir()
 	dir := filepath.Join(baseDir, "logs")
 	if err := os.Mkdir(dir, logDirMode); err != nil {
@@ -185,6 +191,7 @@ func TestCalendarRotatingWriterCleanupRemainsInOpenedRoot(t *testing.T) {
 }
 
 func TestParseRotatedLogDate(t *testing.T) {
+	t.Parallel()
 	date, ok := parseRotatedLogDate("uddns-2026-05-21.log", logFilePrefix)
 	if !ok {
 		t.Fatal("expected valid rotated log name")
@@ -201,6 +208,7 @@ func TestParseRotatedLogDate(t *testing.T) {
 	}
 	for _, name := range invalidNames {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			if _, ok := parseRotatedLogDate(name, logFilePrefix); ok {
 				t.Fatalf("expected %q to be ignored", name)
 			}
@@ -209,6 +217,7 @@ func TestParseRotatedLogDate(t *testing.T) {
 }
 
 func TestLogProcessAttrsIncludesVersionAndPID(t *testing.T) {
+	t.Parallel()
 	oldVersion := version
 	version = "v-test"
 	t.Cleanup(func() {

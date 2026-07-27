@@ -17,6 +17,7 @@ func (r *trackingReadCloser) Close() error {
 }
 
 func TestLimitBoundsReadsAndForwardsClose(t *testing.T) {
+	t.Parallel()
 	body := &trackingReadCloser{Reader: strings.NewReader("123456789")}
 	limited := Limit(body, 4)
 

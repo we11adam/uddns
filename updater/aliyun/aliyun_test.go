@@ -24,6 +24,7 @@ func (f httpClientFunc) Call(request *http.Request, transport *http.Transport) (
 }
 
 func TestNewUsesHTTPSAndTimeouts(t *testing.T) {
+	t.Parallel()
 	aliyun, err := New(&Config{
 		AccessKeyID:     "access-key-id",
 		AccessKeySecret: "access-key-secret",
@@ -51,12 +52,14 @@ func TestNewUsesHTTPSAndTimeouts(t *testing.T) {
 }
 
 func TestNewRejectsNilConfig(t *testing.T) {
+	t.Parallel()
 	if _, err := New(nil); err == nil {
 		t.Fatal("expected nil config to be rejected")
 	}
 }
 
 func TestBoundedHTTPClientLimitsResponseBody(t *testing.T) {
+	t.Parallel()
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
 		_, _ = io.WriteString(response, strings.Repeat("x", responseBodyMax+1))
 	}))
@@ -85,6 +88,7 @@ func TestBoundedHTTPClientLimitsResponseBody(t *testing.T) {
 }
 
 func TestOperationsCheckContextBeforeRequest(t *testing.T) {
+	t.Parallel()
 	aliyun, err := New(&Config{
 		AccessKeyID:     "access-key-id",
 		AccessKeySecret: "access-key-secret",
@@ -97,6 +101,7 @@ func TestOperationsCheckContextBeforeRequest(t *testing.T) {
 	cancel()
 
 	t.Run("Update", func(t *testing.T) {
+		t.Parallel()
 		err := aliyun.Update(ctx, &provider.IpResult{IPv4: "192.0.2.1"})
 		if !errors.Is(err, context.Canceled) {
 			t.Fatalf("expected canceled update, got %v", err)
@@ -104,6 +109,7 @@ func TestOperationsCheckContextBeforeRequest(t *testing.T) {
 	})
 
 	t.Run("Current", func(t *testing.T) {
+		t.Parallel()
 		_, err := aliyun.Current(ctx, provider.FamilyRequest{IPv4: true})
 		if !errors.Is(err, context.Canceled) {
 			t.Fatalf("expected canceled read, got %v", err)
@@ -112,6 +118,7 @@ func TestOperationsCheckContextBeforeRequest(t *testing.T) {
 }
 
 func TestUpdateCancelsInFlightRequest(t *testing.T) {
+	t.Parallel()
 	aliyun, err := New(&Config{
 		AccessKeyID:     "access-key-id",
 		AccessKeySecret: "access-key-secret",
@@ -158,6 +165,7 @@ func TestUpdateCancelsInFlightRequest(t *testing.T) {
 }
 
 func TestDuplicateDNSRecordsAreReconciledAndMixedValuesTriggerRepair(t *testing.T) {
+	t.Parallel()
 	aliyun, err := New(&Config{
 		AccessKeyID:     "access-key-id",
 		AccessKeySecret: "access-key-secret",
@@ -245,6 +253,7 @@ func TestDuplicateDNSRecordsAreReconciledAndMixedValuesTriggerRepair(t *testing.
 }
 
 func TestListDNSRecordsPaginates(t *testing.T) {
+	t.Parallel()
 	aliyun := newTestAliyun(t)
 	var requestedPages []string
 	aliyun.client.HttpClient = httpClientFunc(func(request *http.Request, _ *http.Transport) (*http.Response, error) {
@@ -286,6 +295,7 @@ func TestListDNSRecordsPaginates(t *testing.T) {
 }
 
 func TestListDNSRecordsRejectsExcessivePages(t *testing.T) {
+	t.Parallel()
 	aliyun := newTestAliyun(t)
 	requests := 0
 	aliyun.client.HttpClient = httpClientFunc(func(request *http.Request, _ *http.Transport) (*http.Response, error) {
@@ -312,6 +322,7 @@ func TestListDNSRecordsRejectsExcessivePages(t *testing.T) {
 }
 
 func TestListDNSRecordsAllowsCompletePageLimit(t *testing.T) {
+	t.Parallel()
 	aliyun := newTestAliyun(t)
 	requests := 0
 	total := int64(recordPageSize * recordPageLimit)
@@ -337,6 +348,7 @@ func TestListDNSRecordsAllowsCompletePageLimit(t *testing.T) {
 }
 
 func TestCurrentRequestsOnlySelectedFamilies(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		families provider.FamilyRequest
@@ -360,6 +372,7 @@ func TestCurrentRequestsOnlySelectedFamilies(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			aliyun, err := New(&Config{
 				AccessKeyID:     "access-key-id",
 				AccessKeySecret: "access-key-secret",

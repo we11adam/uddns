@@ -9,6 +9,7 @@ import (
 )
 
 func TestFindFileUsesProvidedReadablePath(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "uddns.yaml")
 	if err := os.WriteFile(path, []byte("providers: {}\n"), 0644); err != nil {
@@ -51,6 +52,7 @@ func TestFindFileRejectsUnreadableEnvironmentPath(t *testing.T) {
 }
 
 func TestLoadRejectsConfigExposedToOtherUsers(t *testing.T) {
+	t.Parallel()
 	if runtime.GOOS == "windows" {
 		t.Skip("Windows does not expose Unix permission bits")
 	}
@@ -173,6 +175,7 @@ func TestIntervalAcceptsAllowedBoundaries(t *testing.T) {
 }
 
 func TestJobsParsesConfiguredJobs(t *testing.T) {
+	t.Parallel()
 	path := writeConfigFile(t, `
 jobs:
   - name: home
@@ -201,6 +204,7 @@ jobs:
 }
 
 func TestWithOverridesAppliesNestedValues(t *testing.T) {
+	t.Parallel()
 	path := writeConfigFile(t, `
 updaters:
   duckdns:

@@ -97,6 +97,7 @@ func (p *blockingProvider) GetIPs(ctx context.Context, _ provider.FamilyRequest)
 }
 
 func TestRunOnceUpdatesDNSWhenIPChanges(t *testing.T) {
+	t.Parallel()
 	p := &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10"}}
 	u := &recordingUpdater{}
 	n := &recordingNotifier{}
@@ -130,6 +131,7 @@ func TestRunOnceUpdatesDNSWhenIPChanges(t *testing.T) {
 }
 
 func TestNewAppUsesNoopForNilNotifier(t *testing.T) {
+	t.Parallel()
 	p := &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10"}}
 	u := &recordingUpdater{}
 	job := NewJob("default", "test-provider", p, "test-updater", u, "", "", AllFamilies(), VerifyOff)
@@ -146,6 +148,7 @@ func TestNewAppUsesNoopForNilNotifier(t *testing.T) {
 }
 
 func TestRunOnceSkipsUnchangedIP(t *testing.T) {
+	t.Parallel()
 	p := &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10"}}
 	u := &recordingUpdater{}
 	n := &recordingNotifier{}
@@ -163,6 +166,7 @@ func TestRunOnceSkipsUnchangedIP(t *testing.T) {
 }
 
 func TestRunOncePreservesCachedFamilyWhenProviderReturnsPartialResult(t *testing.T) {
+	t.Parallel()
 	p := &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10", IPv6: "2001:db8::1"}}
 	u := &recordingUpdater{}
 	n := &recordingNotifier{}
@@ -204,6 +208,7 @@ func TestRunOncePreservesCachedFamilyWhenProviderReturnsPartialResult(t *testing
 }
 
 func TestRunOnceDoesNotAdvanceLastIPWhenUpdateFails(t *testing.T) {
+	t.Parallel()
 	updateErr := errors.New("update failed")
 	p := &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10"}}
 	u := &recordingUpdater{err: updateErr}
@@ -230,6 +235,7 @@ func TestRunOnceDoesNotAdvanceLastIPWhenUpdateFails(t *testing.T) {
 }
 
 func TestRunOnceDeduplicatesRepeatedUpdateFailures(t *testing.T) {
+	t.Parallel()
 	p := &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10"}}
 	u := &recordingUpdater{err: errors.New("update failed")}
 	n := &recordingNotifier{}
@@ -257,6 +263,7 @@ func TestRunOnceDeduplicatesRepeatedUpdateFailures(t *testing.T) {
 }
 
 func TestRunOnceNotifiesWhenUpdateErrorChanges(t *testing.T) {
+	t.Parallel()
 	p := &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10"}}
 	u := &recordingUpdater{err: errors.New("first error")}
 	n := &recordingNotifier{}
@@ -282,6 +289,7 @@ func TestRunOnceNotifiesWhenUpdateErrorChanges(t *testing.T) {
 }
 
 func TestRunOnceSuccessfulUpdateClearsFailureDeduplication(t *testing.T) {
+	t.Parallel()
 	updateErr := errors.New("update failed")
 	p := &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10"}}
 	u := &recordReadingUpdater{current: &provider.IpResult{IPv4: "192.0.2.9"}}
@@ -313,6 +321,7 @@ func TestRunOnceSuccessfulUpdateClearsFailureDeduplication(t *testing.T) {
 }
 
 func TestRunOnceRetriesIPChangeNotificationThatWasNotDelivered(t *testing.T) {
+	t.Parallel()
 	notifyErr := errors.New("notification failed")
 	p := &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10"}}
 	u := &recordingUpdater{}
@@ -337,6 +346,7 @@ func TestRunOnceRetriesIPChangeNotificationThatWasNotDelivered(t *testing.T) {
 }
 
 func TestRunOnceRetriesUpdateFailureNotificationThatWasNotDelivered(t *testing.T) {
+	t.Parallel()
 	notifyErr := errors.New("notification failed")
 	p := &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10"}}
 	u := &recordingUpdater{err: errors.New("update failed")}
@@ -362,6 +372,7 @@ func TestRunOnceRetriesUpdateFailureNotificationThatWasNotDelivered(t *testing.T
 }
 
 func TestRunOnceSkipsUpdateWhenProviderFails(t *testing.T) {
+	t.Parallel()
 	providerErr := errors.New("provider failed")
 	p := &staticProvider{err: providerErr}
 	u := &recordingUpdater{}
@@ -379,6 +390,7 @@ func TestRunOnceSkipsUpdateWhenProviderFails(t *testing.T) {
 }
 
 func TestRunOnceSkipsUpdateWhenProviderReturnsInvalidIP(t *testing.T) {
+	t.Parallel()
 	p := &staticProvider{result: &provider.IpResult{IPv4: "not-an-ip"}}
 	u := &recordingUpdater{}
 	n := &recordingNotifier{}
@@ -395,6 +407,7 @@ func TestRunOnceSkipsUpdateWhenProviderReturnsInvalidIP(t *testing.T) {
 }
 
 func TestRunReturnsWhenContextIsCanceled(t *testing.T) {
+	t.Parallel()
 	p := &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10"}}
 	u := &recordingUpdater{}
 	n := &recordingNotifier{}
@@ -410,6 +423,7 @@ func TestRunReturnsWhenContextIsCanceled(t *testing.T) {
 }
 
 func TestRunCancelsInFlightProvider(t *testing.T) {
+	t.Parallel()
 	p := &blockingProvider{started: make(chan struct{})}
 	u := &recordingUpdater{}
 	n := &recordingNotifier{}
@@ -439,6 +453,7 @@ func TestRunCancelsInFlightProvider(t *testing.T) {
 }
 
 func TestRunOnceFiltersRequestedFamilies(t *testing.T) {
+	t.Parallel()
 	p := &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10", IPv6: "not-an-ip"}}
 	u := &recordingUpdater{}
 	n := &recordingNotifier{}
@@ -458,6 +473,7 @@ func TestRunOnceFiltersRequestedFamilies(t *testing.T) {
 }
 
 func TestRunOnceRequestsOnlyIPv6(t *testing.T) {
+	t.Parallel()
 	p := &staticProvider{result: &provider.IpResult{IPv4: "not-an-ip", IPv6: "2001:db8::1"}}
 	u := &recordingUpdater{}
 	n := &recordingNotifier{}
@@ -477,6 +493,7 @@ func TestRunOnceRequestsOnlyIPv6(t *testing.T) {
 }
 
 func TestRunOncePrefixesNotificationsForNamedJobs(t *testing.T) {
+	t.Parallel()
 	p := &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10"}}
 	u := &recordingUpdater{}
 	n := &recordingNotifier{}
@@ -494,6 +511,7 @@ func TestRunOncePrefixesNotificationsForNamedJobs(t *testing.T) {
 }
 
 func TestRunOnceUpdatesWhenCurrentRecordDrifts(t *testing.T) {
+	t.Parallel()
 	p := &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10"}}
 	u := &recordReadingUpdater{current: &provider.IpResult{IPv4: "192.0.2.9"}}
 	n := &recordingNotifier{}
@@ -513,6 +531,7 @@ func TestRunOnceUpdatesWhenCurrentRecordDrifts(t *testing.T) {
 }
 
 func TestRunOnceAutoVerifyDoesNotPollEveryInterval(t *testing.T) {
+	t.Parallel()
 	p := &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10"}}
 	u := &recordReadingUpdater{current: &provider.IpResult{IPv4: "192.0.2.10"}}
 	job := NewJob("default", "test-provider", p, "test-updater", u, "", "", AllFamilies(), VerifyAuto)
@@ -532,6 +551,7 @@ func TestRunOnceAutoVerifyDoesNotPollEveryInterval(t *testing.T) {
 }
 
 func TestRunOnceAutoVerifyPollsWhenPeriodExpires(t *testing.T) {
+	t.Parallel()
 	p := &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10"}}
 	u := &recordReadingUpdater{current: &provider.IpResult{IPv4: "192.0.2.10"}}
 	job := NewJob("default", "test-provider", p, "test-updater", u, "", "", AllFamilies(), VerifyAuto)
@@ -557,6 +577,7 @@ func TestRunOnceAutoVerifyPollsWhenPeriodExpires(t *testing.T) {
 }
 
 func TestRunOnceAutoVerifyPollsEarlyWhenProviderIPChanges(t *testing.T) {
+	t.Parallel()
 	p := &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10"}}
 	u := &recordReadingUpdater{current: &provider.IpResult{IPv4: "192.0.2.10"}}
 	job := NewJob("default", "test-provider", p, "test-updater", u, "", "", AllFamilies(), VerifyAuto)
@@ -578,6 +599,7 @@ func TestRunOnceAutoVerifyPollsEarlyWhenProviderIPChanges(t *testing.T) {
 }
 
 func TestRunOnceStrictVerifyPollsEveryInterval(t *testing.T) {
+	t.Parallel()
 	p := &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10"}}
 	u := &recordReadingUpdater{current: &provider.IpResult{IPv4: "192.0.2.10"}}
 	job := NewJob("default", "test-provider", p, "test-updater", u, "", "", AllFamilies(), VerifyUpdaterAPI)
@@ -596,6 +618,7 @@ func TestRunOnceStrictVerifyPollsEveryInterval(t *testing.T) {
 }
 
 func TestRunOnceStrictVerifyRequestsOnlyConfiguredFamilies(t *testing.T) {
+	t.Parallel()
 	p := &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10"}}
 	u := &recordReadingUpdater{
 		read: func(request provider.FamilyRequest) (*provider.IpResult, error) {
@@ -622,6 +645,7 @@ func TestRunOnceStrictVerifyRequestsOnlyConfiguredFamilies(t *testing.T) {
 }
 
 func TestRunOnceAutoVerifyFailureRetriesWithoutAdvancingPeriod(t *testing.T) {
+	t.Parallel()
 	p := &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10"}}
 	u := &recordReadingUpdater{err: errors.New("verify failed")}
 	job := NewJob("default", "test-provider", p, "test-updater", u, "", "", AllFamilies(), VerifyAuto)
@@ -647,6 +671,7 @@ func TestRunOnceAutoVerifyFailureRetriesWithoutAdvancingPeriod(t *testing.T) {
 }
 
 func TestRunOnceInitializesAppliedIPWhenCurrentRecordMatches(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name   string
 		verify VerifyMode
@@ -657,6 +682,7 @@ func TestRunOnceInitializesAppliedIPWhenCurrentRecordMatches(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			p := &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10"}}
 			u := &recordReadingUpdater{current: &provider.IpResult{IPv4: "192.0.2.10"}}
 			n := &recordingNotifier{}
@@ -679,6 +705,7 @@ func TestRunOnceInitializesAppliedIPWhenCurrentRecordMatches(t *testing.T) {
 }
 
 func TestRunOnceCanonicalizesCurrentIPv6BeforeComparison(t *testing.T) {
+	t.Parallel()
 	const expandedIPv6 = "2001:0DB8:0000:0000:0000:0000:0000:0001"
 	p := &staticProvider{result: &provider.IpResult{IPv6: "2001:db8::1"}}
 	current := &provider.IpResult{IPv6: expandedIPv6}
@@ -700,6 +727,7 @@ func TestRunOnceCanonicalizesCurrentIPv6BeforeComparison(t *testing.T) {
 }
 
 func TestRunOnceStrictVerifyRejectsInvalidCurrentRecord(t *testing.T) {
+	t.Parallel()
 	p := &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10"}}
 	u := &recordReadingUpdater{current: &provider.IpResult{IPv4: "192.0.2.999"}}
 	job := NewJob("default", "test-provider", p, "test-updater", u, "home.example.com", "example.com", Families{IPv4: true}, VerifyUpdaterAPI)
@@ -716,6 +744,7 @@ func TestRunOnceStrictVerifyRejectsInvalidCurrentRecord(t *testing.T) {
 }
 
 func TestRunOnceInitialCurrentSingleFamilyDriftTriggersUpdate(t *testing.T) {
+	t.Parallel()
 	p := &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10", IPv6: "2001:db8::1"}}
 	u := &recordReadingUpdater{current: &provider.IpResult{IPv4: "192.0.2.10", IPv6: "2001:db8::2"}}
 	n := &recordingNotifier{}
@@ -733,6 +762,7 @@ func TestRunOnceInitialCurrentSingleFamilyDriftTriggersUpdate(t *testing.T) {
 }
 
 func TestRunOnceInitialEmptyCurrentRecordTriggersUpdate(t *testing.T) {
+	t.Parallel()
 	p := &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10"}}
 	u := &recordReadingUpdater{current: &provider.IpResult{}}
 	n := &recordingNotifier{}
@@ -750,6 +780,7 @@ func TestRunOnceInitialEmptyCurrentRecordTriggersUpdate(t *testing.T) {
 }
 
 func TestRunOnceAutoUpdatesChangedIPWhenRecordReadFails(t *testing.T) {
+	t.Parallel()
 	p := &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10"}}
 	u := &recordReadingUpdater{err: errors.New("verify failed")}
 	n := &recordingNotifier{}
@@ -772,6 +803,7 @@ func TestRunOnceAutoUpdatesChangedIPWhenRecordReadFails(t *testing.T) {
 }
 
 func TestRunOnceAutoSkipsUnchangedIPWhenRecordReadFails(t *testing.T) {
+	t.Parallel()
 	p := &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10"}}
 	u := &recordReadingUpdater{err: errors.New("verify failed")}
 	n := &recordingNotifier{}
@@ -794,6 +826,7 @@ func TestRunOnceAutoSkipsUnchangedIPWhenRecordReadFails(t *testing.T) {
 }
 
 func TestRunOnceStrictVerifyBlocksChangedIPWhenRecordReadFails(t *testing.T) {
+	t.Parallel()
 	p := &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10"}}
 	u := &recordReadingUpdater{err: errors.New("verify failed")}
 	n := &recordingNotifier{}
@@ -816,6 +849,7 @@ func TestRunOnceStrictVerifyBlocksChangedIPWhenRecordReadFails(t *testing.T) {
 }
 
 func TestCappedExponentialBackoffGrowsAndCaps(t *testing.T) {
+	t.Parallel()
 	base := 10 * time.Second
 	max := time.Minute
 	tests := []struct {
@@ -837,6 +871,7 @@ func TestCappedExponentialBackoffGrowsAndCaps(t *testing.T) {
 }
 
 func TestCappedExponentialBackoffAppliesEqualJitter(t *testing.T) {
+	t.Parallel()
 	base := 10 * time.Second
 	tests := []struct {
 		jitter float64
@@ -857,6 +892,7 @@ func TestCappedExponentialBackoffAppliesEqualJitter(t *testing.T) {
 }
 
 func TestRunOnceBacksOffFailureStatuses(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		job  func() Job
@@ -889,6 +925,7 @@ func TestRunOnceBacksOffFailureStatuses(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			now := time.Unix(1_700_000_000, 0)
 			clock := &fakeClock{now: now}
 			a := NewApp([]Job{tt.job()}, "test-notifier", &recordingNotifier{}, time.Second)
@@ -908,6 +945,7 @@ func TestRunOnceBacksOffFailureStatuses(t *testing.T) {
 }
 
 func TestRunOnceBackoffDoesNotBlockOtherJobs(t *testing.T) {
+	t.Parallel()
 	failingProvider := &staticProvider{err: errors.New("provider failed")}
 	healthyProvider := &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10"}}
 	jobs := []Job{
@@ -932,6 +970,7 @@ func TestRunOnceBackoffDoesNotBlockOtherJobs(t *testing.T) {
 }
 
 func TestRunOnceSuccessAndUnchangedResetBackoff(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		lastIPv4 string
@@ -942,6 +981,7 @@ func TestRunOnceSuccessAndUnchangedResetBackoff(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			clock := &fakeClock{now: time.Unix(1_700_000_000, 0)}
 			job := NewJob(tt.name, "test-provider", &staticProvider{result: &provider.IpResult{IPv4: "192.0.2.10"}}, "test-updater", &recordingUpdater{}, "", "", AllFamilies(), VerifyOff)
 			job.lastAppliedIPv4 = tt.lastIPv4

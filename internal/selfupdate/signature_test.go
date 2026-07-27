@@ -16,6 +16,7 @@ import (
 )
 
 func TestParseTrustedPublicKeys(t *testing.T) {
+	t.Parallel()
 	first, _, err := minisign.GenerateKey(rand.Reader)
 	if err != nil {
 		t.Fatalf("generate first key: %v", err)
@@ -44,6 +45,7 @@ func TestParseTrustedPublicKeys(t *testing.T) {
 }
 
 func TestVerifyChecksumSignature(t *testing.T) {
+	t.Parallel()
 	publicKey, privateKey, err := minisign.GenerateKey(rand.Reader)
 	if err != nil {
 		t.Fatalf("generate signing key: %v", err)
@@ -105,6 +107,7 @@ func TestVerifyChecksumSignature(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			directory := t.TempDir()
 			checksumPath := filepath.Join(directory, "checksums.txt")
 			signaturePath := filepath.Join(directory, checksumSignatureName)
@@ -124,6 +127,7 @@ func TestVerifyChecksumSignature(t *testing.T) {
 }
 
 func TestDownloadCandidateVerifiesSignatureBeforeArchiveDownload(t *testing.T) {
+	t.Parallel()
 	publicKey, privateKey, err := minisign.GenerateKey(rand.Reader)
 	if err != nil {
 		t.Fatalf("generate signing key: %v", err)
@@ -168,6 +172,7 @@ func TestDownloadCandidateVerifiesSignatureBeforeArchiveDownload(t *testing.T) {
 }
 
 func TestNewRejectsInvalidTrustedPublicKey(t *testing.T) {
+	t.Parallel()
 	_, err := New(Config{
 		CurrentVersion:    "1.8.0",
 		ExecutablePath:    filepath.Join(t.TempDir(), "uddns"),
@@ -181,6 +186,7 @@ func TestNewRejectsInvalidTrustedPublicKey(t *testing.T) {
 }
 
 func TestEmbeddedReleasePublicKeys(t *testing.T) {
+	t.Parallel()
 	original := releasePublicKeys
 	t.Cleanup(func() {
 		releasePublicKeys = original
