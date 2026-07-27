@@ -3,6 +3,7 @@ package routeros
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"net/url"
 	"strings"
@@ -57,7 +58,7 @@ func init() {
 		}
 
 		if cfg.Username == "" || cfg.Endpoint == "" {
-			return nil, fmt.Errorf("missing required RouterOS fields")
+			return nil, errors.New("missing required RouterOS fields")
 		}
 		return New(&cfg)
 	})
@@ -96,7 +97,7 @@ func routerOSRestURL(endpoint string) (string, error) {
 
 func (r *RouterOS) GetIPs(ctx context.Context, families provider.FamilyRequest) (*provider.IpResult, error) {
 	if !families.IPv4 && !families.IPv6 {
-		return nil, fmt.Errorf("no IP families requested")
+		return nil, errors.New("no IP families requested")
 	}
 	var rfaces []rosInterface
 	if err := r.get(ctx, "/interface", &rfaces); err != nil {
@@ -142,7 +143,7 @@ func (r *RouterOS) GetIPs(ctx context.Context, families provider.FamilyRequest) 
 	}
 
 	if result.IPv4 == "" && result.IPv6 == "" {
-		return nil, fmt.Errorf("no IP address found")
+		return nil, errors.New("no IP address found")
 	}
 
 	return result, nil

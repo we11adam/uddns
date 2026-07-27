@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -42,7 +43,7 @@ func hardenedHTTPClient(client *http.Client, testEndpoint bool) *http.Client {
 	originalRedirectCheck := hardened.CheckRedirect
 	hardened.CheckRedirect = func(request *http.Request, via []*http.Request) error {
 		if len(via) >= maxRedirects {
-			return fmt.Errorf("too many redirects")
+			return errors.New("too many redirects")
 		}
 		if !testEndpoint {
 			if err := validateGitHubURL(request.URL); err != nil {
@@ -89,7 +90,7 @@ func (u *Updater) fetchRelease(
 		)
 	}
 	if response.ContentLength > maxReleaseMetadataSize {
-		return releaseMetadata{}, fmt.Errorf("release metadata exceeds the size limit")
+		return releaseMetadata{}, errors.New("release metadata exceeds the size limit")
 	}
 
 	body, err := io.ReadAll(io.LimitReader(response.Body, maxReleaseMetadataSize+1))

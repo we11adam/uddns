@@ -1,6 +1,7 @@
 package dnsname
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -11,7 +12,7 @@ func Normalize(name string) (string, error) {
 	name = strings.ToLower(strings.TrimSpace(name))
 	name = strings.TrimSuffix(name, ".")
 	if name == "" {
-		return "", fmt.Errorf("DNS name is empty")
+		return "", errors.New("DNS name is empty")
 	}
 	if len(name) > 253 {
 		return "", fmt.Errorf("DNS name is too long: %s", name)
@@ -71,7 +72,7 @@ func splitRecordWithZone(record, zone string) (string, string, error) {
 
 func validateLabel(label string) error {
 	if label == "" {
-		return fmt.Errorf("empty label")
+		return errors.New("empty label")
 	}
 	if len(label) > 63 {
 		return fmt.Errorf("label %q is too long", label)

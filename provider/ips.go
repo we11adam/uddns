@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"errors"
 	"fmt"
 	"net/netip"
 	"strings"
@@ -8,14 +9,14 @@ import (
 
 func (r *IpResult) Validate() error {
 	if r == nil {
-		return fmt.Errorf("IP result is nil")
+		return errors.New("IP result is nil")
 	}
 
 	r.IPv4 = strings.TrimSpace(r.IPv4)
 	r.IPv6 = strings.TrimSpace(r.IPv6)
 
 	if r.IPv4 == "" && r.IPv6 == "" {
-		return fmt.Errorf("no IP addresses found")
+		return errors.New("no IP addresses found")
 	}
 	if r.IPv4 != "" {
 		addr, err := netip.ParseAddr(r.IPv4)

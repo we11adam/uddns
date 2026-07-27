@@ -2,6 +2,7 @@ package lightdns
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -41,7 +42,7 @@ func init() {
 			return nil, err
 		}
 		if cfg.Domain == "" || cfg.Key == "" {
-			return nil, fmt.Errorf("missing required LightDNS fields")
+			return nil, errors.New("missing required LightDNS fields")
 		}
 		return New(&cfg)
 	})
@@ -49,7 +50,7 @@ func init() {
 
 func New(cfg *Config) (*LightDNS, error) {
 	if cfg == nil {
-		return nil, fmt.Errorf("LightDNS config is nil")
+		return nil, errors.New("LightDNS config is nil")
 	}
 	domain, err := dnsname.Normalize(cfg.Domain)
 	if err != nil {

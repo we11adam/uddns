@@ -77,7 +77,7 @@ func init() {
 			return nil, err
 		}
 		if len(cfg) == 0 {
-			return nil, fmt.Errorf("no IP service names provided")
+			return nil, errors.New("no IP service names provided")
 		}
 		for _, name := range cfg {
 			if _, ok := SERVICES[name]; !ok {
@@ -90,7 +90,7 @@ func init() {
 
 func New(names *ServiceNames) (*IpService, error) {
 	if names == nil {
-		return nil, fmt.Errorf("IP service names are nil")
+		return nil, errors.New("IP service names are nil")
 	}
 	client4 := createClient("tcp4")
 	client6 := createClient("tcp6")
@@ -124,7 +124,7 @@ func createClient(network string) *resty.Client {
 func sameOriginHTTPSRedirectPolicy(maxRedirects int) resty.RedirectPolicy {
 	return resty.RedirectPolicyFunc(func(req *http.Request, via []*http.Request) error {
 		if len(via) == 0 {
-			return fmt.Errorf("redirect rejected: missing original request")
+			return errors.New("redirect rejected: missing original request")
 		}
 		if len(via) > maxRedirects {
 			return fmt.Errorf("redirect rejected: stopped after %d redirects", maxRedirects)
@@ -132,7 +132,7 @@ func sameOriginHTTPSRedirectPolicy(maxRedirects int) resty.RedirectPolicy {
 
 		origin := via[0].URL
 		if !strings.EqualFold(origin.Scheme, "https") || !strings.EqualFold(req.URL.Scheme, origin.Scheme) {
-			return fmt.Errorf("redirect rejected: scheme must remain HTTPS")
+			return errors.New("redirect rejected: scheme must remain HTTPS")
 		}
 		if !strings.EqualFold(req.URL.Host, origin.Host) {
 			return fmt.Errorf("redirect rejected: host must remain %q", origin.Host)
@@ -143,7 +143,7 @@ func sameOriginHTTPSRedirectPolicy(maxRedirects int) resty.RedirectPolicy {
 
 func (i *IpService) GetIPs(ctx context.Context, families provider.FamilyRequest) (*provider.IpResult, error) {
 	if !families.IPv4 && !families.IPv6 {
-		return nil, fmt.Errorf("no IP families requested")
+		return nil, errors.New("no IP families requested")
 	}
 	result := &provider.IpResult{}
 	var failures []error
@@ -172,7 +172,7 @@ func (i *IpService) GetIPs(ctx context.Context, families provider.FamilyRequest)
 
 	if result.IPv4 == "" && result.IPv6 == "" {
 		if len(failures) == 0 {
-			failures = append(failures, fmt.Errorf("failed to get requested IP addresses"))
+			failures = append(failures, errors.New("failed to get requested IP addresses"))
 		}
 		return nil, errors.Join(failures...)
 	}
