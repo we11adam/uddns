@@ -426,7 +426,7 @@ func truncateArchiveTestFile(t *testing.T, path string, removeBytes int64) {
 		t.Fatalf("stat archive fixture: %v", err)
 	}
 	if info.Size() <= removeBytes {
-		t.Fatalf("archive fixture is too small to truncate")
+		t.Fatal("archive fixture is too small to truncate")
 	}
 	if err := os.Truncate(path, info.Size()-removeBytes); err != nil {
 		t.Fatalf("truncate archive fixture: %v", err)

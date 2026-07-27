@@ -33,7 +33,7 @@ func TestParseTrustedPublicKeys(t *testing.T) {
 		t.Fatalf("parseTrustedPublicKeys returned error: %v", err)
 	}
 	if len(keys) != 2 || !keys[0].Equal(first) || !keys[1].Equal(second) {
-		t.Fatalf("parsed keys do not match input")
+		t.Fatal("parsed keys do not match input")
 	}
 
 	for _, values := range [][]string{{""}, {"not-a-minisign-key"}} {
