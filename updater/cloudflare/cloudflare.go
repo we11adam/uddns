@@ -317,7 +317,7 @@ func (c *Cloudflare) updateDNSRecord(ctx context.Context, recordType, ip string)
 			Name:    domain,
 			Content: ip,
 			TTL:     defaultTTL,
-			Proxied: cloudflare.BoolPtr(false),
+			Proxied: new(false),
 		}
 
 		_, err := c.client.CreateDNSRecord(ctx, cloudflare.ZoneIdentifier(c.zoneID), createParams)
