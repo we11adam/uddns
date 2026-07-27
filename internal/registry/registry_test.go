@@ -116,9 +116,7 @@ func TestRegistryConcurrentRegisterAndGet(t *testing.T) {
 	var wg sync.WaitGroup
 
 	for writer := range writers {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			<-start
 			for registration := range registrationsEach {
 				name := fmt.Sprintf("Writer%dEntry%d", writer, registration)
@@ -127,14 +125,12 @@ func TestRegistryConcurrentRegisterAndGet(t *testing.T) {
 					return "registered", nil
 				})
 			}
-		}()
+		})
 	}
 
 	config := testConfig{"things.default": "configured"}
 	for range readers {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			<-start
 			for range lookupsEach {
 				name, value, err := r.Get(config)
@@ -147,7 +143,7 @@ func TestRegistryConcurrentRegisterAndGet(t *testing.T) {
 					errs <- fmt.Errorf("GetOptional returned %q/%q, err=%v", name, value, err)
 				}
 			}
-		}()
+		})
 	}
 
 	close(start)
