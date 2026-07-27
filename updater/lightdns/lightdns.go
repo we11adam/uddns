@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"time"
 
 	"github.com/go-resty/resty/v2"
@@ -105,7 +106,7 @@ func (c *LightDNS) updateIP(ctx context.Context, ip string) error {
 
 	body := string(resp.Body())
 
-	if resp.StatusCode() != 200 {
+	if resp.StatusCode() != http.StatusOK {
 		return fmt.Errorf("failed to update LightDNS DNS record: %s", redact.String(body, c.config.Key))
 	}
 
