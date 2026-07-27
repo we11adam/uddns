@@ -74,7 +74,7 @@ func parseIdentifiers(value string, rejectNumericLeadingZero bool) ([]string, er
 		}
 
 		numeric := true
-		for i := 0; i < len(identifier); i++ {
+		for i := range len(identifier) {
 			character := identifier[i]
 			if !isIdentifierCharacter(character) {
 				return nil, fmt.Errorf("identifier %q contains an invalid character", identifier)
@@ -98,7 +98,7 @@ func validateNumericIdentifier(identifier string) error {
 	if len(identifier) > 1 && identifier[0] == '0' {
 		return fmt.Errorf("numeric identifier must not contain a leading zero")
 	}
-	for i := 0; i < len(identifier); i++ {
+	for i := range len(identifier) {
 		if identifier[i] < '0' || identifier[i] > '9' {
 			return fmt.Errorf("identifier must contain only ASCII digits")
 		}
@@ -175,7 +175,7 @@ func compareInts(a, b int) int {
 }
 
 func isNumericIdentifier(identifier string) bool {
-	for i := 0; i < len(identifier); i++ {
+	for i := range len(identifier) {
 		if identifier[i] < '0' || identifier[i] > '9' {
 			return false
 		}

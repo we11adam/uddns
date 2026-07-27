@@ -170,7 +170,7 @@ func TestCompareSemanticVersionsFollowsSemVerPrecedenceExample(t *testing.T) {
 		"1.0.0",
 	}
 
-	for i := 0; i < len(ordered)-1; i++ {
+	for i := range len(ordered) - 1 {
 		a := mustParseSemanticVersion(t, ordered[i])
 		b := mustParseSemanticVersion(t, ordered[i+1])
 		if got := compareSemanticVersions(a, b); got != -1 {

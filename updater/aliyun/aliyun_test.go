@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/alibabacloud-go/tea/dara"
+
 	"github.com/we11adam/uddns/provider"
 )
 
@@ -458,7 +459,7 @@ func aliyunRequestParameters(request *http.Request) (url.Values, error) {
 
 func describeSubDomainRecordsResponse(total int64, pageNumber string, count int) string {
 	records := make([]string, count)
-	for i := 0; i < count; i++ {
+	for i := range count {
 		records[i] = fmt.Sprintf(`{"RecordId":"%s-%d","Value":"192.0.2.10"}`, pageNumber, i)
 	}
 	return fmt.Sprintf(`{

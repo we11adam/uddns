@@ -18,8 +18,8 @@ func Normalize(name string) (string, error) {
 		return "", fmt.Errorf("DNS name is too long: %s", name)
 	}
 
-	labels := strings.Split(name, ".")
-	for _, label := range labels {
+	labels := strings.SplitSeq(name, ".")
+	for label := range labels {
 		if err := validateLabel(label); err != nil {
 			return "", fmt.Errorf("invalid DNS name %q: %w", name, err)
 		}

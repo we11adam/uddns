@@ -238,7 +238,7 @@ func TestRunOnceDeduplicatesRepeatedUpdateFailures(t *testing.T) {
 	a.clock = clock
 	a.jitter = func() float64 { return 1 }
 
-	for attempt := 0; attempt < 3; attempt++ {
+	for attempt := range 3 {
 		a.runOnce(context.Background())
 		if attempt < 2 {
 			clock.now = a.jobs[0].retryAfter
