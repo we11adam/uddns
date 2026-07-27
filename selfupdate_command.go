@@ -132,10 +132,7 @@ func printSelfUpdatePlan(
 	var message string
 	switch plan.Status {
 	case selfupdate.StatusDevelopment:
-		message = fmt.Sprintf(
-			"development build; latest stable version is %s",
-			plan.TargetVersion,
-		)
+		message = "development build; latest stable version is "+ plan.TargetVersion
 	case selfupdate.StatusNewerThanTarget:
 		message = fmt.Sprintf(
 			"installed version %s is newer than target %s",
@@ -149,7 +146,7 @@ func printSelfUpdatePlan(
 			plan.TargetVersion,
 		)
 	case selfupdate.StatusUpToDate:
-		message = fmt.Sprintf("up to date: %s", plan.TargetVersion)
+		message = "up to date: " + plan.TargetVersion
 	default:
 		return printSelfUpdateError(
 			stderr,
