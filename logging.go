@@ -21,8 +21,8 @@ const (
 	defaultLogRetentionDays = 7
 	logDateLayout           = "2006-01-02"
 	logFilePrefix           = "uddns"
-	logDirMode              = 0700
-	logFileMode             = 0600
+	logDirMode              = 0o700
+	logFileMode             = 0o600
 )
 
 type logConfigValue struct {
