@@ -8,7 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 
@@ -269,6 +269,6 @@ func supportedServiceNames() []string {
 	for name := range SERVICES {
 		names = append(names, name)
 	}
-	sort.Strings(names)
+	slices.Sort(names)
 	return names
 }
