@@ -339,7 +339,7 @@ func (w *calendarRotatingWriter) cleanupOldLogs(now time.Time) {
 			continue
 		}
 
-		logDate, ok := parseRotatedLogDate(entry.Name(), w.prefix)
+		logDate, ok := parseRotatedLogDate(entry.Name(), w.prefix, now.Location())
 		if !ok || !logDate.Before(cutoff) {
 			continue
 		}
@@ -351,7 +351,7 @@ func (w *calendarRotatingWriter) cleanupOldLogs(now time.Time) {
 	}
 }
 
-func parseRotatedLogDate(name, prefix string) (time.Time, bool) {
+func parseRotatedLogDate(name, prefix string, location *time.Location) (time.Time, bool) {
 	dateText, ok := strings.CutPrefix(name, prefix+"-")
 	if !ok {
 		return time.Time{}, false
@@ -361,7 +361,7 @@ func parseRotatedLogDate(name, prefix string) (time.Time, bool) {
 		return time.Time{}, false
 	}
 
-	date, err := time.ParseInLocation(logDateLayout, dateText, time.Local)
+	date, err := time.ParseInLocation(logDateLayout, dateText, location)
 	if err != nil {
 		return time.Time{}, false
 	}

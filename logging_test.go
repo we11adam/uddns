@@ -192,7 +192,7 @@ func TestCalendarRotatingWriterCleanupRemainsInOpenedRoot(t *testing.T) {
 
 func TestParseRotatedLogDate(t *testing.T) {
 	t.Parallel()
-	date, ok := parseRotatedLogDate("uddns-2026-05-21.log", logFilePrefix)
+	date, ok := parseRotatedLogDate("uddns-2026-05-21.log", logFilePrefix, time.UTC)
 	if !ok {
 		t.Fatal("expected valid rotated log name")
 	}
@@ -209,7 +209,7 @@ func TestParseRotatedLogDate(t *testing.T) {
 	for _, name := range invalidNames {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			if _, ok := parseRotatedLogDate(name, logFilePrefix); ok {
+			if _, ok := parseRotatedLogDate(name, logFilePrefix, time.UTC); ok {
 				t.Fatalf("expected %q to be ignored", name)
 			}
 		})
