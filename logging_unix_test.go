@@ -13,7 +13,7 @@ func TestCalendarRotatingWriterRejectsCurrentLogFIFO(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	logPath := filepath.Join(dir, "uddns-2026-05-21.log")
-	if err := syscall.Mkfifo(logPath, 0600); err != nil {
+	if err := syscall.Mkfifo(logPath, 0o600); err != nil {
 		t.Skipf("create log FIFO: %v", err)
 	}
 

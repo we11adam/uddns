@@ -99,7 +99,6 @@ func (c *LightDNS) updateIP(ctx context.Context, ip string) error {
 			"key":    c.config.Key,
 			"myip":   ip,
 		}).Get("/update")
-
 	if err != nil {
 		return redact.Error(err, c.config.Key)
 	}

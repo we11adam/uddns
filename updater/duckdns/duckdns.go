@@ -100,7 +100,6 @@ func (c *DuckDNS) updateIP(ctx context.Context, ip string) error {
 			"token":   c.config.Token,
 			"ip":      ip,
 		}).Get("/update")
-
 	if err != nil {
 		return redact.Error(err, c.config.Token)
 	}

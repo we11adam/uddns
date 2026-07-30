@@ -313,18 +313,16 @@ func TestUpdaterCheckUsesProductionDownloadURLAllowlist(t *testing.T) {
 		{
 			name: "different repository",
 			mutate: func(release *releaseMetadata) {
-				release.Assets[0].BrowserDownloadURL =
-					"https://github.com/other/uddns/releases/download/v1.9.0/" +
-						releaseTestAssetName
+				release.Assets[0].BrowserDownloadURL = "https://github.com/other/uddns/releases/download/v1.9.0/" +
+					releaseTestAssetName
 			},
 			wantErrContains: "selected repository release",
 		},
 		{
 			name: "different release tag",
 			mutate: func(release *releaseMetadata) {
-				release.Assets[0].BrowserDownloadURL =
-					"https://github.com/we11adam/uddns/releases/download/v1.8.0/" +
-						releaseTestAssetName
+				release.Assets[0].BrowserDownloadURL = "https://github.com/we11adam/uddns/releases/download/v1.8.0/" +
+					releaseTestAssetName
 			},
 			wantErrContains: "selected repository release",
 		},

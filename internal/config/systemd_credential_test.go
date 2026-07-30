@@ -14,12 +14,12 @@ func TestHasSystemdCredentialMode(t *testing.T) {
 		mode os.FileMode
 		want bool
 	}{
-		{name: "systemd ACL projection", mode: 0440, want: true},
-		{name: "ordinary private config", mode: 0600},
-		{name: "group writable", mode: 0460},
-		{name: "other readable", mode: 0444},
-		{name: "setuid", mode: os.ModeSetuid | 0440},
-		{name: "directory", mode: os.ModeDir | 0440},
+		{name: "systemd ACL projection", mode: 0o440, want: true},
+		{name: "ordinary private config", mode: 0o600},
+		{name: "group writable", mode: 0o460},
+		{name: "other readable", mode: 0o444},
+		{name: "setuid", mode: os.ModeSetuid | 0o440},
+		{name: "directory", mode: os.ModeDir | 0o440},
 	}
 
 	for _, tt := range tests {
@@ -108,7 +108,7 @@ func TestIsSameRegularFileRejectsSymlinkAndReplacement(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	original := filepath.Join(dir, "original.yaml")
-	if err := os.WriteFile(original, []byte("providers: {}\n"), 0600); err != nil {
+	if err := os.WriteFile(original, []byte("providers: {}\n"), 0o600); err != nil {
 		t.Fatalf("write original: %v", err)
 	}
 
@@ -135,7 +135,7 @@ func TestIsSameRegularFileRejectsSymlinkAndReplacement(t *testing.T) {
 	}
 
 	replacement := filepath.Join(dir, "replacement.yaml")
-	if err := os.WriteFile(replacement, []byte("providers: {}\n"), 0600); err != nil {
+	if err := os.WriteFile(replacement, []byte("providers: {}\n"), 0o600); err != nil {
 		t.Fatalf("write replacement: %v", err)
 	}
 	if err := os.Rename(replacement, original); err != nil {

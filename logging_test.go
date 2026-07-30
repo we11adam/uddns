@@ -86,10 +86,10 @@ func TestCalendarRotatingWriterCreatesPrivateDirectoryAndLogFile(t *testing.T) {
 func TestCalendarRotatingWriterRestrictsExistingDirectory(t *testing.T) {
 	t.Parallel()
 	dir := filepath.Join(t.TempDir(), "logs")
-	if err := os.Mkdir(dir, 0777); err != nil {
+	if err := os.Mkdir(dir, 0o777); err != nil {
 		t.Fatalf("create exposed log directory: %v", err)
 	}
-	if err := os.Chmod(dir, 0777); err != nil {
+	if err := os.Chmod(dir, 0o777); err != nil {
 		t.Fatalf("expose log directory: %v", err)
 	}
 
@@ -244,7 +244,7 @@ func TestLogProcessAttrsIncludesVersionAndPID(t *testing.T) {
 
 func writeTestFile(t *testing.T, path, content string) {
 	t.Helper()
-	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("write test file %s: %v", path, err)
 	}
 }
