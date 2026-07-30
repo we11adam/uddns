@@ -11,6 +11,7 @@ import (
 )
 
 func TestConfigureTransient(t *testing.T) {
+	t.Parallel()
 	client := ConfigureTransient(resty.New())
 	if client.RetryCount != MaxRetries {
 		t.Fatalf("retry count = %d, want %d", client.RetryCount, MaxRetries)
@@ -30,6 +31,7 @@ func TestConfigureTransient(t *testing.T) {
 }
 
 func TestShouldRetry(t *testing.T) {
+	t.Parallel()
 	response := func(status int) *resty.Response {
 		return &resty.Response{RawResponse: &http.Response{StatusCode: status}}
 	}
@@ -52,6 +54,7 @@ func TestShouldRetry(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			if got := shouldRetry(tt.response, tt.err); got != tt.want {
 				t.Fatalf("shouldRetry() = %v, want %v", got, tt.want)
 			}

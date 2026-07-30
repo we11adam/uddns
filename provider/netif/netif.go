@@ -2,6 +2,7 @@ package netif
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/netip"
@@ -30,7 +31,7 @@ func init() {
 			return nil, err
 		}
 		if cfg.Name == "" {
-			return nil, fmt.Errorf("missing network interface name")
+			return nil, errors.New("missing network interface name")
 		}
 		return New(&cfg)
 	})
@@ -45,7 +46,7 @@ func newNetif(
 	interfaceByName func(string) (*net.Interface, error),
 ) (*Netif, error) {
 	if cfg == nil {
-		return nil, fmt.Errorf("network interface config is nil")
+		return nil, errors.New("network interface config is nil")
 	}
 	if _, err := interfaceByName(cfg.Name); err != nil {
 		return nil, err
@@ -58,7 +59,7 @@ func newNetif(
 
 func (n *Netif) GetIPs(ctx context.Context, families provider.FamilyRequest) (*provider.IpResult, error) {
 	if !families.IPv4 && !families.IPv6 {
-		return nil, fmt.Errorf("no IP families requested")
+		return nil, errors.New("no IP families requested")
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err

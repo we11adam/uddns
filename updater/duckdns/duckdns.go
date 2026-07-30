@@ -2,6 +2,7 @@ package duckdns
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -43,7 +44,7 @@ func init() {
 			return nil, err
 		}
 		if cfg.Domain == "" || cfg.Token == "" {
-			return nil, fmt.Errorf("missing required DuckDNS fields")
+			return nil, errors.New("missing required DuckDNS fields")
 		}
 		return New(&cfg)
 	})
@@ -51,7 +52,7 @@ func init() {
 
 func New(cfg *Config) (*DuckDNS, error) {
 	if cfg == nil {
-		return nil, fmt.Errorf("DuckDNS config is nil")
+		return nil, errors.New("DuckDNS config is nil")
 	}
 	domain, err := dnsname.Normalize(cfg.Domain)
 	if err != nil {
@@ -99,7 +100,6 @@ func (c *DuckDNS) updateIP(ctx context.Context, ip string) error {
 			"token":   c.config.Token,
 			"ip":      ip,
 		}).Get("/update")
-
 	if err != nil {
 		return redact.Error(err, c.config.Token)
 	}

@@ -53,6 +53,7 @@ func (f *fakeSelfUpdater) Rollback(context.Context) (selfupdate.Result, error) {
 }
 
 func TestRunSelfUpdateCheck(t *testing.T) {
+	t.Parallel()
 	fake := &fakeSelfUpdater{
 		plan: selfupdate.Plan{
 			CurrentVersion: "1.8.0",
@@ -83,6 +84,7 @@ func TestRunSelfUpdateCheck(t *testing.T) {
 }
 
 func TestRunSelfUpdateCheckStatuses(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		status selfupdate.Status
 		want   string
@@ -93,6 +95,7 @@ func TestRunSelfUpdateCheckStatuses(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(string(test.status), func(t *testing.T) {
+			t.Parallel()
 			fake := &fakeSelfUpdater{
 				plan: selfupdate.Plan{
 					CurrentVersion: "1.9.0",
@@ -112,6 +115,7 @@ func TestRunSelfUpdateCheckStatuses(t *testing.T) {
 }
 
 func TestRunSelfUpdateCheckJSON(t *testing.T) {
+	t.Parallel()
 	fake := &fakeSelfUpdater{
 		plan: selfupdate.Plan{
 			CurrentVersion: "1.8.0",
@@ -134,6 +138,7 @@ func TestRunSelfUpdateCheckJSON(t *testing.T) {
 }
 
 func TestRunSelfUpdateAppliesPlan(t *testing.T) {
+	t.Parallel()
 	fake := &fakeSelfUpdater{
 		plan: selfupdate.Plan{
 			CurrentVersion: "dev",
@@ -170,6 +175,7 @@ func TestRunSelfUpdateAppliesPlan(t *testing.T) {
 }
 
 func TestRunSelfUpdateAlreadyCurrent(t *testing.T) {
+	t.Parallel()
 	fake := &fakeSelfUpdater{
 		plan: selfupdate.Plan{Status: selfupdate.StatusUpToDate},
 		result: selfupdate.Result{
@@ -187,6 +193,7 @@ func TestRunSelfUpdateAlreadyCurrent(t *testing.T) {
 }
 
 func TestRunSelfUpdateRollback(t *testing.T) {
+	t.Parallel()
 	fake := &fakeSelfUpdater{
 		result: selfupdate.Result{
 			Changed:     true,
@@ -208,6 +215,7 @@ func TestRunSelfUpdateRollback(t *testing.T) {
 }
 
 func TestRunSelfUpdateJSONResult(t *testing.T) {
+	t.Parallel()
 	fake := &fakeSelfUpdater{
 		plan: selfupdate.Plan{Status: selfupdate.StatusUpdateAvailable},
 		result: selfupdate.Result{
@@ -230,6 +238,7 @@ func TestRunSelfUpdateJSONResult(t *testing.T) {
 }
 
 func TestRunSelfUpdateRejectsInvalidFlagCombinations(t *testing.T) {
+	t.Parallel()
 	tests := [][]string{
 		{"extra"},
 		{"--unknown"},
@@ -241,6 +250,7 @@ func TestRunSelfUpdateRejectsInvalidFlagCombinations(t *testing.T) {
 	}
 	for _, args := range tests {
 		t.Run(strings.Join(args, "_"), func(t *testing.T) {
+			t.Parallel()
 			factoryCalls := 0
 			var stdout bytes.Buffer
 			var stderr bytes.Buffer
@@ -267,6 +277,7 @@ func TestRunSelfUpdateRejectsInvalidFlagCombinations(t *testing.T) {
 }
 
 func TestRunSelfUpdateHelp(t *testing.T) {
+	t.Parallel()
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	code := runSelfUpdateCommand(
@@ -285,6 +296,7 @@ func TestRunSelfUpdateHelp(t *testing.T) {
 }
 
 func TestRunSelfUpdateReportsOperationalErrors(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		fake *fakeSelfUpdater
@@ -306,6 +318,7 @@ func TestRunSelfUpdateReportsOperationalErrors(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			_, stderr, code := runFakeSelfUpdate(t, test.fake, test.args...)
 			if code != 1 {
 				t.Fatalf("expected operational error, got %d", code)
@@ -318,6 +331,7 @@ func TestRunSelfUpdateReportsOperationalErrors(t *testing.T) {
 }
 
 func TestRunSelfUpdateReportsFactoryAndPermissionErrors(t *testing.T) {
+	t.Parallel()
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	code := runSelfUpdateCommand(
@@ -352,6 +366,7 @@ func TestRunSelfUpdateReportsFactoryAndPermissionErrors(t *testing.T) {
 }
 
 func TestRunSelfUpdateSuggestsSudoOnlyForLocalApplyPermissionErrors(t *testing.T) {
+	t.Parallel()
 	fake := &fakeSelfUpdater{
 		applyError: &selfupdate.LocalPermissionError{Err: os.ErrPermission},
 	}
@@ -374,6 +389,7 @@ func TestRunSelfUpdateSuggestsSudoOnlyForLocalApplyPermissionErrors(t *testing.T
 }
 
 func TestSelfUpdateOutputWriteFailures(t *testing.T) {
+	t.Parallel()
 	plan := selfupdate.Plan{
 		Status:        selfupdate.StatusUpdateAvailable,
 		TargetVersion: "v1.9.0",

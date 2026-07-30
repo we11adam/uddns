@@ -60,10 +60,10 @@ func init() {
 
 func New(config *Config) (*Cloudflare, error) {
 	if config == nil {
-		return nil, fmt.Errorf("Cloudflare config is nil")
+		return nil, errors.New("Cloudflare config is nil")
 	}
 	if config.Domain == "" {
-		return nil, fmt.Errorf("Cloudflare domain is not set in the configuration")
+		return nil, errors.New("Cloudflare domain is not set in the configuration")
 	}
 	domain, err := dnsname.Normalize(config.Domain)
 	if err != nil {
@@ -100,7 +100,7 @@ func New(config *Config) (*Cloudflare, error) {
 		slog.Debug("using API key and email for authentication", "updater", "cloudflare")
 		api, err = cloudflare.New(config.APIKey, config.Email, cloudflare.HTTPClient(httpClient))
 	} else {
-		return nil, fmt.Errorf("Cloudflare configuration error: either API token or both API key and email must be provided")
+		return nil, errors.New("Cloudflare configuration error: either API token or both API key and email must be provided")
 	}
 
 	if err != nil {
@@ -317,7 +317,7 @@ func (c *Cloudflare) updateDNSRecord(ctx context.Context, recordType, ip string)
 			Name:    domain,
 			Content: ip,
 			TTL:     defaultTTL,
-			Proxied: cloudflare.BoolPtr(false),
+			Proxied: new(false),
 		}
 
 		_, err := c.client.CreateDNSRecord(ctx, cloudflare.ZoneIdentifier(c.zoneID), createParams)

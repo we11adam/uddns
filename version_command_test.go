@@ -94,6 +94,7 @@ func TestRunVersionJSONIgnoresLoggingEnvironment(t *testing.T) {
 }
 
 func TestRunVersionCommandRejectsInvalidArguments(t *testing.T) {
+	t.Parallel()
 	for _, args := range [][]string{
 		{"version", "--unknown"},
 		{"version", "extra"},

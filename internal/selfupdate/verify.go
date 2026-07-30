@@ -3,6 +3,7 @@ package selfupdate
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os/exec"
@@ -30,7 +31,7 @@ func inspectBinaryVersion(ctx context.Context, path string) (string, error) {
 		return "", err
 	}
 	if info.Version == "" {
-		return "", fmt.Errorf("staged binary did not report a version")
+		return "", errors.New("staged binary did not report a version")
 	}
 	return info.Version, nil
 }
@@ -46,7 +47,7 @@ func inspectBinaryPlatform(
 		return err
 	}
 	if info.GOOS == "" || info.GOARCH == "" {
-		return fmt.Errorf("staged binary did not report its runtime target")
+		return errors.New("staged binary did not report its runtime target")
 	}
 	if info.GOOS != expectedGOOS || info.GOARCH != expectedGOARCH {
 		return fmt.Errorf(
@@ -83,7 +84,7 @@ func inspectBinaryInfo(ctx context.Context, path string) (binaryInfo, error) {
 	if len(output) > maxVersionOutput {
 		_ = command.Process.Kill()
 		_ = command.Wait()
-		return binaryInfo{}, fmt.Errorf("staged binary version output exceeds the size limit")
+		return binaryInfo{}, errors.New("staged binary version output exceeds the size limit")
 	}
 	if err := command.Wait(); err != nil {
 		return binaryInfo{}, fmt.Errorf("execute staged binary: %w", err)

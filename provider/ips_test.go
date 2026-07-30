@@ -3,6 +3,7 @@ package provider
 import "testing"
 
 func TestIpResultValidate(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		result   *IpResult
@@ -36,6 +37,7 @@ func TestIpResultValidate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			err := tt.result.Validate()
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("expected wantErr=%v, got err=%v", tt.wantErr, err)
@@ -51,6 +53,7 @@ func TestIpResultValidate(t *testing.T) {
 }
 
 func TestIPFamilyValidationRejectsMappedIPv6(t *testing.T) {
+	t.Parallel()
 	mapped := "::ffff:192.0.2.10"
 	if IsValidIPv4(mapped) {
 		t.Fatalf("expected IPv4-mapped IPv6 %q to be rejected as IPv4", mapped)

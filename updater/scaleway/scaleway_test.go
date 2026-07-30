@@ -29,12 +29,14 @@ func (f roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) 
 }
 
 func TestNewRejectsNilConfig(t *testing.T) {
+	t.Parallel()
 	if _, err := New(nil); err == nil {
 		t.Fatal("expected nil config to be rejected")
 	}
 }
 
 func TestDocumentedConfigKeysAreAccepted(t *testing.T) {
+	t.Parallel()
 	v := viper.New()
 	v.Set("updaters.use", "scaleway")
 	v.Set("updaters.scaleway.access_key", testAccessKey)
@@ -59,6 +61,7 @@ func TestDocumentedConfigKeysAreAccepted(t *testing.T) {
 }
 
 func TestNewNormalizesAndSplitsRecord(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name       string
 		domain     string
@@ -93,6 +96,7 @@ func TestNewNormalizesAndSplitsRecord(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			scalewayUpdater, err := New(testConfig(tt.domain, tt.zone))
 			if err != nil {
 				t.Fatalf("New returned an error: %v", err)
@@ -111,6 +115,7 @@ func TestNewNormalizesAndSplitsRecord(t *testing.T) {
 }
 
 func TestNewRejectsRecordOutsideExplicitZone(t *testing.T) {
+	t.Parallel()
 	_, err := New(testConfig("home.example.net", "example.com"))
 	if err == nil {
 		t.Fatal("expected a record outside the explicit zone to be rejected")
@@ -118,6 +123,7 @@ func TestNewRejectsRecordOutsideExplicitZone(t *testing.T) {
 }
 
 func TestUpdateSetsEachAddressFamilyByIdentifier(t *testing.T) {
+	t.Parallel()
 	type capturedRequest struct {
 		method string
 		path   string
@@ -179,6 +185,7 @@ func TestUpdateSetsEachAddressFamilyByIdentifier(t *testing.T) {
 }
 
 func TestCurrentUsesNormalizedZoneAndRecord(t *testing.T) {
+	t.Parallel()
 	requests := make(chan *http.Request, 1)
 	transport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
 		requests <- request.Clone(request.Context())
@@ -218,6 +225,7 @@ func TestCurrentUsesNormalizedZoneAndRecord(t *testing.T) {
 }
 
 func TestCurrentRequiresDuplicateRecordsToAgree(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		records  string
@@ -257,6 +265,7 @@ func TestCurrentRequiresDuplicateRecordsToAgree(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			responseBody := `{"total_count":4,"records":` + tt.records + `}`
 			transport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
 				return jsonResponse(request, responseBody), nil

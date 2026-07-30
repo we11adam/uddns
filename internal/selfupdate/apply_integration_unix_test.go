@@ -20,6 +20,7 @@ import (
 )
 
 func TestUpdaterApplyEndToEnd(t *testing.T) {
+	t.Parallel()
 	directory := t.TempDir()
 	targetPath := filepath.Join(directory, "uddns")
 	oldBinary := []byte("old binary")

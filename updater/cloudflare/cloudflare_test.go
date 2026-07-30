@@ -36,6 +36,7 @@ func (b *trackingBody) Close() error {
 }
 
 func TestHTTPClientHasRequestTimeout(t *testing.T) {
+	t.Parallel()
 	client := newHTTPClient(nil)
 	if client.Timeout != requestTimeout {
 		t.Fatalf("expected timeout %s, got %s", requestTimeout, client.Timeout)
@@ -46,25 +47,22 @@ func TestHTTPClientHasRequestTimeout(t *testing.T) {
 }
 
 func TestNewRejectsNilConfig(t *testing.T) {
+	t.Parallel()
 	if _, err := New(nil); err == nil {
 		t.Fatal("expected nil config to be rejected")
 	}
 }
 
 func TestHTTPClientSupportsCustomDefaultTransport(t *testing.T) {
-	original := http.DefaultTransport
-	t.Cleanup(func() { http.DefaultTransport = original })
-
-	custom := roundTripFunc(func(request *http.Request) (*http.Response, error) {
+	t.Parallel()
+	client := newHTTPClient(nil)
+	client.Transport = roundTripFunc(func(request *http.Request) (*http.Response, error) {
 		return &http.Response{
 			StatusCode: http.StatusNoContent,
 			Body:       http.NoBody,
 			Request:    request,
 		}, nil
 	})
-	http.DefaultTransport = custom
-
-	client := newHTTPClient(nil)
 	request, err := http.NewRequest(http.MethodGet, "https://example.com", nil)
 	if err != nil {
 		t.Fatalf("create request: %v", err)
@@ -80,8 +78,10 @@ func TestHTTPClientSupportsCustomDefaultTransport(t *testing.T) {
 }
 
 func TestRetryResponseTransportClosesRetryableResponseBody(t *testing.T) {
+	t.Parallel()
 	for _, statusCode := range []int{http.StatusTooManyRequests, http.StatusInternalServerError, http.StatusServiceUnavailable} {
 		t.Run(http.StatusText(statusCode), func(t *testing.T) {
+			t.Parallel()
 			body := &trackingBody{reader: strings.NewReader("retry response")}
 			transport := retryResponseBodyClosingTransport{base: roundTripFunc(func(*http.Request) (*http.Response, error) {
 				return &http.Response{StatusCode: statusCode, Body: body}, nil
@@ -109,6 +109,7 @@ func TestRetryResponseTransportClosesRetryableResponseBody(t *testing.T) {
 }
 
 func TestRetryResponseTransportLimitsNonRetryableResponseBody(t *testing.T) {
+	t.Parallel()
 	body := &trackingBody{reader: strings.NewReader(strings.Repeat("x", responseBodyMax+1))}
 	transport := retryResponseBodyClosingTransport{base: roundTripFunc(func(*http.Request) (*http.Response, error) {
 		return &http.Response{StatusCode: http.StatusBadRequest, Body: body}, nil
@@ -137,6 +138,7 @@ func TestRetryResponseTransportLimitsNonRetryableResponseBody(t *testing.T) {
 }
 
 func TestProxyLogValueRedactsCredentials(t *testing.T) {
+	t.Parallel()
 	proxy, err := url.Parse("http://user:secret@127.0.0.1:8080/path?token=hidden")
 	if err != nil {
 		t.Fatalf("parse proxy URL: %v", err)
@@ -149,6 +151,7 @@ func TestProxyLogValueRedactsCredentials(t *testing.T) {
 }
 
 func TestNewValidatesProxyURLWithoutExposingCredentials(t *testing.T) {
+	t.Parallel()
 	_, err := New(&Config{
 		APIToken: "token",
 		Domain:   "home.example.com",
@@ -173,6 +176,7 @@ func TestNewValidatesProxyURLWithoutExposingCredentials(t *testing.T) {
 }
 
 func TestDuplicateDNSRecordsAreReconciledAndMixedValuesTriggerRepair(t *testing.T) {
+	t.Parallel()
 	updated := make(map[string]string)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -243,6 +247,7 @@ func TestDuplicateDNSRecordsAreReconciledAndMixedValuesTriggerRepair(t *testing.
 }
 
 func TestCurrentRequestsOnlySelectedFamilies(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		families provider.FamilyRequest
@@ -266,6 +271,7 @@ func TestCurrentRequestsOnlySelectedFamilies(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			var requestedTypes []string
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 				if request.URL.Path != "/zones/zone-id/dns_records" {
@@ -314,6 +320,7 @@ func TestCurrentRequestsOnlySelectedFamilies(t *testing.T) {
 }
 
 func TestUpdateRefreshesStaleZoneID(t *testing.T) {
+	t.Parallel()
 	var staleLists, zoneLookups, freshLists, creates int
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 		switch request.URL.Path {
@@ -358,6 +365,7 @@ func TestUpdateRefreshesStaleZoneID(t *testing.T) {
 }
 
 func TestCurrentRefreshesStaleZoneID(t *testing.T) {
+	t.Parallel()
 	var staleLists, zoneLookups, freshLists int
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 		switch request.URL.Path {
@@ -396,6 +404,7 @@ func TestCurrentRefreshesStaleZoneID(t *testing.T) {
 }
 
 func TestStaleZoneIDRefreshRetriesOnlyOnce(t *testing.T) {
+	t.Parallel()
 	var staleLists, zoneLookups, freshLists int
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 		switch request.URL.Path {
@@ -428,6 +437,7 @@ func TestStaleZoneIDRefreshRetriesOnlyOnce(t *testing.T) {
 }
 
 func TestZoneIDIsNotRefreshedForUnrelatedAPIErrors(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name       string
 		statusCode int
@@ -441,6 +451,7 @@ func TestZoneIDIsNotRefreshedForUnrelatedAPIErrors(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			var recordLists, zoneLookups int
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 				switch request.URL.Path {
@@ -472,6 +483,7 @@ func TestZoneIDIsNotRefreshedForUnrelatedAPIErrors(t *testing.T) {
 }
 
 func TestZoneLookupUsesContext(t *testing.T) {
+	t.Parallel()
 	api, err := cloudflareapi.NewWithAPIToken("token", cloudflareapi.HTTPClient(&http.Client{}))
 	if err != nil {
 		t.Fatalf("create Cloudflare API client: %v", err)

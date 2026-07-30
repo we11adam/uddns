@@ -21,6 +21,7 @@ func (f releaseTestRoundTripFunc) RoundTrip(request *http.Request) (*http.Respon
 }
 
 func TestFetchReleaseEndpointAndHeaders(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name             string
 		requestedVersion string
@@ -44,6 +45,7 @@ func TestFetchReleaseEndpointAndHeaders(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			var gotRequest *http.Request
 			body := releaseTestMarshalMetadata(t, releaseTestMetadata())
 			updater := releaseTestUpdater(t, "1.8.0", releaseTestRoundTripFunc(
@@ -89,6 +91,7 @@ func TestFetchReleaseEndpointAndHeaders(t *testing.T) {
 }
 
 func TestFetchReleaseRejectsInvalidResponses(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name            string
 		statusCode      int
@@ -135,6 +138,7 @@ func TestFetchReleaseRejectsInvalidResponses(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			updater := releaseTestUpdater(t, "1.8.0", releaseTestRoundTripFunc(
 				func(*http.Request) (*http.Response, error) {
 					response := releaseTestResponse(tt.statusCode, tt.body)
@@ -157,6 +161,7 @@ func TestFetchReleaseRejectsInvalidResponses(t *testing.T) {
 }
 
 func TestFetchReleaseRejectsUndeclaredOversizedMetadata(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		body string
@@ -175,6 +180,7 @@ func TestFetchReleaseRejectsUndeclaredOversizedMetadata(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			updater := releaseTestUpdater(t, "1.8.0", releaseTestRoundTripFunc(
 				func(*http.Request) (*http.Response, error) {
 					response := releaseTestResponse(http.StatusOK, tt.body)
@@ -191,6 +197,7 @@ func TestFetchReleaseRejectsUndeclaredOversizedMetadata(t *testing.T) {
 }
 
 func TestValidateGitHubURLAllowlist(t *testing.T) {
+	t.Parallel()
 	allowed := []string{
 		"https://api.github.com/repos/we11adam/uddns/releases/latest",
 		"https://github.com/we11adam/uddns/releases/download/v1.9.0/" + releaseTestAssetName,
@@ -200,6 +207,7 @@ func TestValidateGitHubURLAllowlist(t *testing.T) {
 	}
 	for _, rawURL := range allowed {
 		t.Run("allow "+rawURL, func(t *testing.T) {
+			t.Parallel()
 			parsed, err := url.Parse(rawURL)
 			if err != nil {
 				t.Fatalf("url.Parse returned error: %v", err)
@@ -258,6 +266,7 @@ func TestValidateGitHubURLAllowlist(t *testing.T) {
 	}
 	for _, tt := range rejected {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			parsed, err := url.Parse(tt.rawURL)
 			if err != nil {
 				t.Fatalf("url.Parse returned error: %v", err)
@@ -274,6 +283,7 @@ func TestValidateGitHubURLAllowlist(t *testing.T) {
 }
 
 func TestUpdaterCheckUsesProductionDownloadURLAllowlist(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name            string
 		mutate          func(*releaseMetadata)
@@ -303,18 +313,16 @@ func TestUpdaterCheckUsesProductionDownloadURLAllowlist(t *testing.T) {
 		{
 			name: "different repository",
 			mutate: func(release *releaseMetadata) {
-				release.Assets[0].BrowserDownloadURL =
-					"https://github.com/other/uddns/releases/download/v1.9.0/" +
-						releaseTestAssetName
+				release.Assets[0].BrowserDownloadURL = "https://github.com/other/uddns/releases/download/v1.9.0/" +
+					releaseTestAssetName
 			},
 			wantErrContains: "selected repository release",
 		},
 		{
 			name: "different release tag",
 			mutate: func(release *releaseMetadata) {
-				release.Assets[0].BrowserDownloadURL =
-					"https://github.com/we11adam/uddns/releases/download/v1.8.0/" +
-						releaseTestAssetName
+				release.Assets[0].BrowserDownloadURL = "https://github.com/we11adam/uddns/releases/download/v1.8.0/" +
+					releaseTestAssetName
 			},
 			wantErrContains: "selected repository release",
 		},
@@ -329,6 +337,7 @@ func TestUpdaterCheckUsesProductionDownloadURLAllowlist(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			release := releaseTestMetadata()
 			tt.mutate(&release)
 			body := releaseTestMarshalMetadata(t, release)

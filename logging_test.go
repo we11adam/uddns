@@ -9,8 +9,9 @@ import (
 )
 
 func TestCalendarRotatingWriterRotatesByDateAndRemovesExpiredLogs(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
-	now := time.Date(2026, 5, 21, 10, 0, 0, 0, time.Local)
+	now := time.Date(2026, 5, 21, 10, 0, 0, 0, time.UTC)
 
 	writeTestFile(t, filepath.Join(dir, "uddns-2026-05-19.log"), "old\n")
 	writeTestFile(t, filepath.Join(dir, "uddns-2026-05-20.log"), "keep\n")
@@ -33,7 +34,7 @@ func TestCalendarRotatingWriterRotatesByDateAndRemovesExpiredLogs(t *testing.T) 
 	assertExists(t, filepath.Join(dir, "uddns-2026-05-21.log"))
 	assertExists(t, filepath.Join(dir, "other-2026-05-19.log"))
 
-	now = time.Date(2026, 5, 22, 1, 0, 0, 0, time.Local)
+	now = time.Date(2026, 5, 22, 1, 0, 0, 0, time.UTC)
 	if _, err := writer.Write([]byte("tomorrow\n")); err != nil {
 		t.Fatalf("write rotated log: %v", err)
 	}
@@ -52,8 +53,9 @@ func TestCalendarRotatingWriterRotatesByDateAndRemovesExpiredLogs(t *testing.T) 
 }
 
 func TestCalendarRotatingWriterCreatesPrivateDirectoryAndLogFile(t *testing.T) {
+	t.Parallel()
 	dir := filepath.Join(t.TempDir(), "logs")
-	now := time.Date(2026, 5, 21, 10, 0, 0, 0, time.Local)
+	now := time.Date(2026, 5, 21, 10, 0, 0, 0, time.UTC)
 
 	writer, err := newCalendarRotatingWriterWithClock(dir, logFilePrefix, 2, func() time.Time {
 		return now
@@ -82,16 +84,17 @@ func TestCalendarRotatingWriterCreatesPrivateDirectoryAndLogFile(t *testing.T) {
 }
 
 func TestCalendarRotatingWriterRestrictsExistingDirectory(t *testing.T) {
+	t.Parallel()
 	dir := filepath.Join(t.TempDir(), "logs")
-	if err := os.Mkdir(dir, 0777); err != nil {
+	if err := os.Mkdir(dir, 0o777); err != nil {
 		t.Fatalf("create exposed log directory: %v", err)
 	}
-	if err := os.Chmod(dir, 0777); err != nil {
+	if err := os.Chmod(dir, 0o777); err != nil {
 		t.Fatalf("expose log directory: %v", err)
 	}
 
 	writer, err := newCalendarRotatingWriterWithClock(dir, logFilePrefix, 2, func() time.Time {
-		return time.Date(2026, 5, 21, 10, 0, 0, 0, time.Local)
+		return time.Date(2026, 5, 21, 10, 0, 0, 0, time.UTC)
 	})
 	if err != nil {
 		t.Fatalf("newCalendarRotatingWriterWithClock returned error: %v", err)
@@ -108,6 +111,7 @@ func TestCalendarRotatingWriterRestrictsExistingDirectory(t *testing.T) {
 }
 
 func TestCalendarRotatingWriterRejectsLogDirectorySymlink(t *testing.T) {
+	t.Parallel()
 	target := t.TempDir()
 	dir := filepath.Join(t.TempDir(), "logs")
 	if err := os.Symlink(target, dir); err != nil {
@@ -115,7 +119,7 @@ func TestCalendarRotatingWriterRejectsLogDirectorySymlink(t *testing.T) {
 	}
 
 	_, err := newCalendarRotatingWriterWithClock(dir, logFilePrefix, 2, func() time.Time {
-		return time.Date(2026, 5, 21, 10, 0, 0, 0, time.Local)
+		return time.Date(2026, 5, 21, 10, 0, 0, 0, time.UTC)
 	})
 	if err == nil {
 		t.Fatal("expected log directory symlink to be rejected")
@@ -123,6 +127,7 @@ func TestCalendarRotatingWriterRejectsLogDirectorySymlink(t *testing.T) {
 }
 
 func TestCalendarRotatingWriterRejectsCurrentLogSymlink(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	target := filepath.Join(t.TempDir(), "target.log")
 	writeTestFile(t, target, "unchanged\n")
@@ -132,7 +137,7 @@ func TestCalendarRotatingWriterRejectsCurrentLogSymlink(t *testing.T) {
 	}
 
 	_, err := newCalendarRotatingWriterWithClock(dir, logFilePrefix, 2, func() time.Time {
-		return time.Date(2026, 5, 21, 10, 0, 0, 0, time.Local)
+		return time.Date(2026, 5, 21, 10, 0, 0, 0, time.UTC)
 	})
 	if err == nil {
 		t.Fatal("expected current log symlink to be rejected")
@@ -148,6 +153,7 @@ func TestCalendarRotatingWriterRejectsCurrentLogSymlink(t *testing.T) {
 }
 
 func TestCalendarRotatingWriterCleanupRemainsInOpenedRoot(t *testing.T) {
+	t.Parallel()
 	baseDir := t.TempDir()
 	dir := filepath.Join(baseDir, "logs")
 	if err := os.Mkdir(dir, logDirMode); err != nil {
@@ -155,7 +161,7 @@ func TestCalendarRotatingWriterCleanupRemainsInOpenedRoot(t *testing.T) {
 	}
 	writeTestFile(t, filepath.Join(dir, "uddns-2026-05-20.log"), "original\n")
 
-	now := time.Date(2026, 5, 21, 10, 0, 0, 0, time.Local)
+	now := time.Date(2026, 5, 21, 10, 0, 0, 0, time.UTC)
 	writer, err := newCalendarRotatingWriterWithClock(dir, logFilePrefix, 2, func() time.Time {
 		return now
 	})
@@ -174,7 +180,7 @@ func TestCalendarRotatingWriterCleanupRemainsInOpenedRoot(t *testing.T) {
 	replacementLog := filepath.Join(dir, "uddns-2026-05-20.log")
 	writeTestFile(t, replacementLog, "replacement\n")
 
-	now = time.Date(2026, 5, 22, 1, 0, 0, 0, time.Local)
+	now = time.Date(2026, 5, 22, 1, 0, 0, 0, time.UTC)
 	if _, err := writer.Write([]byte("tomorrow\n")); err != nil {
 		t.Fatalf("write rotated log: %v", err)
 	}
@@ -185,7 +191,8 @@ func TestCalendarRotatingWriterCleanupRemainsInOpenedRoot(t *testing.T) {
 }
 
 func TestParseRotatedLogDate(t *testing.T) {
-	date, ok := parseRotatedLogDate("uddns-2026-05-21.log", logFilePrefix)
+	t.Parallel()
+	date, ok := parseRotatedLogDate("uddns-2026-05-21.log", logFilePrefix, time.UTC)
 	if !ok {
 		t.Fatal("expected valid rotated log name")
 	}
@@ -201,7 +208,8 @@ func TestParseRotatedLogDate(t *testing.T) {
 	}
 	for _, name := range invalidNames {
 		t.Run(name, func(t *testing.T) {
-			if _, ok := parseRotatedLogDate(name, logFilePrefix); ok {
+			t.Parallel()
+			if _, ok := parseRotatedLogDate(name, logFilePrefix, time.UTC); ok {
 				t.Fatalf("expected %q to be ignored", name)
 			}
 		})
@@ -209,6 +217,7 @@ func TestParseRotatedLogDate(t *testing.T) {
 }
 
 func TestLogProcessAttrsIncludesVersionAndPID(t *testing.T) {
+	t.Parallel()
 	oldVersion := version
 	version = "v-test"
 	t.Cleanup(func() {
@@ -235,7 +244,7 @@ func TestLogProcessAttrsIncludesVersionAndPID(t *testing.T) {
 
 func writeTestFile(t *testing.T, path, content string) {
 	t.Helper()
-	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("write test file %s: %v", path, err)
 	}
 }
