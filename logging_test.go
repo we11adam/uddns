@@ -11,7 +11,7 @@ import (
 func TestCalendarRotatingWriterRotatesByDateAndRemovesExpiredLogs(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	now := time.Date(2026, 5, 21, 10, 0, 0, 0, time.Local)
+	now := time.Date(2026, 5, 21, 10, 0, 0, 0, time.UTC)
 
 	writeTestFile(t, filepath.Join(dir, "uddns-2026-05-19.log"), "old\n")
 	writeTestFile(t, filepath.Join(dir, "uddns-2026-05-20.log"), "keep\n")
@@ -34,7 +34,7 @@ func TestCalendarRotatingWriterRotatesByDateAndRemovesExpiredLogs(t *testing.T) 
 	assertExists(t, filepath.Join(dir, "uddns-2026-05-21.log"))
 	assertExists(t, filepath.Join(dir, "other-2026-05-19.log"))
 
-	now = time.Date(2026, 5, 22, 1, 0, 0, 0, time.Local)
+	now = time.Date(2026, 5, 22, 1, 0, 0, 0, time.UTC)
 	if _, err := writer.Write([]byte("tomorrow\n")); err != nil {
 		t.Fatalf("write rotated log: %v", err)
 	}
@@ -55,7 +55,7 @@ func TestCalendarRotatingWriterRotatesByDateAndRemovesExpiredLogs(t *testing.T) 
 func TestCalendarRotatingWriterCreatesPrivateDirectoryAndLogFile(t *testing.T) {
 	t.Parallel()
 	dir := filepath.Join(t.TempDir(), "logs")
-	now := time.Date(2026, 5, 21, 10, 0, 0, 0, time.Local)
+	now := time.Date(2026, 5, 21, 10, 0, 0, 0, time.UTC)
 
 	writer, err := newCalendarRotatingWriterWithClock(dir, logFilePrefix, 2, func() time.Time {
 		return now
@@ -94,7 +94,7 @@ func TestCalendarRotatingWriterRestrictsExistingDirectory(t *testing.T) {
 	}
 
 	writer, err := newCalendarRotatingWriterWithClock(dir, logFilePrefix, 2, func() time.Time {
-		return time.Date(2026, 5, 21, 10, 0, 0, 0, time.Local)
+		return time.Date(2026, 5, 21, 10, 0, 0, 0, time.UTC)
 	})
 	if err != nil {
 		t.Fatalf("newCalendarRotatingWriterWithClock returned error: %v", err)
@@ -119,7 +119,7 @@ func TestCalendarRotatingWriterRejectsLogDirectorySymlink(t *testing.T) {
 	}
 
 	_, err := newCalendarRotatingWriterWithClock(dir, logFilePrefix, 2, func() time.Time {
-		return time.Date(2026, 5, 21, 10, 0, 0, 0, time.Local)
+		return time.Date(2026, 5, 21, 10, 0, 0, 0, time.UTC)
 	})
 	if err == nil {
 		t.Fatal("expected log directory symlink to be rejected")
@@ -137,7 +137,7 @@ func TestCalendarRotatingWriterRejectsCurrentLogSymlink(t *testing.T) {
 	}
 
 	_, err := newCalendarRotatingWriterWithClock(dir, logFilePrefix, 2, func() time.Time {
-		return time.Date(2026, 5, 21, 10, 0, 0, 0, time.Local)
+		return time.Date(2026, 5, 21, 10, 0, 0, 0, time.UTC)
 	})
 	if err == nil {
 		t.Fatal("expected current log symlink to be rejected")
@@ -161,7 +161,7 @@ func TestCalendarRotatingWriterCleanupRemainsInOpenedRoot(t *testing.T) {
 	}
 	writeTestFile(t, filepath.Join(dir, "uddns-2026-05-20.log"), "original\n")
 
-	now := time.Date(2026, 5, 21, 10, 0, 0, 0, time.Local)
+	now := time.Date(2026, 5, 21, 10, 0, 0, 0, time.UTC)
 	writer, err := newCalendarRotatingWriterWithClock(dir, logFilePrefix, 2, func() time.Time {
 		return now
 	})
@@ -180,7 +180,7 @@ func TestCalendarRotatingWriterCleanupRemainsInOpenedRoot(t *testing.T) {
 	replacementLog := filepath.Join(dir, "uddns-2026-05-20.log")
 	writeTestFile(t, replacementLog, "replacement\n")
 
-	now = time.Date(2026, 5, 22, 1, 0, 0, 0, time.Local)
+	now = time.Date(2026, 5, 22, 1, 0, 0, 0, time.UTC)
 	if _, err := writer.Write([]byte("tomorrow\n")); err != nil {
 		t.Fatalf("write rotated log: %v", err)
 	}

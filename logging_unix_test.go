@@ -18,7 +18,7 @@ func TestCalendarRotatingWriterRejectsCurrentLogFIFO(t *testing.T) {
 	}
 
 	_, err := newCalendarRotatingWriterWithClock(dir, logFilePrefix, 2, func() time.Time {
-		return time.Date(2026, 5, 21, 10, 0, 0, 0, time.Local)
+		return time.Date(2026, 5, 21, 10, 0, 0, 0, time.UTC)
 	})
 	if err == nil {
 		t.Fatal("expected current log FIFO to be rejected")
