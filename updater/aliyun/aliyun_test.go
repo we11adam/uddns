@@ -25,14 +25,7 @@ func (f httpClientFunc) Call(request *http.Request, transport *http.Transport) (
 
 func TestNewUsesHTTPSAndTimeouts(t *testing.T) {
 	t.Parallel()
-	aliyun, err := New(&Config{
-		AccessKeyID:     "access-key-id",
-		AccessKeySecret: "access-key-secret",
-		Domain:          "ddns.example.com",
-	})
-	if err != nil {
-		t.Fatalf("create Aliyun updater: %v", err)
-	}
+	aliyun := newTestAliyun(t)
 
 	if got := dara.StringValue(aliyun.client.Protocol); got != "HTTPS" {
 		t.Fatalf("expected Aliyun API protocol HTTPS, got %q", got)
@@ -89,19 +82,12 @@ func TestBoundedHTTPClientLimitsResponseBody(t *testing.T) {
 
 func TestOperationsCheckContextBeforeRequest(t *testing.T) {
 	t.Parallel()
-	aliyun, err := New(&Config{
-		AccessKeyID:     "access-key-id",
-		AccessKeySecret: "access-key-secret",
-		Domain:          "ddns.example.com",
-	})
-	if err != nil {
-		t.Fatalf("create Aliyun updater: %v", err)
-	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-
 	t.Run("Update", func(t *testing.T) {
 		t.Parallel()
+		aliyun := newTestAliyun(t)
 		err := aliyun.Update(ctx, &provider.IpResult{IPv4: "192.0.2.1"})
 		if !errors.Is(err, context.Canceled) {
 			t.Fatalf("expected canceled update, got %v", err)
@@ -110,6 +96,7 @@ func TestOperationsCheckContextBeforeRequest(t *testing.T) {
 
 	t.Run("Current", func(t *testing.T) {
 		t.Parallel()
+		aliyun := newTestAliyun(t)
 		_, err := aliyun.Current(ctx, provider.FamilyRequest{IPv4: true})
 		if !errors.Is(err, context.Canceled) {
 			t.Fatalf("expected canceled read, got %v", err)
@@ -119,14 +106,7 @@ func TestOperationsCheckContextBeforeRequest(t *testing.T) {
 
 func TestUpdateCancelsInFlightRequest(t *testing.T) {
 	t.Parallel()
-	aliyun, err := New(&Config{
-		AccessKeyID:     "access-key-id",
-		AccessKeySecret: "access-key-secret",
-		Domain:          "ddns.example.com",
-	})
-	if err != nil {
-		t.Fatalf("create Aliyun updater: %v", err)
-	}
+	aliyun := newTestAliyun(t)
 
 	requests := make(chan *http.Request, 1)
 	aliyun.client.HttpClient = httpClientFunc(func(request *http.Request, _ *http.Transport) (*http.Response, error) {
@@ -166,14 +146,7 @@ func TestUpdateCancelsInFlightRequest(t *testing.T) {
 
 func TestDuplicateDNSRecordsAreReconciledAndMixedValuesTriggerRepair(t *testing.T) {
 	t.Parallel()
-	aliyun, err := New(&Config{
-		AccessKeyID:     "access-key-id",
-		AccessKeySecret: "access-key-secret",
-		Domain:          "home.example.com",
-	})
-	if err != nil {
-		t.Fatalf("create Aliyun updater: %v", err)
-	}
+	aliyun := newTestAliyun(t)
 
 	updates := make(map[string]string)
 	aliyun.client.HttpClient = httpClientFunc(func(request *http.Request, _ *http.Transport) (*http.Response, error) {
