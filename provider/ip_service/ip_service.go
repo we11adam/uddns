@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"net"
 	"net/http"
 	"net/netip"
@@ -13,23 +14,26 @@ import (
 	"time"
 
 	"github.com/go-resty/resty/v2"
+
 	"github.com/we11adam/uddns/internal/redact"
 	"github.com/we11adam/uddns/internal/restyretry"
 	"github.com/we11adam/uddns/provider"
 )
-
-var SERVICES = map[string]string{
-	"ip.fm":       "https://ip.fm/myip",
-	"ip.sb":       "https://ip.sb",
-	"ifconfig.me": "https://ifconfig.me",
-	"3322.org":    "https://members.3322.org/dyndns/getip",
-}
 
 const (
 	maxServiceRedirects = 3
 	responseBodyLimit   = 4 << 10
 	requestTimeout      = 5 * time.Second
 )
+
+func defaultServiceUrls() map[string]string {
+	return map[string]string{
+		"ip.fm":       "https://ip.fm/myip",
+		"ip.sb":       "https://ip.sb",
+		"ifconfig.me": "https://ifconfig.me",
+		"3322.org":    "https://members.3322.org/dyndns/getip",
+	}
+}
 
 var (
 	publicIPv6Prefix  = netip.MustParsePrefix("2000::/3")
@@ -62,7 +66,8 @@ type ServiceNames []string
 type IpService struct {
 	client4 *resty.Client
 	client6 *resty.Client
-	names   *ServiceNames
+	urls    map[string]string
+	names   ServiceNames
 }
 
 func init() {
@@ -76,30 +81,28 @@ func init() {
 		if err != nil {
 			return nil, err
 		}
-		if len(cfg) == 0 {
-			return nil, errors.New("no IP service names provided")
-		}
-		for _, name := range cfg {
-			if _, ok := SERVICES[name]; !ok {
-				return nil, fmt.Errorf("unsupported IP service %q; supported services: %s", name, strings.Join(supportedServiceNames(), ", "))
-			}
-		}
-		return New(&cfg)
+		return New(cfg)
 	})
 }
 
-func New(names *ServiceNames) (*IpService, error) {
-	if names == nil {
-		return nil, errors.New("IP service names are nil")
+func New(names ServiceNames) (*IpService, error) {
+	if len(names) == 0 {
+		return nil, errors.New("no IP service names provided")
 	}
-	client4 := createClient("tcp4")
-	client6 := createClient("tcp6")
-
-	return &IpService{
-		client4: client4,
-		client6: client6,
+	ipService := &IpService{
+		client4: createClient("tcp4"),
+		client6: createClient("tcp6"),
+		urls:    defaultServiceUrls(),
 		names:   names,
-	}, nil
+	}
+
+	for _, name := range names {
+		if _, ok := ipService.urls[name]; !ok {
+			return nil, fmt.Errorf("unsupported IP service %q; supported services: %s", name, strings.Join(slices.Collect(maps.Keys(ipService.urls)), ", "))
+		}
+	}
+
+	return ipService, nil
 }
 
 func createClient(network string) *resty.Client {
@@ -182,11 +185,11 @@ func (i *IpService) GetIPs(ctx context.Context, families provider.FamilyRequest)
 
 func (i *IpService) getIP(ctx context.Context, client *resty.Client, family string) (string, error) {
 	var failures []error
-	for _, name := range *i.names {
+	for _, name := range i.names {
 		if err := ctx.Err(); err != nil {
 			return "", err
 		}
-		serviceURL, ok := SERVICES[name]
+		serviceURL, ok := i.urls[name]
 		if !ok {
 			failures = append(failures, fmt.Errorf("IP service %q (%s) is not registered", name, family))
 			continue
@@ -262,13 +265,4 @@ func isPublicRoutable(addr netip.Addr) bool {
 		}
 	}
 	return true
-}
-
-func supportedServiceNames() []string {
-	names := make([]string, 0, len(SERVICES))
-	for name := range SERVICES {
-		names = append(names, name)
-	}
-	slices.Sort(names)
-	return names
 }
