@@ -11,7 +11,6 @@ import (
 )
 
 func TestRunVersionCommandPrintsText(t *testing.T) {
-	t.Parallel()
 	oldVersion := version
 	version = "1.9.0"
 	t.Cleanup(func() {
@@ -38,7 +37,6 @@ func TestRunVersionCommandPrintsText(t *testing.T) {
 }
 
 func TestRunVersionCommandPrintsJSON(t *testing.T) {
-	t.Parallel()
 	oldVersion := version
 	version = "1.9.0"
 	t.Cleanup(func() {
@@ -113,7 +111,6 @@ func TestRunVersionCommandRejectsInvalidArguments(t *testing.T) {
 }
 
 func TestRunVersionCommandHelp(t *testing.T) {
-	t.Parallel()
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	code := runVersionCommand([]string{"--help"}, &stdout, &stderr)
@@ -126,7 +123,6 @@ func TestRunVersionCommandHelp(t *testing.T) {
 }
 
 func TestRunVersionCommandReportsWriteErrors(t *testing.T) {
-	t.Parallel()
 	var stderr bytes.Buffer
 	code := runVersionCommand(nil, failingWriter{}, &stderr)
 	if code != 1 {
