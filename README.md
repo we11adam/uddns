@@ -75,7 +75,7 @@ Installer-provided install, config, and log paths must be absolute. If the
 selected config is missing or is not a readable regular file, the systemd unit
 is enabled but not started.
 
-You can also install from source with Go 1.26.5 or newer:
+You can also install from source with Go 1.27.1 or newer:
 
 ```shell
 go install github.com/we11adam/uddns@latest
