@@ -25,6 +25,7 @@ func (f failingTransport) RoundTrip(_ *http.Request) (*http.Response, error) {
 }
 
 func TestHTTPClientTimeout(t *testing.T) {
+	t.Parallel()
 	client := newHTTPClient("token", nil)
 	if got := client.GetClient().Timeout; got != requestTimeout {
 		t.Fatalf("expected Telegram request timeout %s, got %s", requestTimeout, got)
@@ -35,6 +36,7 @@ func TestHTTPClientTimeout(t *testing.T) {
 }
 
 func TestNewValidatesProxyURLWithoutExposingCredentials(t *testing.T) {
+	t.Parallel()
 	_, err := New(&Telegram{
 		Token:  "token",
 		ChatID: "123456",
@@ -59,6 +61,7 @@ func TestNewValidatesProxyURLWithoutExposingCredentials(t *testing.T) {
 }
 
 func TestNotifyRedactsTokenFromTransportError(t *testing.T) {
+	t.Parallel()
 	token := "telegram+/token =secret"
 	telegram := &Telegram{
 		Token:  token,
@@ -76,6 +79,7 @@ func TestNotifyRedactsTokenFromTransportError(t *testing.T) {
 }
 
 func TestNotifyChecksTelegramAPIResponse(t *testing.T) {
+	t.Parallel()
 	token := "telegram+/token =secret"
 	tests := []struct {
 		name       string
@@ -104,6 +108,7 @@ func TestNotifyChecksTelegramAPIResponse(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(tt.statusCode)
@@ -128,6 +133,7 @@ func TestNotifyChecksTelegramAPIResponse(t *testing.T) {
 }
 
 func TestNotifyCancelsInFlightRequest(t *testing.T) {
+	t.Parallel()
 	requestStarted := make(chan struct{})
 	releaseRequest := make(chan struct{})
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {

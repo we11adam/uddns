@@ -9,9 +9,10 @@ import (
 )
 
 func TestFindFileUsesProvidedReadablePath(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "uddns.yaml")
-	if err := os.WriteFile(path, []byte("providers: {}\n"), 0644); err != nil {
+	if err := os.WriteFile(path, []byte("providers: {}\n"), 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
 
@@ -26,7 +27,7 @@ func TestFindFileUsesProvidedReadablePath(t *testing.T) {
 
 func TestFindFileRejectsUnreadableProvidedPath(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "uddns.yaml"), []byte("providers: {}\n"), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "uddns.yaml"), []byte("providers: {}\n"), 0o644); err != nil {
 		t.Fatalf("write fallback config: %v", err)
 	}
 	t.Chdir(dir)
@@ -39,7 +40,7 @@ func TestFindFileRejectsUnreadableProvidedPath(t *testing.T) {
 
 func TestFindFileRejectsUnreadableEnvironmentPath(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "uddns.yaml"), []byte("providers: {}\n"), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "uddns.yaml"), []byte("providers: {}\n"), 0o644); err != nil {
 		t.Fatalf("write fallback config: %v", err)
 	}
 	t.Chdir(dir)
@@ -51,12 +52,13 @@ func TestFindFileRejectsUnreadableEnvironmentPath(t *testing.T) {
 }
 
 func TestLoadRejectsConfigExposedToOtherUsers(t *testing.T) {
+	t.Parallel()
 	if runtime.GOOS == "windows" {
 		t.Skip("Windows does not expose Unix permission bits")
 	}
 
 	path := filepath.Join(t.TempDir(), "uddns.yaml")
-	if err := os.WriteFile(path, []byte("providers: {}\n"), 0644); err != nil {
+	if err := os.WriteFile(path, []byte("providers: {}\n"), 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
 
@@ -72,7 +74,7 @@ func TestLoadRejectsOrdinaryGroupReadableConfig(t *testing.T) {
 
 	dir := t.TempDir()
 	path := filepath.Join(dir, "uddns.yaml")
-	if err := os.WriteFile(path, []byte("providers: {}\n"), 0440); err != nil {
+	if err := os.WriteFile(path, []byte("providers: {}\n"), 0o440); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
 	t.Setenv("CREDENTIALS_DIRECTORY", dir)
@@ -173,6 +175,7 @@ func TestIntervalAcceptsAllowedBoundaries(t *testing.T) {
 }
 
 func TestJobsParsesConfiguredJobs(t *testing.T) {
+	t.Parallel()
 	path := writeConfigFile(t, `
 jobs:
   - name: home
@@ -201,6 +204,7 @@ jobs:
 }
 
 func TestWithOverridesAppliesNestedValues(t *testing.T) {
+	t.Parallel()
 	path := writeConfigFile(t, `
 updaters:
   duckdns:
@@ -231,7 +235,7 @@ func writeConfigFile(t *testing.T, content string) string {
 	t.Helper()
 
 	path := filepath.Join(t.TempDir(), "uddns.yaml")
-	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
 	return path

@@ -11,12 +11,14 @@ import (
 var allFamilies = provider.FamilyRequest{IPv4: true, IPv6: true}
 
 func TestNewRejectsNilConfig(t *testing.T) {
+	t.Parallel()
 	if _, err := New(nil); err == nil {
 		t.Fatal("expected nil config to be rejected")
 	}
 }
 
 func TestGetIPsResolvesInterfaceByNameOnEveryCall(t *testing.T) {
+	t.Parallel()
 	const name = "pppoe0"
 	lookupErr := errors.New("interface temporarily unavailable")
 	lookups := 0
@@ -45,6 +47,7 @@ func TestGetIPsResolvesInterfaceByNameOnEveryCall(t *testing.T) {
 }
 
 func TestSelectPublishableIPs(t *testing.T) {
+	t.Parallel()
 	addrs := []net.Addr{
 		ipNet("127.0.0.1/8"),
 		ipNet("169.254.10.20/16"),
@@ -71,6 +74,7 @@ func TestSelectPublishableIPs(t *testing.T) {
 }
 
 func TestSelectPublishableIPsIsIndependentOfAddressOrder(t *testing.T) {
+	t.Parallel()
 	forward := []net.Addr{
 		ipNet("192.168.1.20/24"),
 		ipNet("10.0.0.20/8"),
@@ -88,6 +92,7 @@ func TestSelectPublishableIPsIsIndependentOfAddressOrder(t *testing.T) {
 }
 
 func TestSelectPublishableIPsFallsBackToPrivateAddresses(t *testing.T) {
+	t.Parallel()
 	result := selectPublishableIPs([]net.Addr{
 		ipNet("192.168.1.20/24"),
 		ipNet("10.0.0.20/8"),
@@ -103,6 +108,7 @@ func TestSelectPublishableIPsFallsBackToPrivateAddresses(t *testing.T) {
 }
 
 func TestSelectPublishableIPsReturnsEmptyWithoutGlobalUnicast(t *testing.T) {
+	t.Parallel()
 	result := selectPublishableIPs([]net.Addr{
 		ipNet("127.0.0.1/8"),
 		ipNet("169.254.10.20/16"),
@@ -115,6 +121,7 @@ func TestSelectPublishableIPsReturnsEmptyWithoutGlobalUnicast(t *testing.T) {
 }
 
 func TestSelectPublishableIPsReturnsOnlyRequestedFamilies(t *testing.T) {
+	t.Parallel()
 	addrs := []net.Addr{
 		ipNet("198.51.100.20/24"),
 		ipNet("2001:db8::20/64"),
@@ -131,6 +138,7 @@ func TestSelectPublishableIPsReturnsOnlyRequestedFamilies(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			result := selectPublishableIPs(addrs, tt.families)
 			if result.IPv4 != tt.want4 || result.IPv6 != tt.want6 {
 				t.Fatalf("result = %+v, want IPv4=%q IPv6=%q", result, tt.want4, tt.want6)

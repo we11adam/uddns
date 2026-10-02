@@ -3,6 +3,7 @@ package selfupdate
 import "testing"
 
 func TestAssetNameReleaseMatrix(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name   string
 		goos   string
@@ -61,6 +62,7 @@ func TestAssetNameReleaseMatrix(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got, err := assetName("uddns", "1.9.0", tt.goos, tt.goarch)
 			if err != nil {
 				t.Fatalf("assetName returned unexpected error: %v", err)
@@ -73,6 +75,7 @@ func TestAssetNameReleaseMatrix(t *testing.T) {
 }
 
 func TestAssetNameAcceptsArtifactComponents(t *testing.T) {
+	t.Parallel()
 	got, err := assetName("ud-dns", "1.9.0-rc.1", "linux", "amd64")
 	if err != nil {
 		t.Fatalf("assetName returned unexpected error: %v", err)
@@ -84,6 +87,7 @@ func TestAssetNameAcceptsArtifactComponents(t *testing.T) {
 }
 
 func TestAssetNameRejectsInvalidInput(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name    string
 		project string
@@ -193,6 +197,7 @@ func TestAssetNameRejectsInvalidInput(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got, err := assetName(
 				tt.project,
 				tt.version,
@@ -207,6 +212,7 @@ func TestAssetNameRejectsInvalidInput(t *testing.T) {
 }
 
 func TestArchiveExecutableName(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name    string
 		project string
@@ -235,6 +241,7 @@ func TestArchiveExecutableName(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			if got := archiveExecutableName(tt.project, tt.goos); got != tt.want {
 				t.Fatalf(
 					"archiveExecutableName(%q, %q) = %q, want %q",

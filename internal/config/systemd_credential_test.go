@@ -8,21 +8,23 @@ import (
 )
 
 func TestHasSystemdCredentialMode(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		mode os.FileMode
 		want bool
 	}{
-		{name: "systemd ACL projection", mode: 0440, want: true},
-		{name: "ordinary private config", mode: 0600},
-		{name: "group writable", mode: 0460},
-		{name: "other readable", mode: 0444},
-		{name: "setuid", mode: os.ModeSetuid | 0440},
-		{name: "directory", mode: os.ModeDir | 0440},
+		{name: "systemd ACL projection", mode: 0o440, want: true},
+		{name: "ordinary private config", mode: 0o600},
+		{name: "group writable", mode: 0o460},
+		{name: "other readable", mode: 0o444},
+		{name: "setuid", mode: os.ModeSetuid | 0o440},
+		{name: "directory", mode: os.ModeDir | 0o440},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			if got := hasSystemdCredentialMode(tt.mode); got != tt.want {
 				t.Fatalf("hasSystemdCredentialMode(%v) = %v, want %v", tt.mode, got, tt.want)
 			}
@@ -31,6 +33,7 @@ func TestHasSystemdCredentialMode(t *testing.T) {
 }
 
 func TestIsDirectSystemdCredentialPath(t *testing.T) {
+	t.Parallel()
 	if runtime.GOOS == "windows" {
 		t.Skip("systemd credential paths are Linux paths")
 	}
@@ -92,6 +95,7 @@ func TestIsDirectSystemdCredentialPath(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			if got := isDirectSystemdCredentialPath(tt.path, tt.credentialsDir); got != tt.want {
 				t.Fatalf("isDirectSystemdCredentialPath(%q, %q) = %v, want %v",
 					tt.path, tt.credentialsDir, got, tt.want)
@@ -101,9 +105,10 @@ func TestIsDirectSystemdCredentialPath(t *testing.T) {
 }
 
 func TestIsSameRegularFileRejectsSymlinkAndReplacement(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	original := filepath.Join(dir, "original.yaml")
-	if err := os.WriteFile(original, []byte("providers: {}\n"), 0600); err != nil {
+	if err := os.WriteFile(original, []byte("providers: {}\n"), 0o600); err != nil {
 		t.Fatalf("write original: %v", err)
 	}
 
@@ -130,7 +135,7 @@ func TestIsSameRegularFileRejectsSymlinkAndReplacement(t *testing.T) {
 	}
 
 	replacement := filepath.Join(dir, "replacement.yaml")
-	if err := os.WriteFile(replacement, []byte("providers: {}\n"), 0600); err != nil {
+	if err := os.WriteFile(replacement, []byte("providers: {}\n"), 0o600); err != nil {
 		t.Fatalf("write replacement: %v", err)
 	}
 	if err := os.Rename(replacement, original); err != nil {
@@ -142,6 +147,7 @@ func TestIsSameRegularFileRejectsSymlinkAndReplacement(t *testing.T) {
 }
 
 func TestLstatDirectoryRejectsSymlink(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	if _, ok := lstatDirectory(dir); !ok {
 		t.Fatal("expected a real directory to be accepted")

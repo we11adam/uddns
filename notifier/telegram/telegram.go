@@ -3,6 +3,7 @@ package telegram
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"time"
@@ -49,10 +50,10 @@ func init() {
 
 func New(config *Telegram) (*Telegram, error) {
 	if config == nil {
-		return nil, fmt.Errorf("Telegram config is nil")
+		return nil, errors.New("Telegram config is nil")
 	}
 	if config.Token == "" || config.ChatID == "" {
-		return nil, fmt.Errorf("missing required fields")
+		return nil, errors.New("missing required fields")
 	}
 
 	var proxy *url.URL

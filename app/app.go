@@ -61,12 +61,10 @@ type Job struct {
 type jobStatus string
 
 const (
-	jobStatusIPChange      jobStatus = "ip_change"
 	jobStatusOK            jobStatus = "ok"
 	jobStatusProviderError jobStatus = "provider_error"
 	jobStatusUnchanged     jobStatus = "unchanged"
 	jobStatusUpdaterError  jobStatus = "updater_error"
-	jobStatusUpdateSuccess jobStatus = "update_success"
 	jobStatusVerifyError   jobStatus = "verify_error"
 )
 

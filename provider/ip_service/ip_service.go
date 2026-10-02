@@ -5,31 +5,35 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"net"
 	"net/http"
 	"net/netip"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/go-resty/resty/v2"
+
 	"github.com/we11adam/uddns/internal/redact"
 	"github.com/we11adam/uddns/internal/restyretry"
 	"github.com/we11adam/uddns/provider"
 )
-
-var SERVICES = map[string]string{
-	"ip.fm":       "https://ip.fm/myip",
-	"ip.sb":       "https://ip.sb",
-	"ifconfig.me": "https://ifconfig.me",
-	"3322.org":    "https://members.3322.org/dyndns/getip",
-}
 
 const (
 	maxServiceRedirects = 3
 	responseBodyLimit   = 4 << 10
 	requestTimeout      = 5 * time.Second
 )
+
+func defaultServiceUrls() map[string]string {
+	return map[string]string{
+		"ip.fm":       "https://ip.fm/myip",
+		"ip.sb":       "https://ip.sb",
+		"ifconfig.me": "https://ifconfig.me",
+		"3322.org":    "https://members.3322.org/dyndns/getip",
+	}
+}
 
 var (
 	publicIPv6Prefix  = netip.MustParsePrefix("2000::/3")
@@ -62,7 +66,8 @@ type ServiceNames []string
 type IpService struct {
 	client4 *resty.Client
 	client6 *resty.Client
-	names   *ServiceNames
+	urls    map[string]string
+	names   ServiceNames
 }
 
 func init() {
@@ -76,30 +81,28 @@ func init() {
 		if err != nil {
 			return nil, err
 		}
-		if len(cfg) == 0 {
-			return nil, fmt.Errorf("no IP service names provided")
-		}
-		for _, name := range cfg {
-			if _, ok := SERVICES[name]; !ok {
-				return nil, fmt.Errorf("unsupported IP service %q; supported services: %s", name, strings.Join(supportedServiceNames(), ", "))
-			}
-		}
-		return New(&cfg)
+		return New(cfg)
 	})
 }
 
-func New(names *ServiceNames) (*IpService, error) {
-	if names == nil {
-		return nil, fmt.Errorf("IP service names are nil")
+func New(names ServiceNames) (*IpService, error) {
+	if len(names) == 0 {
+		return nil, errors.New("no IP service names provided")
 	}
-	client4 := createClient("tcp4")
-	client6 := createClient("tcp6")
-
-	return &IpService{
-		client4: client4,
-		client6: client6,
+	ipService := &IpService{
+		client4: createClient("tcp4"),
+		client6: createClient("tcp6"),
+		urls:    defaultServiceUrls(),
 		names:   names,
-	}, nil
+	}
+
+	for _, name := range names {
+		if _, ok := ipService.urls[name]; !ok {
+			return nil, fmt.Errorf("unsupported IP service %q; supported services: %s", name, strings.Join(slices.Collect(maps.Keys(ipService.urls)), ", "))
+		}
+	}
+
+	return ipService, nil
 }
 
 func createClient(network string) *resty.Client {
@@ -124,7 +127,7 @@ func createClient(network string) *resty.Client {
 func sameOriginHTTPSRedirectPolicy(maxRedirects int) resty.RedirectPolicy {
 	return resty.RedirectPolicyFunc(func(req *http.Request, via []*http.Request) error {
 		if len(via) == 0 {
-			return fmt.Errorf("redirect rejected: missing original request")
+			return errors.New("redirect rejected: missing original request")
 		}
 		if len(via) > maxRedirects {
 			return fmt.Errorf("redirect rejected: stopped after %d redirects", maxRedirects)
@@ -132,7 +135,7 @@ func sameOriginHTTPSRedirectPolicy(maxRedirects int) resty.RedirectPolicy {
 
 		origin := via[0].URL
 		if !strings.EqualFold(origin.Scheme, "https") || !strings.EqualFold(req.URL.Scheme, origin.Scheme) {
-			return fmt.Errorf("redirect rejected: scheme must remain HTTPS")
+			return errors.New("redirect rejected: scheme must remain HTTPS")
 		}
 		if !strings.EqualFold(req.URL.Host, origin.Host) {
 			return fmt.Errorf("redirect rejected: host must remain %q", origin.Host)
@@ -143,7 +146,7 @@ func sameOriginHTTPSRedirectPolicy(maxRedirects int) resty.RedirectPolicy {
 
 func (i *IpService) GetIPs(ctx context.Context, families provider.FamilyRequest) (*provider.IpResult, error) {
 	if !families.IPv4 && !families.IPv6 {
-		return nil, fmt.Errorf("no IP families requested")
+		return nil, errors.New("no IP families requested")
 	}
 	result := &provider.IpResult{}
 	var failures []error
@@ -172,7 +175,7 @@ func (i *IpService) GetIPs(ctx context.Context, families provider.FamilyRequest)
 
 	if result.IPv4 == "" && result.IPv6 == "" {
 		if len(failures) == 0 {
-			failures = append(failures, fmt.Errorf("failed to get requested IP addresses"))
+			failures = append(failures, errors.New("failed to get requested IP addresses"))
 		}
 		return nil, errors.Join(failures...)
 	}
@@ -182,11 +185,11 @@ func (i *IpService) GetIPs(ctx context.Context, families provider.FamilyRequest)
 
 func (i *IpService) getIP(ctx context.Context, client *resty.Client, family string) (string, error) {
 	var failures []error
-	for _, name := range *i.names {
+	for _, name := range i.names {
 		if err := ctx.Err(); err != nil {
 			return "", err
 		}
-		serviceURL, ok := SERVICES[name]
+		serviceURL, ok := i.urls[name]
 		if !ok {
 			failures = append(failures, fmt.Errorf("IP service %q (%s) is not registered", name, family))
 			continue
@@ -262,13 +265,4 @@ func isPublicRoutable(addr netip.Addr) bool {
 		}
 	}
 	return true
-}
-
-func supportedServiceNames() []string {
-	names := make([]string, 0, len(SERVICES))
-	for name := range SERVICES {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	return names
 }

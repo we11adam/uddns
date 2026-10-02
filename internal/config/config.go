@@ -69,7 +69,7 @@ func validateFilePermissions(path string, info os.FileInfo) error {
 	}
 
 	permissions := info.Mode().Perm()
-	if permissions&0077 == 0 {
+	if permissions&0o077 == 0 {
 		return nil
 	}
 	if isSystemdCredential(path, info) {

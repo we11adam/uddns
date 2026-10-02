@@ -16,6 +16,7 @@ import (
 )
 
 func TestRouterOSRestURL(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		endpoint string
@@ -31,6 +32,7 @@ func TestRouterOSRestURL(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got, err := routerOSRestURL(tt.endpoint)
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("expected wantErr=%v, got err=%v", tt.wantErr, err)
@@ -46,6 +48,7 @@ func TestRouterOSRestURL(t *testing.T) {
 }
 
 func TestNewVerifiesTLSByDefault(t *testing.T) {
+	t.Parallel()
 	router, err := New(&Config{
 		Username: "admin",
 		Password: "secret",
@@ -68,6 +71,7 @@ func TestNewVerifiesTLSByDefault(t *testing.T) {
 }
 
 func TestNewAllowsExplicitInsecureTLS(t *testing.T) {
+	t.Parallel()
 	insecure := true
 	router, err := New(&Config{
 		Username: "admin",
@@ -89,6 +93,7 @@ func TestNewAllowsExplicitInsecureTLS(t *testing.T) {
 }
 
 func TestGetIPsRequestsOnlySelectedFamilies(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name      string
 		families  provider.FamilyRequest
@@ -112,6 +117,7 @@ func TestGetIPsRequestsOnlySelectedFamilies(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			var paths []string
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 				paths = append(paths, request.URL.Path)
@@ -145,6 +151,7 @@ func TestGetIPsRequestsOnlySelectedFamilies(t *testing.T) {
 }
 
 func TestGetIPsSkipsDisabledAddresses(t *testing.T) {
+	t.Parallel()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch request.URL.Path {
@@ -177,6 +184,7 @@ func TestGetIPsSkipsDisabledAddresses(t *testing.T) {
 }
 
 func TestGetIPsRejectsOnlyDisabledAddresses(t *testing.T) {
+	t.Parallel()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch request.URL.Path {
@@ -197,6 +205,7 @@ func TestGetIPsRejectsOnlyDisabledAddresses(t *testing.T) {
 }
 
 func TestGetIPsReportsHTTPFailures(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name       string
 		failureAt  string
@@ -231,6 +240,7 @@ func TestGetIPsReportsHTTPFailures(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			password := "router+/password =secret"
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 				if request.URL.Path == tt.failureAt {

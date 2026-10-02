@@ -12,6 +12,7 @@ import (
 )
 
 func TestApplyCandidateAtomicallyReplacesExecutableAndCreatesBackup(t *testing.T) {
+	t.Parallel()
 	directory := t.TempDir()
 	targetPath := filepath.Join(directory, "uddns")
 	stagingDirectory := filepath.Join(directory, ".uddns-update-test")
@@ -60,6 +61,7 @@ func TestApplyCandidateAtomicallyReplacesExecutableAndCreatesBackup(t *testing.T
 }
 
 func TestApplyCandidateVersionMismatchLeavesTargetUnchanged(t *testing.T) {
+	t.Parallel()
 	directory := t.TempDir()
 	targetPath := filepath.Join(directory, "uddns")
 	stagingDirectory := filepath.Join(directory, ".uddns-update-test")
@@ -107,6 +109,7 @@ func TestApplyCandidateVersionMismatchLeavesTargetUnchanged(t *testing.T) {
 }
 
 func TestApplyCandidateRejectsStaleCurrentVersion(t *testing.T) {
+	t.Parallel()
 	directory := t.TempDir()
 	targetPath := filepath.Join(directory, "uddns")
 	stagingDirectory := filepath.Join(directory, ".uddns-update-test")
@@ -158,6 +161,7 @@ func TestApplyCandidateRejectsStaleCurrentVersion(t *testing.T) {
 }
 
 func TestApplyCandidateRejectsNonRegularTargets(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name       string
 		createPath func(*testing.T, string)
@@ -186,6 +190,7 @@ func TestApplyCandidateRejectsNonRegularTargets(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			directory := t.TempDir()
 			targetPath := filepath.Join(directory, "uddns")
 			tt.createPath(t, targetPath)
@@ -216,6 +221,7 @@ func TestApplyCandidateRejectsNonRegularTargets(t *testing.T) {
 }
 
 func TestApplyCandidateRejectsNonRegularCandidates(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name       string
 		createPath func(*testing.T, string)
@@ -244,6 +250,7 @@ func TestApplyCandidateRejectsNonRegularCandidates(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			directory := t.TempDir()
 			targetPath := filepath.Join(directory, "uddns")
 			writeApplyTestFile(t, targetPath, "old executable", 0o755)
@@ -277,6 +284,7 @@ func TestApplyCandidateRejectsNonRegularCandidates(t *testing.T) {
 }
 
 func TestApplyCandidateRejectsConcurrentUpdate(t *testing.T) {
+	t.Parallel()
 	directory := t.TempDir()
 	targetPath := filepath.Join(directory, "uddns")
 	writeApplyTestFile(t, targetPath, "old executable", 0o755)
@@ -312,6 +320,7 @@ func TestApplyCandidateRejectsConcurrentUpdate(t *testing.T) {
 }
 
 func TestApplyCandidateFailurePreservesExistingPrevious(t *testing.T) {
+	t.Parallel()
 	directory := t.TempDir()
 	targetPath := filepath.Join(directory, "uddns")
 	previousPath := backupPath(targetPath)
@@ -361,6 +370,7 @@ func TestApplyCandidateFailurePreservesExistingPrevious(t *testing.T) {
 }
 
 func TestApplyCandidateRejectsExistingPendingRecoveryBackup(t *testing.T) {
+	t.Parallel()
 	directory := t.TempDir()
 	targetPath := filepath.Join(directory, "uddns")
 	stagingDirectory := filepath.Join(directory, ".uddns-update-test")
@@ -392,6 +402,7 @@ func TestApplyCandidateRejectsExistingPendingRecoveryBackup(t *testing.T) {
 }
 
 func TestRollbackExecutableExchangesCurrentAndPrevious(t *testing.T) {
+	t.Parallel()
 	directory := t.TempDir()
 	targetPath := filepath.Join(directory, "uddns")
 	previousPath := backupPath(targetPath)
@@ -423,6 +434,7 @@ func TestRollbackExecutableExchangesCurrentAndPrevious(t *testing.T) {
 }
 
 func TestRollbackExecutableRestoresDevelopmentBackup(t *testing.T) {
+	t.Parallel()
 	directory := t.TempDir()
 	targetPath := filepath.Join(directory, "uddns")
 	previousPath := backupPath(targetPath)
@@ -448,6 +460,7 @@ func TestRollbackExecutableRestoresDevelopmentBackup(t *testing.T) {
 }
 
 func TestRollbackExecutableRestoresCurrentWhenBackupPublishFails(t *testing.T) {
+	t.Parallel()
 	directory := t.TempDir()
 	targetPath := filepath.Join(directory, "uddns")
 	previousPath := backupPath(targetPath)
@@ -493,6 +506,7 @@ func TestRollbackExecutableRestoresCurrentWhenBackupPublishFails(t *testing.T) {
 }
 
 func TestRollbackExecutableWithoutPreviousLeavesTargetUnchanged(t *testing.T) {
+	t.Parallel()
 	directory := t.TempDir()
 	targetPath := filepath.Join(directory, "uddns")
 	writeApplyTestFile(t, targetPath, "current executable", 0o755)

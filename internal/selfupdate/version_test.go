@@ -3,6 +3,7 @@ package selfupdate
 import "testing"
 
 func TestParseSemanticVersion(t *testing.T) {
+	t.Parallel()
 	huge := "1234567890123456789012345678901234567890.2.3"
 	tests := []struct {
 		name           string
@@ -47,6 +48,7 @@ func TestParseSemanticVersion(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			version, err := parseSemanticVersion(tt.input)
 			if err != nil {
 				t.Fatalf("parseSemanticVersion(%q) returned error: %v", tt.input, err)
@@ -65,6 +67,7 @@ func TestParseSemanticVersion(t *testing.T) {
 }
 
 func TestParseSemanticVersionRejectsInvalidInput(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name  string
 		input string
@@ -104,6 +107,7 @@ func TestParseSemanticVersionRejectsInvalidInput(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			if version, err := parseSemanticVersion(tt.input); err == nil {
 				t.Fatalf("parseSemanticVersion(%q) = %#v, want error", tt.input, version)
 			}
@@ -112,6 +116,7 @@ func TestParseSemanticVersionRejectsInvalidInput(t *testing.T) {
 }
 
 func TestCompareSemanticVersions(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		a    string
@@ -145,6 +150,7 @@ func TestCompareSemanticVersions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			a := mustParseSemanticVersion(t, tt.a)
 			b := mustParseSemanticVersion(t, tt.b)
 
@@ -159,6 +165,7 @@ func TestCompareSemanticVersions(t *testing.T) {
 }
 
 func TestCompareSemanticVersionsFollowsSemVerPrecedenceExample(t *testing.T) {
+	t.Parallel()
 	ordered := []string{
 		"1.0.0-alpha",
 		"1.0.0-alpha.1",
@@ -170,7 +177,7 @@ func TestCompareSemanticVersionsFollowsSemVerPrecedenceExample(t *testing.T) {
 		"1.0.0",
 	}
 
-	for i := 0; i < len(ordered)-1; i++ {
+	for i := range len(ordered) - 1 {
 		a := mustParseSemanticVersion(t, ordered[i])
 		b := mustParseSemanticVersion(t, ordered[i+1])
 		if got := compareSemanticVersions(a, b); got != -1 {

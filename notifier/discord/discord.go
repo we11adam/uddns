@@ -3,6 +3,7 @@ package discord
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -64,14 +65,14 @@ func init() {
 
 func New(config *Discord) (discord *Discord, err error) {
 	if config == nil {
-		return nil, fmt.Errorf("Discord config is nil")
+		return nil, errors.New("Discord config is nil")
 	}
 	if config.URL != "" && (config.ID != "" || config.Token != "") {
-		return nil, fmt.Errorf("Discord config must either provide url or id and token, not a combination")
+		return nil, errors.New("Discord config must either provide url or id and token, not a combination")
 	}
 	if config.URL == "" {
 		if config.ID == "" || config.Token == "" {
-			return nil, fmt.Errorf("Discord config must provide url or id and token")
+			return nil, errors.New("Discord config must provide url or id and token")
 		}
 		config.URL = fmt.Sprintf("https://discord.com/api/webhooks/%s/%s", config.ID, config.Token)
 	}
@@ -132,14 +133,11 @@ func (d *Discord) Notify(ctx context.Context, notification notifier.Notification
 		return d.redactError(err)
 	}
 
-	switch resp.StatusCode() {
-	case http.StatusOK, http.StatusNoContent:
-		return nil
-	case http.StatusTooManyRequests:
-		return d.redactError(fmt.Errorf("Discord API request failed, rate limited, retry after %s", resp.Header().Get("Retry-After")))
-	}
 	if resp.IsSuccess() {
 		return nil
+	}
+	if resp.StatusCode() == http.StatusTooManyRequests {
+		return d.redactError(fmt.Errorf("Discord API request failed, rate limited, retry after %s", resp.Header().Get("Retry-After")))
 	}
 
 	apiResp := apiResponse{}

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -310,7 +311,7 @@ func parseFamilies(values []string) (app.Families, error) {
 		}
 	}
 	if !families.IPv4 && !families.IPv6 {
-		return app.Families{}, fmt.Errorf("at least one family is required")
+		return app.Families{}, errors.New("at least one family is required")
 	}
 	return families, nil
 }

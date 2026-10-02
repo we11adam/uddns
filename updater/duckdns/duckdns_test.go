@@ -22,9 +22,11 @@ func (f roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) 
 }
 
 func TestUpdateIPRedactsToken(t *testing.T) {
+	t.Parallel()
 	token := "duck+/token =secret"
 
 	t.Run("transport error", func(t *testing.T) {
+		t.Parallel()
 		duckDNS := mustNewDuckDNS(t, &Config{Domain: "home", Token: token})
 		duckDNS.httpclient.SetRetryCount(0)
 		duckDNS.httpclient.SetTransport(roundTripFunc(func(_ *http.Request) (*http.Response, error) {
@@ -39,6 +41,7 @@ func TestUpdateIPRedactsToken(t *testing.T) {
 	})
 
 	t.Run("response body", func(t *testing.T) {
+		t.Parallel()
 		duckDNS := mustNewDuckDNS(t, &Config{Domain: "home", Token: token})
 		duckDNS.httpclient.SetTransport(roundTripFunc(func(request *http.Request) (*http.Response, error) {
 			body := "invalid token " + token + " / " + url.QueryEscape(token)
@@ -59,6 +62,7 @@ func TestUpdateIPRedactsToken(t *testing.T) {
 }
 
 func TestUpdateIPRetriesTransientFailures(t *testing.T) {
+	t.Parallel()
 	var attempts atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		switch attempts.Add(1) {
@@ -85,6 +89,7 @@ func TestUpdateIPRetriesTransientFailures(t *testing.T) {
 }
 
 func TestUpdateIPRequiresHTTP200AndOKBody(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name         string
 		status       int
@@ -100,6 +105,7 @@ func TestUpdateIPRequiresHTTP200AndOKBody(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			var attempts atomic.Int32
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				attempts.Add(1)
@@ -128,6 +134,7 @@ func TestUpdateIPRequiresHTTP200AndOKBody(t *testing.T) {
 }
 
 func TestUpdateIPDoesNotRetryPermanentClientError(t *testing.T) {
+	t.Parallel()
 	var attempts atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		attempts.Add(1)
@@ -148,6 +155,7 @@ func TestUpdateIPDoesNotRetryPermanentClientError(t *testing.T) {
 }
 
 func TestUpdateIPStopsRetriesWhenContextIsCanceled(t *testing.T) {
+	t.Parallel()
 	var attempts atomic.Int32
 	firstResponse := make(chan struct{})
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -194,6 +202,7 @@ func TestUpdateIPStopsRetriesWhenContextIsCanceled(t *testing.T) {
 }
 
 func TestUpdateIPPropagatesContext(t *testing.T) {
+	t.Parallel()
 	type contextKey struct{}
 	key := contextKey{}
 	ctx := context.WithValue(context.Background(), key, "request-value")
@@ -216,6 +225,7 @@ func TestUpdateIPPropagatesContext(t *testing.T) {
 }
 
 func TestNewNormalizesAndValidatesDomain(t *testing.T) {
+	t.Parallel()
 	duckDNS := mustNewDuckDNS(t, &Config{Domain: " Home.DuckDNS.org. ", Token: "token"})
 	if duckDNS.config.Domain != "home.duckdns.org" {
 		t.Fatalf("domain = %q, want %q", duckDNS.config.Domain, "home.duckdns.org")
@@ -240,6 +250,7 @@ func TestNewNormalizesAndValidatesDomain(t *testing.T) {
 		"home/duckdns.org",
 	} {
 		t.Run(domain, func(t *testing.T) {
+			t.Parallel()
 			if _, err := New(&Config{Domain: domain, Token: "token"}); err == nil {
 				t.Fatalf("expected domain %q to be rejected", domain)
 			}

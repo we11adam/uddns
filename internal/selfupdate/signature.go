@@ -1,6 +1,7 @@
 package selfupdate
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -49,7 +50,7 @@ func verifyChecksumSignature(
 	trustedPublicKeys []minisign.PublicKey,
 ) error {
 	if len(trustedPublicKeys) == 0 {
-		return fmt.Errorf("no trusted release signing keys configured")
+		return errors.New("no trusted release signing keys configured")
 	}
 
 	checksums, err := os.ReadFile(checksumPath)
@@ -57,14 +58,14 @@ func verifyChecksumSignature(
 		return fmt.Errorf("read checksums for signature verification: %w", err)
 	}
 	if len(checksums) > maxChecksumSize {
-		return fmt.Errorf("checksums exceed the size limit")
+		return errors.New("checksums exceed the size limit")
 	}
 	signature, err := os.ReadFile(signaturePath)
 	if err != nil {
 		return fmt.Errorf("read checksum signature: %w", err)
 	}
 	if len(signature) > maxSignatureSize {
-		return fmt.Errorf("checksum signature exceeds the size limit")
+		return errors.New("checksum signature exceeds the size limit")
 	}
 
 	for _, publicKey := range trustedPublicKeys {
@@ -72,5 +73,5 @@ func verifyChecksumSignature(
 			return nil
 		}
 	}
-	return fmt.Errorf("checksum signature verification failed")
+	return errors.New("checksum signature verification failed")
 }

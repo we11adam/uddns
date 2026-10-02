@@ -21,8 +21,8 @@ const (
 	defaultLogRetentionDays = 7
 	logDateLayout           = "2006-01-02"
 	logFilePrefix           = "uddns"
-	logDirMode              = 0700
-	logFileMode             = 0600
+	logDirMode              = 0o700
+	logFileMode             = 0o600
 )
 
 type logConfigValue struct {
@@ -339,7 +339,7 @@ func (w *calendarRotatingWriter) cleanupOldLogs(now time.Time) {
 			continue
 		}
 
-		logDate, ok := parseRotatedLogDate(entry.Name(), w.prefix)
+		logDate, ok := parseRotatedLogDate(entry.Name(), w.prefix, now.Location())
 		if !ok || !logDate.Before(cutoff) {
 			continue
 		}
@@ -351,7 +351,7 @@ func (w *calendarRotatingWriter) cleanupOldLogs(now time.Time) {
 	}
 }
 
-func parseRotatedLogDate(name, prefix string) (time.Time, bool) {
+func parseRotatedLogDate(name, prefix string, location *time.Location) (time.Time, bool) {
 	dateText, ok := strings.CutPrefix(name, prefix+"-")
 	if !ok {
 		return time.Time{}, false
@@ -361,7 +361,7 @@ func parseRotatedLogDate(name, prefix string) (time.Time, bool) {
 		return time.Time{}, false
 	}
 
-	date, err := time.ParseInLocation(logDateLayout, dateText, time.Local)
+	date, err := time.ParseInLocation(logDateLayout, dateText, location)
 	if err != nil {
 		return time.Time{}, false
 	}

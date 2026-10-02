@@ -6,6 +6,7 @@ import (
 )
 
 func TestParse(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name    string
 		rawURL  string
@@ -31,6 +32,7 @@ func TestParse(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			_, err := Parse(tt.rawURL)
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("Parse returned err=%v, wantErr=%v", err, tt.wantErr)
@@ -40,6 +42,7 @@ func TestParse(t *testing.T) {
 }
 
 func TestParseErrorDoesNotExposeCredentials(t *testing.T) {
+	t.Parallel()
 	rawURL := "http://user:super-secret@proxy.example:%zz"
 	_, err := Parse(rawURL)
 	if err == nil {

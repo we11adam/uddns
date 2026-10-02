@@ -3,7 +3,7 @@ package redact
 import (
 	"errors"
 	"net/url"
-	"sort"
+	"slices"
 	"strings"
 )
 
@@ -27,8 +27,9 @@ func String(value string, secrets ...string) string {
 	for variant := range variants {
 		ordered = append(ordered, variant)
 	}
-	sort.Slice(ordered, func(i, j int) bool {
-		return len(ordered[i]) > len(ordered[j])
+	slices.SortFunc(ordered, func(a, b string) int {
+		// sort by length descending
+		return len(b) - len(a)
 	})
 
 	for _, variant := range ordered {

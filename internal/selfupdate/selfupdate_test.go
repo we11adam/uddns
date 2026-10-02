@@ -10,6 +10,7 @@ import (
 )
 
 func TestUpdaterCheckBuildsCompletePlan(t *testing.T) {
+	t.Parallel()
 	release := releaseTestMetadata()
 	body := releaseTestMarshalMetadata(t, release)
 	updater := releaseTestUpdater(t, "1.8.0", releaseTestRoundTripFunc(
@@ -57,6 +58,7 @@ func TestUpdaterCheckBuildsCompletePlan(t *testing.T) {
 }
 
 func TestUpdaterCheckVersionStatuses(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name           string
 		currentVersion string
@@ -92,6 +94,7 @@ func TestUpdaterCheckVersionStatuses(t *testing.T) {
 	body := releaseTestMarshalMetadata(t, releaseTestMetadata())
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			updater := releaseTestUpdater(t, tt.currentVersion, releaseTestRoundTripFunc(
 				func(*http.Request) (*http.Response, error) {
 					return releaseTestResponse(http.StatusOK, body), nil
@@ -110,6 +113,7 @@ func TestUpdaterCheckVersionStatuses(t *testing.T) {
 }
 
 func TestUpdateStatusRejectsInvalidCurrentVersion(t *testing.T) {
+	t.Parallel()
 	target := mustParseSemanticVersion(t, "1.9.0")
 	invalid := []string{
 		"",
@@ -122,6 +126,7 @@ func TestUpdateStatusRejectsInvalidCurrentVersion(t *testing.T) {
 
 	for _, current := range invalid {
 		t.Run(current, func(t *testing.T) {
+			t.Parallel()
 			if _, err := updateStatus(current, target); err == nil {
 				t.Fatalf("updateStatus(%q) returned nil error", current)
 			}
@@ -130,6 +135,7 @@ func TestUpdateStatusRejectsInvalidCurrentVersion(t *testing.T) {
 }
 
 func TestUpdaterCheckRejectsReleaseState(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name             string
 		requestedVersion string
@@ -176,6 +182,7 @@ func TestUpdaterCheckRejectsReleaseState(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			release := releaseTestMetadata()
 			tt.mutate(&release)
 			body := releaseTestMarshalMetadata(t, release)
@@ -197,6 +204,7 @@ func TestUpdaterCheckRejectsReleaseState(t *testing.T) {
 }
 
 func TestUpdaterCheckRejectsInvalidCurrentVersion(t *testing.T) {
+	t.Parallel()
 	body := releaseTestMarshalMetadata(t, releaseTestMetadata())
 	updater := releaseTestUpdater(t, "1.9", releaseTestRoundTripFunc(
 		func(*http.Request) (*http.Response, error) {
@@ -214,6 +222,7 @@ func TestUpdaterCheckRejectsInvalidCurrentVersion(t *testing.T) {
 }
 
 func TestUpdaterCheckRejectsInvalidRequestedVersionBeforeHTTP(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name            string
 		requested       string
@@ -238,6 +247,7 @@ func TestUpdaterCheckRejectsInvalidRequestedVersionBeforeHTTP(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			called := false
 			updater := releaseTestUpdater(t, "1.8.0", releaseTestRoundTripFunc(
 				func(*http.Request) (*http.Response, error) {
@@ -261,6 +271,7 @@ func TestUpdaterCheckRejectsInvalidRequestedVersionBeforeHTTP(t *testing.T) {
 }
 
 func TestNewRejectsEmptyCurrentVersion(t *testing.T) {
+	t.Parallel()
 	_, err := New(Config{
 		ExecutablePath: "/usr/local/bin/uddns",
 		GOOS:           "linux",
@@ -275,6 +286,7 @@ func TestNewRejectsEmptyCurrentVersion(t *testing.T) {
 }
 
 func TestUpdaterCheckRequiresUniqueExactAssets(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name            string
 		mutate          func(*releaseMetadata)
@@ -347,6 +359,7 @@ func TestUpdaterCheckRequiresUniqueExactAssets(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			release := releaseTestMetadata()
 			tt.mutate(&release)
 			body := releaseTestMarshalMetadata(t, release)
@@ -368,6 +381,7 @@ func TestUpdaterCheckRequiresUniqueExactAssets(t *testing.T) {
 }
 
 func TestUpdaterApplyRejectsLegacyReleaseBeforeDownload(t *testing.T) {
+	t.Parallel()
 	updater, err := New(Config{
 		CurrentVersion: "1.9.0",
 		ExecutablePath: "/usr/local/bin/uddns",

@@ -42,7 +42,7 @@ func isTrustedCredentialDirectory(path string) bool {
 			return false
 		}
 		stat, ok := info.Sys().(*syscall.Stat_t)
-		if !ok || stat.Uid != 0 || stat.Gid != 0 || info.Mode().Perm()&0022 != 0 {
+		if !ok || stat.Uid != 0 || stat.Gid != 0 || info.Mode().Perm()&0o022 != 0 {
 			return false
 		}
 		if filepath.Dir(dir) == dir {

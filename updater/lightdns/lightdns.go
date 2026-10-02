@@ -2,8 +2,10 @@ package lightdns
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"time"
 
 	"github.com/go-resty/resty/v2"
@@ -41,7 +43,7 @@ func init() {
 			return nil, err
 		}
 		if cfg.Domain == "" || cfg.Key == "" {
-			return nil, fmt.Errorf("missing required LightDNS fields")
+			return nil, errors.New("missing required LightDNS fields")
 		}
 		return New(&cfg)
 	})
@@ -49,7 +51,7 @@ func init() {
 
 func New(cfg *Config) (*LightDNS, error) {
 	if cfg == nil {
-		return nil, fmt.Errorf("LightDNS config is nil")
+		return nil, errors.New("LightDNS config is nil")
 	}
 	domain, err := dnsname.Normalize(cfg.Domain)
 	if err != nil {
@@ -97,14 +99,13 @@ func (c *LightDNS) updateIP(ctx context.Context, ip string) error {
 			"key":    c.config.Key,
 			"myip":   ip,
 		}).Get("/update")
-
 	if err != nil {
 		return redact.Error(err, c.config.Key)
 	}
 
 	body := string(resp.Body())
 
-	if resp.StatusCode() != 200 {
+	if resp.StatusCode() != http.StatusOK {
 		return fmt.Errorf("failed to update LightDNS DNS record: %s", redact.String(body, c.config.Key))
 	}
 

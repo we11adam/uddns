@@ -8,6 +8,7 @@ import (
 )
 
 func TestStringRedactsRawAndURLEncodedSecrets(t *testing.T) {
+	t.Parallel()
 	secret := "token+/with space=&"
 	value := strings.Join([]string{
 		secret,
@@ -24,6 +25,7 @@ func TestStringRedactsRawAndURLEncodedSecrets(t *testing.T) {
 }
 
 func TestErrorHandlesNil(t *testing.T) {
+	t.Parallel()
 	if err := Error(nil, "secret"); err != nil {
 		t.Fatalf("expected nil error, got %v", err)
 	}

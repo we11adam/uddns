@@ -6,7 +6,7 @@ import (
 )
 
 func hasSystemdCredentialMode(mode os.FileMode) bool {
-	return mode == 0440
+	return mode == 0o440
 }
 
 func isDirectSystemdCredentialPath(path, credentialsDir string) bool {

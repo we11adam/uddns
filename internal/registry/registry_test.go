@@ -35,6 +35,7 @@ func (c testConfig) UnmarshalKey(_ string, _ any) error {
 }
 
 func TestRegistryGetUsesRegistrationOrder(t *testing.T) {
+	t.Parallel()
 	r := New[string]("thing", "things.use")
 	r.Register("First", "things.first", func(ConfigReader) (string, error) {
 		return "", ErrNotConfigured
@@ -53,6 +54,7 @@ func TestRegistryGetUsesRegistrationOrder(t *testing.T) {
 }
 
 func TestRegistryRegisterRejectsAliasCollisions(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name              string
 		existingName      string
@@ -86,6 +88,7 @@ func TestRegistryRegisterRejectsAliasCollisions(t *testing.T) {
 	constructor := func(ConfigReader) (string, error) { return "value", nil }
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			r := New[string]("thing", "things.use")
 			r.Register(tt.existingName, tt.existingConfigKey, constructor)
 
@@ -100,6 +103,7 @@ func TestRegistryRegisterRejectsAliasCollisions(t *testing.T) {
 }
 
 func TestRegistryConcurrentRegisterAndGet(t *testing.T) {
+	t.Parallel()
 	r := New[string]("thing", "things.use")
 	r.Register("Default", "things.default", func(ConfigReader) (string, error) {
 		return "default", nil
@@ -116,9 +120,7 @@ func TestRegistryConcurrentRegisterAndGet(t *testing.T) {
 	var wg sync.WaitGroup
 
 	for writer := range writers {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			<-start
 			for registration := range registrationsEach {
 				name := fmt.Sprintf("Writer%dEntry%d", writer, registration)
@@ -127,14 +129,12 @@ func TestRegistryConcurrentRegisterAndGet(t *testing.T) {
 					return "registered", nil
 				})
 			}
-		}()
+		})
 	}
 
 	config := testConfig{"things.default": "configured"}
 	for range readers {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			<-start
 			for range lookupsEach {
 				name, value, err := r.Get(config)
@@ -147,7 +147,7 @@ func TestRegistryConcurrentRegisterAndGet(t *testing.T) {
 					errs <- fmt.Errorf("GetOptional returned %q/%q, err=%v", name, value, err)
 				}
 			}
-		}()
+		})
 	}
 
 	close(start)
@@ -165,6 +165,7 @@ func TestRegistryConcurrentRegisterAndGet(t *testing.T) {
 }
 
 func TestRegistryGetDoesNotHoldLockWhileCallingConstructor(t *testing.T) {
+	t.Parallel()
 	r := New[string]("thing", "things.use")
 	r.Register("First", "things.first", func(ConfigReader) (string, error) {
 		r.Register("Second", "things.second", func(ConfigReader) (string, error) {
@@ -195,6 +196,7 @@ func TestRegistryGetDoesNotHoldLockWhileCallingConstructor(t *testing.T) {
 }
 
 func TestRegistryGetStopsOnConfigurationError(t *testing.T) {
+	t.Parallel()
 	r := New[string]("thing", "things.use")
 	configErr := errors.New("bad config")
 	r.Register("First", "things.first", func(ConfigReader) (string, error) {
@@ -214,6 +216,7 @@ func TestRegistryGetStopsOnConfigurationError(t *testing.T) {
 }
 
 func TestRegistryGetRejectsNilConstructorValue(t *testing.T) {
+	t.Parallel()
 	r := New[any]("thing", "things.use")
 	r.Register("NilThing", "things.nil_thing", func(ConfigReader) (any, error) {
 		return nil, nil
@@ -232,6 +235,7 @@ func TestRegistryGetRejectsNilConstructorValue(t *testing.T) {
 }
 
 func TestRegistryRejectsTypedNilConstructorValue(t *testing.T) {
+	t.Parallel()
 	r := New[testService]("thing", "things.use")
 	r.Register("NilThing", "things.nil_thing", func(ConfigReader) (testService, error) {
 		var service *testServiceImpl
@@ -272,6 +276,7 @@ func TestRegistryRejectsTypedNilConstructorValue(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			name, value, err := tt.lookup(tt.config)
 			if err == nil {
 				t.Fatal("expected typed-nil constructor value to return an error")
@@ -287,6 +292,7 @@ func TestRegistryRejectsTypedNilConstructorValue(t *testing.T) {
 }
 
 func TestRegistryGetUsesExplicitSelector(t *testing.T) {
+	t.Parallel()
 	r := New[string]("thing", "things.use")
 	r.Register("First", "things.first", func(ConfigReader) (string, error) {
 		return "first", nil
@@ -305,6 +311,7 @@ func TestRegistryGetUsesExplicitSelector(t *testing.T) {
 }
 
 func TestRegistryConfigKeyResolvesAliases(t *testing.T) {
+	t.Parallel()
 	r := New[string]("thing", "things.use")
 	r.Register("SecondThing", "things.second_thing", func(ConfigReader) (string, error) {
 		return "second", nil
@@ -322,6 +329,7 @@ func TestRegistryConfigKeyResolvesAliases(t *testing.T) {
 }
 
 func TestRegistryGetReportsSelectedButUnconfigured(t *testing.T) {
+	t.Parallel()
 	r := New[string]("thing", "things.use")
 	r.Register("First", "things.first", func(ConfigReader) (string, error) {
 		return "", ErrNotConfigured
@@ -337,6 +345,7 @@ func TestRegistryGetReportsSelectedButUnconfigured(t *testing.T) {
 }
 
 func TestRegistryGetReportsUnknownSelector(t *testing.T) {
+	t.Parallel()
 	r := New[string]("thing", "things.use")
 	r.Register("First", "things.first", func(ConfigReader) (string, error) {
 		return "first", nil
@@ -352,6 +361,7 @@ func TestRegistryGetReportsUnknownSelector(t *testing.T) {
 }
 
 func TestRegistryGetOptionalUsesFallbackWhenUnconfigured(t *testing.T) {
+	t.Parallel()
 	r := New[string]("thing", "things.use")
 	r.Register("First", "things.first", func(ConfigReader) (string, error) {
 		return "", ErrNotConfigured
@@ -367,6 +377,7 @@ func TestRegistryGetOptionalUsesFallbackWhenUnconfigured(t *testing.T) {
 }
 
 func TestRegistryGetOptionalReportsConfiguredError(t *testing.T) {
+	t.Parallel()
 	r := New[string]("thing", "things.use")
 	r.Register("First", "things.first", func(ConfigReader) (string, error) {
 		return "", errors.New("bad optional config")
