@@ -54,15 +54,19 @@ func TestNewRejectsNilConfig(t *testing.T) {
 }
 
 func TestHTTPClientSupportsCustomDefaultTransport(t *testing.T) {
-	t.Parallel()
-	client := newHTTPClient(nil)
-	client.Transport = roundTripFunc(func(request *http.Request) (*http.Response, error) {
+	original := http.DefaultTransport
+	t.Cleanup(func() { http.DefaultTransport = original })
+
+	custom := roundTripFunc(func(request *http.Request) (*http.Response, error) {
 		return &http.Response{
 			StatusCode: http.StatusNoContent,
 			Body:       http.NoBody,
 			Request:    request,
 		}, nil
 	})
+	http.DefaultTransport = custom
+
+	client := newHTTPClient(nil)
 	request, err := http.NewRequest(http.MethodGet, "https://example.com", nil)
 	if err != nil {
 		t.Fatalf("create request: %v", err)
