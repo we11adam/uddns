@@ -23,7 +23,7 @@ type Config struct {
 
 type Job struct {
 	Name     string   `mapstructure:"name"`
-	Provider string   `mapstructure:"provider"`
+	Provider []string `mapstructure:"provider"`
 	Updater  string   `mapstructure:"updater"`
 	Record   string   `mapstructure:"record"`
 	Zone     string   `mapstructure:"zone"`
@@ -144,14 +144,28 @@ func (j Job) VerifyMode() string {
 	return j.Verify
 }
 
-func (c *Config) WithOverrides(overrides map[string]any) *Config {
+// StringList reads a value written either as one string, a comma-separated
+// string, or a list of strings. Empty items are dropped.
+func (c *Config) StringList(key string) ([]string, error) {
+	var values []string
+	if err := c.v.UnmarshalKey(key, &values); err != nil {
+		return nil, fmt.Errorf("%s must be a string or a list of strings: %w", key, err)
+	}
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		if value = strings.TrimSpace(value); value != "" {
+			result = append(result, value)
+		}
+	}
+	return result, nil
+}
+
+// Scoped returns a config that contains only value at key. Named instances use
+// it to expose their settings below their implementation's config key, so
+// constructors read them exactly like legacy configuration.
+func (c *Config) Scoped(key string, value any) *Config {
 	v := viper.New()
-	for key, value := range c.v.AllSettings() {
-		v.Set(key, value)
-	}
-	for key, value := range overrides {
-		v.Set(key, value)
-	}
+	v.Set(key, value)
 	return &Config{path: c.path, v: v}
 }
 

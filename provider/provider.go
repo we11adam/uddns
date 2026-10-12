@@ -35,3 +35,28 @@ func Register(name, configKey string, constructor constructor) {
 func GetProvider(config ConfigReader) (string, Provider, error) {
 	return providers.Get(config)
 }
+
+// Instance is one configured provider below the providers section.
+type Instance = registry.Instance
+
+// Instances returns the configured provider instances.
+func Instances(config ConfigReader) ([]Instance, error) {
+	return providers.Instances(config)
+}
+
+// Find resolves a provider instance name or implementation alias.
+func Find(instances []Instance, selector string) (Instance, error) {
+	return providers.Find(instances, selector)
+}
+
+// Select resolves provider selectors in order, or returns the first configured
+// instance when there are no selectors.
+func Select(instances []Instance, selectors []string) ([]Instance, error) {
+	return providers.Select(instances, selectors)
+}
+
+// Build constructs an instance from a config that exposes its settings below
+// instance.ConfigKey.
+func Build(instance Instance, config ConfigReader) (Provider, error) {
+	return providers.Build(instance, config)
+}

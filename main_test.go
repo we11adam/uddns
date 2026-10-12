@@ -4,10 +4,14 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/spf13/viper"
+	"github.com/we11adam/uddns/app"
 	"github.com/we11adam/uddns/internal/config"
+	"github.com/we11adam/uddns/provider"
+	"github.com/we11adam/uddns/updater"
 )
 
 func TestParseLogLevel(t *testing.T) {
@@ -205,43 +209,233 @@ jobs:
 	}
 }
 
-func TestJobOverridesOnlySelectedUpdater(t *testing.T) {
+func TestJobUpdaterSettingsReplaceRecordFields(t *testing.T) {
 	t.Parallel()
-	overrides, err := jobOverrides(config.Job{
-		Provider: "ip_service",
-		Updater:  "duckdns",
-		Record:   "home",
-		Zone:     "ignored.example",
-	})
+	instance := updater.Instance{
+		Name:     "duckdns",
+		Settings: map[string]any{"token": "test-token", "domain": "inherited", "zone": "inherited.example"},
+	}
+	settings, err := jobUpdaterSettings(instance, "home", "")
 	if err != nil {
-		t.Fatalf("jobOverrides returned an error: %v", err)
+		t.Fatalf("jobUpdaterSettings returned an error: %v", err)
 	}
-	if got := overrides["updaters.duckdns.domain"]; got != "home" {
-		t.Fatalf("expected selected updater record override, got %#v", got)
+	if settings["domain"] != "home" || settings["token"] != "test-token" {
+		t.Fatalf("unexpected job updater settings: %#v", settings)
 	}
-	if got := overrides["updaters.duckdns.zone"]; got != "ignored.example" {
-		t.Fatalf("expected selected updater zone override, got %#v", got)
+	if zone, ok := settings["zone"]; !ok || zone != "" {
+		t.Fatalf("expected an explicit empty zone, got %#v, %v", zone, ok)
 	}
-	for _, key := range []string{"updaters.cloudflare.domain", "updaters.aliyun.domain", "updaters.lightdns.domain"} {
-		if _, ok := overrides[key]; ok {
-			t.Fatalf("unexpected unrelated updater override %q", key)
-		}
+	if instance.Settings.(map[string]any)["domain"] != "inherited" {
+		t.Fatal("jobUpdaterSettings must not modify the shared instance settings")
 	}
 }
 
-func TestJobOverridesClearInheritedZone(t *testing.T) {
-	t.Parallel()
-	overrides, err := jobOverrides(config.Job{
-		Provider: "ip_service",
-		Updater:  "cloudflare",
-		Record:   "home.example.com",
-	})
-	if err != nil {
-		t.Fatalf("jobOverrides returned an error: %v", err)
+func TestLoadJobsSupportsNamedUpdaterInstances(t *testing.T) {
+	path := writeTempConfig(t, `
+providers:
+  ip_service:
+    - ifconfig.me
+updaters:
+  scw-a:
+    type: scaleway
+    access_key: SCW1234567890ABCDEFG
+    secret_key: 7363616c-6577-6573-6862-6f7579616161
+    project_id: 6170692e-7363-616c-6577-61792e636f6e
+  scw-b:
+    type: Scaleway
+    access_key: SCWABCDEFG1234567890
+    secret_key: 7363616c-6577-6573-6862-6f7579616162
+    project_id: 6170692e-7363-616c-6577-61792e636f6f
+jobs:
+  - name: a
+    provider: ip_service
+    updater: scw-a
+    record: a.example.com
+  - name: b
+    provider: ip_service
+    updater: SCW-B
+    record: b.example.com
+`)
+
+	jobs := mustLoadJobs(t, path)
+	if len(jobs) != 2 {
+		t.Fatalf("expected two jobs, got %d", len(jobs))
 	}
-	zone, ok := overrides["updaters.cloudflare.zone"]
-	if !ok || zone != "" {
-		t.Fatalf("expected an explicit empty zone override, got %#v, %v", zone, ok)
+	if jobs[0].UpdaterName != "scw-a (Scaleway)" || jobs[1].UpdaterName != "scw-b (Scaleway)" {
+		t.Fatalf("unexpected updater names: %q, %q", jobs[0].UpdaterName, jobs[1].UpdaterName)
+	}
+}
+
+func TestLoadJobsRejectsAmbiguousUpdaterType(t *testing.T) {
+	path := writeTempConfig(t, `
+providers:
+  ip_service:
+    - ifconfig.me
+updaters:
+  duck-a:
+    type: duckdns
+    token: token-a
+  duck-b:
+    type: duckdns
+    token: token-b
+jobs:
+  - provider: ip_service
+    updater: duckdns
+    record: home
+`)
+
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	_, err = loadJobs(cfg)
+	if err == nil || !strings.Contains(err.Error(), `updater "duckdns" is ambiguous; select one of: duck-a, duck-b`) {
+		t.Fatalf("expected ambiguous updater error, got %v", err)
+	}
+}
+
+func TestLoadJobsSupportsNamedProviderInstancesAndFallback(t *testing.T) {
+	path := writeTempConfig(t, `
+providers:
+  public:
+    type: ip_service
+    services: [ifconfig.me, ip.fm]
+  ip_service:
+    - ip.sb
+updaters:
+  duckdns:
+    token: test-token
+jobs:
+  - name: home
+    provider: [public, ip_service]
+    updater: duckdns
+    record: home
+`)
+
+	jobs := mustLoadJobs(t, path)
+	if jobs[0].ProviderName != "public (IpService) -> IpService" {
+		t.Fatalf("unexpected provider name: %q", jobs[0].ProviderName)
+	}
+	if _, ok := jobs[0].Provider.(*provider.Chain); !ok {
+		t.Fatalf("expected a provider chain, got %T", jobs[0].Provider)
+	}
+}
+
+func TestLoadJobsRejectsInstanceWithoutType(t *testing.T) {
+	path := writeTempConfig(t, `
+providers:
+  ip_service:
+    - ifconfig.me
+updaters:
+  home:
+    token: test-token
+    domain: home
+`)
+
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	_, err = loadJobs(cfg)
+	if err == nil || !strings.Contains(err.Error(), `updater "home" needs a "type"`) {
+		t.Fatalf("expected missing type error, got %v", err)
+	}
+}
+
+func TestLoadJobsRejectsReservedInstanceName(t *testing.T) {
+	path := writeTempConfig(t, `
+providers:
+  ip_service:
+    - ifconfig.me
+updaters:
+  cloudflare:
+    type: duckdns
+    token: test-token
+    domain: home
+`)
+
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	_, err = loadJobs(cfg)
+	if err == nil || !strings.Contains(err.Error(), `updater name "cloudflare" is reserved for type Cloudflare`) {
+		t.Fatalf("expected reserved name error, got %v", err)
+	}
+}
+
+func TestLoadDefaultJobsRunsEverySelectedUpdater(t *testing.T) {
+	path := writeTempConfig(t, `
+providers:
+  use: [ip_service, public]
+  ip_service:
+    - ifconfig.me
+  public:
+    type: ip_service
+    services: [ip.fm]
+updaters:
+  use: [duckdns, lightdns]
+  duckdns:
+    token: test-token
+    domain: home
+  lightdns:
+    key: test-key
+    domain: home.example.com
+  cloudflare:
+    apitoken: unused-token
+    domain: unused.example.com
+`)
+
+	jobs := mustLoadJobs(t, path)
+	if len(jobs) != 2 {
+		t.Fatalf("expected one job per selected updater, got %d", len(jobs))
+	}
+	if jobs[0].Name != "duckdns" || jobs[0].Record != "home" || jobs[1].Name != "lightdns" || jobs[1].Record != "home.example.com" {
+		t.Fatalf("unexpected jobs: %+v / %+v", jobs[0], jobs[1])
+	}
+	if jobs[0].Provider != jobs[1].Provider {
+		t.Fatal("expected default jobs to share the provider")
+	}
+	if _, ok := jobs[0].Provider.(*provider.Chain); !ok {
+		t.Fatalf("expected a provider chain, got %T", jobs[0].Provider)
+	}
+}
+
+func TestLoadDefaultJobsKeepsSingleUpdaterJobName(t *testing.T) {
+	path := writeTempConfig(t, `
+providers:
+  ip_service:
+    - ifconfig.me
+updaters:
+  use: DuckDNS
+  duckdns:
+    token: test-token
+    domain: home
+`)
+
+	jobs := mustLoadJobs(t, path)
+	if len(jobs) != 1 || jobs[0].Name != "default" || jobs[0].UpdaterName != "DuckDNS" || jobs[0].ProviderName != "IpService" {
+		t.Fatalf("unexpected jobs: %+v", jobs)
+	}
+}
+
+func TestLoadDefaultJobsUsesFirstUpdaterWithoutSelection(t *testing.T) {
+	path := writeTempConfig(t, `
+providers:
+  ip_service:
+    - ifconfig.me
+updaters:
+  lightdns:
+    key: test-key
+    domain: home.example.com
+  duckdns:
+    token: test-token
+    domain: home
+`)
+
+	jobs := mustLoadJobs(t, path)
+	if len(jobs) != 1 || jobs[0].UpdaterName != "DuckDNS" {
+		t.Fatalf("expected the first updater in registry order, got %+v", jobs)
 	}
 }
 
@@ -365,4 +559,18 @@ func writeTempConfig(t *testing.T, content string) string {
 		t.Fatalf("write config: %v", err)
 	}
 	return path
+}
+
+func mustLoadJobs(t *testing.T, path string) []app.Job {
+	t.Helper()
+
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	jobs, err := loadJobs(cfg)
+	if err != nil {
+		t.Fatalf("loadJobs returned error: %v", err)
+	}
+	return jobs
 }

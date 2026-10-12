@@ -76,8 +76,14 @@ func init() {
 			return nil, provider.ErrNotConfigured
 		}
 
+		// Legacy configs list services directly; named instances need a
+		// mapping for their type, so they list services below "services".
+		key := "providers.ip_service"
+		if v.IsSet(key + ".services") {
+			key += ".services"
+		}
 		cfg := ServiceNames{}
-		err := v.UnmarshalKey("providers.ip_service", &cfg)
+		err := v.UnmarshalKey(key, &cfg)
 		if err != nil {
 			return nil, err
 		}

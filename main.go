@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"os"
 	"os/signal"
 	"strings"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/we11adam/uddns/app"
 	"github.com/we11adam/uddns/internal/config"
+	"github.com/we11adam/uddns/internal/registry"
 	"github.com/we11adam/uddns/notifier"
 	"github.com/we11adam/uddns/provider"
 	"github.com/we11adam/uddns/updater"
@@ -168,25 +170,36 @@ func loadRuntime(configPath string) (*runtimeConfig, error) {
 }
 
 func loadJobs(cfg *config.Config) ([]app.Job, error) {
+	providers, err := provider.Instances(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("provider configuration error: %w", err)
+	}
+	updaters, err := updater.Instances(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("updater configuration error: %w", err)
+	}
+
 	jobConfigs, ok, err := cfg.Jobs()
 	if err != nil {
 		return nil, fmt.Errorf("failed to read jobs: %w", err)
 	}
 	if !ok {
-		job, err := loadDefaultJob(cfg)
-		if err != nil {
-			return nil, err
-		}
-		return []app.Job{job}, nil
+		return loadDefaultJobs(cfg, providers, updaters)
 	}
 	if len(jobConfigs) == 0 {
 		return nil, fmt.Errorf("jobs must contain at least one job")
 	}
+	for _, key := range []string{"providers.use", "updaters.use"} {
+		if cfg.IsSet(key) {
+			slog.Warn("setting is ignored when jobs are configured; each job selects its own provider and updater", "setting", key)
+		}
+	}
 
 	jobs := make([]app.Job, 0, len(jobConfigs))
 	seen := map[string]struct{}{}
+	warnedRecords := map[string]struct{}{}
 	for i, jobConfig := range jobConfigs {
-		job, err := loadConfiguredJob(cfg, jobConfig, i)
+		job, updaterInstance, err := loadConfiguredJob(cfg, providers, updaters, jobConfig, i)
 		if err != nil {
 			return nil, err
 		}
@@ -194,102 +207,193 @@ func loadJobs(cfg *config.Config) ([]app.Job, error) {
 			return nil, fmt.Errorf("job %q is duplicated", job.Name)
 		}
 		seen[job.Name] = struct{}{}
+		if _, warned := warnedRecords[updaterInstance.Name]; !warned && hasRecordSettings(updaterInstance) {
+			warnedRecords[updaterInstance.Name] = struct{}{}
+			slog.Warn("updater domain and zone are ignored when jobs are configured; each job's record and zone are used instead", "updater", updaterInstance.Label())
+		}
 		jobs = append(jobs, job)
 	}
 	return jobs, nil
 }
 
-func loadDefaultJob(cfg *config.Config) (app.Job, error) {
-	providerName, p, err := provider.GetProvider(cfg)
+func loadDefaultJobs(cfg *config.Config, providers []provider.Instance, updaters []updater.Instance) ([]app.Job, error) {
+	providerSelectors, err := cfg.StringList("providers.use")
 	if err != nil {
-		return app.Job{}, fmt.Errorf("no provider found: %w", err)
+		return nil, err
 	}
-	updaterName, u, err := updater.GetUpdater(cfg)
+	providerName, p, err := buildProviders(cfg, providers, providerSelectors)
 	if err != nil {
-		return app.Job{}, fmt.Errorf("no updater found: %w", err)
+		return nil, fmt.Errorf("no provider found: %w", err)
 	}
+
+	updaterSelectors, err := cfg.StringList("updaters.use")
+	if err != nil {
+		return nil, err
+	}
+	selectedUpdaters, err := updater.Select(updaters, updaterSelectors)
+	if err != nil {
+		return nil, fmt.Errorf("no updater found: %w", err)
+	}
+	warnUnselected("updater", "updaters.use", updaters, updaterSelectors)
+
 	verify, err := parseVerify(cfg.Verify())
 	if err != nil {
-		return app.Job{}, fmt.Errorf("default job verify error: %w", err)
+		return nil, fmt.Errorf("default job verify error: %w", err)
 	}
-	if err := validateVerifySupport("default", updaterName, u, verify); err != nil {
-		return app.Job{}, err
-	}
-	record, zone := defaultJobRecord(cfg, updaterName)
 
-	slog.Info("job selected", "job", "default", "provider", providerName, "updater", updaterName, "record", record, "zone", zone, "families", app.AllFamilies().String(), "verify", verify)
-	return app.NewJob("default", providerName, p, updaterName, u, record, zone, app.AllFamilies(), verify), nil
+	jobs := make([]app.Job, 0, len(selectedUpdaters))
+	for _, instance := range selectedUpdaters {
+		name := "default"
+		if len(selectedUpdaters) > 1 {
+			name = instance.Name
+		}
+		scoped := cfg.Scoped(instance.ConfigKey, instance.Settings)
+		u, err := updater.Build(instance, scoped)
+		if err != nil {
+			return nil, fmt.Errorf("no updater found: %w", err)
+		}
+		if err := validateVerifySupport(name, instance.Label(), u, verify); err != nil {
+			return nil, err
+		}
+		record := strings.TrimSpace(scoped.GetString(instance.ConfigKey + ".domain"))
+		zone := strings.TrimSpace(scoped.GetString(instance.ConfigKey + ".zone"))
+
+		slog.Info("job selected", "job", name, "provider", providerName, "updater", instance.Label(), "record", record, "zone", zone, "families", app.AllFamilies().String(), "verify", verify)
+		jobs = append(jobs, app.NewJob(name, providerName, p, instance.Label(), u, record, zone, app.AllFamilies(), verify))
+	}
+	return jobs, nil
 }
 
-func loadConfiguredJob(cfg *config.Config, jobConfig config.Job, index int) (app.Job, error) {
+func loadConfiguredJob(cfg *config.Config, providers []provider.Instance, updaters []updater.Instance, jobConfig config.Job, index int) (app.Job, updater.Instance, error) {
 	name := strings.TrimSpace(jobConfig.Name)
 	if name == "" {
 		name = fmt.Sprintf("job-%d", index+1)
 	}
-	if strings.TrimSpace(jobConfig.Provider) == "" {
-		return app.Job{}, fmt.Errorf("job %q missing provider", name)
+	providerSelectors := trimmedNonEmpty(jobConfig.Provider)
+	if len(providerSelectors) == 0 {
+		return app.Job{}, updater.Instance{}, fmt.Errorf("job %q missing provider", name)
 	}
 	if strings.TrimSpace(jobConfig.Updater) == "" {
-		return app.Job{}, fmt.Errorf("job %q missing updater", name)
+		return app.Job{}, updater.Instance{}, fmt.Errorf("job %q missing updater", name)
 	}
 	record := strings.TrimSpace(jobConfig.Record)
 	zone := strings.TrimSpace(jobConfig.Zone)
 	if record == "" {
-		return app.Job{}, fmt.Errorf("job %q missing record", name)
+		return app.Job{}, updater.Instance{}, fmt.Errorf("job %q missing record", name)
 	}
 
 	families, err := parseFamilies(jobConfig.Families)
 	if err != nil {
-		return app.Job{}, fmt.Errorf("job %q invalid families: %w", name, err)
+		return app.Job{}, updater.Instance{}, fmt.Errorf("job %q invalid families: %w", name, err)
 	}
 	verify, err := parseVerify(jobConfig.VerifyMode())
 	if err != nil {
-		return app.Job{}, fmt.Errorf("job %q verify error: %w", name, err)
+		return app.Job{}, updater.Instance{}, fmt.Errorf("job %q verify error: %w", name, err)
 	}
 
-	overrides, err := jobOverrides(jobConfig)
+	providerName, p, err := buildProviders(cfg, providers, providerSelectors)
 	if err != nil {
-		return app.Job{}, fmt.Errorf("job %q updater error: %w", name, err)
-	}
-	jobReader := cfg.WithOverrides(overrides)
-	providerName, p, err := provider.GetProvider(jobReader)
-	if err != nil {
-		return app.Job{}, fmt.Errorf("job %q provider error: %w", name, err)
-	}
-	updaterName, u, err := updater.GetUpdater(jobReader)
-	if err != nil {
-		return app.Job{}, fmt.Errorf("job %q updater error: %w", name, err)
-	}
-	if err := validateVerifySupport(name, updaterName, u, verify); err != nil {
-		return app.Job{}, err
+		return app.Job{}, updater.Instance{}, fmt.Errorf("job %q provider error: %w", name, err)
 	}
 
-	slog.Info("job selected", "job", name, "provider", providerName, "updater", updaterName, "record", record, "zone", zone, "families", families.String(), "verify", verify)
-	return app.NewJob(name, providerName, p, updaterName, u, record, zone, families, verify), nil
+	instance, err := updater.Find(updaters, jobConfig.Updater)
+	if err != nil {
+		return app.Job{}, updater.Instance{}, fmt.Errorf("job %q updater error: %w", name, err)
+	}
+	settings, err := jobUpdaterSettings(instance, record, zone)
+	if err != nil {
+		return app.Job{}, updater.Instance{}, fmt.Errorf("job %q updater error: %w", name, err)
+	}
+	u, err := updater.Build(instance, cfg.Scoped(instance.ConfigKey, settings))
+	if err != nil {
+		return app.Job{}, updater.Instance{}, fmt.Errorf("job %q updater error: %w", name, err)
+	}
+	if err := validateVerifySupport(name, instance.Label(), u, verify); err != nil {
+		return app.Job{}, updater.Instance{}, err
+	}
+
+	slog.Info("job selected", "job", name, "provider", providerName, "updater", instance.Label(), "record", record, "zone", zone, "families", families.String(), "verify", verify)
+	return app.NewJob(name, providerName, p, instance.Label(), u, record, zone, families, verify), instance, nil
 }
 
-func defaultJobRecord(cfg *config.Config, updaterName string) (string, string) {
-	configKey, ok := updater.ConfigKey(updaterName)
-	if !ok {
-		return "", ""
+// buildProviders constructs the selected providers. Several providers form a
+// chain that falls back in order for each address family.
+func buildProviders(cfg *config.Config, instances []provider.Instance, selectors []string) (string, provider.Provider, error) {
+	selected, err := provider.Select(instances, selectors)
+	if err != nil {
+		return "", nil, err
 	}
-	return strings.TrimSpace(cfg.GetString(configKey + ".domain")), strings.TrimSpace(cfg.GetString(configKey + ".zone"))
+	warnUnselected("provider", "providers.use", instances, selectors)
+
+	names := make([]string, 0, len(selected))
+	providers := make([]provider.Provider, 0, len(selected))
+	for _, instance := range selected {
+		p, err := provider.Build(instance, cfg.Scoped(instance.ConfigKey, instance.Settings))
+		if err != nil {
+			return "", nil, err
+		}
+		names = append(names, instance.Label())
+		providers = append(providers, p)
+	}
+	if len(providers) == 1 {
+		return names[0], providers[0], nil
+	}
+
+	chain, err := provider.NewChain(names, providers)
+	if err != nil {
+		return "", nil, err
+	}
+	return strings.Join(names, " -> "), chain, nil
 }
 
-func jobOverrides(job config.Job) (map[string]any, error) {
-	record := strings.TrimSpace(job.Record)
-	zone := strings.TrimSpace(job.Zone)
-	configKey, ok := updater.ConfigKey(job.Updater)
+func warnUnselected(kind, setting string, instances []registry.Instance, selectors []string) {
+	if len(selectors) > 0 || len(instances) < 2 {
+		return
+	}
+	ignored := make([]string, 0, len(instances)-1)
+	for _, instance := range instances[1:] {
+		ignored = append(ignored, instance.Label())
+	}
+	slog.Warn(
+		"multiple "+kind+"s configured without a selection; only the first is used",
+		"selected", instances[0].Label(),
+		"ignored", strings.Join(ignored, ", "),
+		"hint", "list the "+kind+"s to use in "+setting,
+	)
+}
+
+// jobUpdaterSettings replaces the updater instance's record fields with the
+// job's record and zone. An empty job zone clears an inherited zone because a
+// zone only applies to the record it was written for.
+func jobUpdaterSettings(instance updater.Instance, record, zone string) (map[string]any, error) {
+	settings, ok := instance.Settings.(map[string]any)
 	if !ok {
-		return nil, fmt.Errorf("unknown updater %q", strings.TrimSpace(job.Updater))
+		return nil, fmt.Errorf("updater %q settings must be a mapping", instance.Name)
 	}
-	overrides := map[string]any{
-		"providers.use":       strings.TrimSpace(job.Provider),
-		"updaters.use":        strings.TrimSpace(job.Updater),
-		configKey + ".domain": record,
-		configKey + ".zone":   zone,
+	settings = maps.Clone(settings)
+	settings["domain"] = record
+	settings["zone"] = zone
+	return settings, nil
+}
+
+func hasRecordSettings(instance updater.Instance) bool {
+	settings, ok := instance.Settings.(map[string]any)
+	if !ok {
+		return false
 	}
-	return overrides, nil
+	_, hasDomain := settings["domain"]
+	_, hasZone := settings["zone"]
+	return hasDomain || hasZone
+}
+
+func trimmedNonEmpty(values []string) []string {
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		if value = strings.TrimSpace(value); value != "" {
+			result = append(result, value)
+		}
+	}
+	return result
 }
 
 func parseFamilies(values []string) (app.Families, error) {

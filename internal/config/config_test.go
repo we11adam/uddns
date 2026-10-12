@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"testing"
 	"time"
 )
@@ -203,31 +204,89 @@ jobs:
 	}
 }
 
-func TestWithOverridesAppliesNestedValues(t *testing.T) {
+func TestJobsAcceptsProviderLists(t *testing.T) {
 	t.Parallel()
 	path := writeConfigFile(t, `
-updaters:
-  duckdns:
-    token: test-token
+jobs:
+  - provider: [routeros, ip_service]
+    updater: duckdns
+    record: home
+  - provider: netif
+    updater: duckdns
+    record: nas
 `)
 
 	cfg, err := Load(path)
 	if err != nil {
 		t.Fatalf("Load returned error: %v", err)
 	}
-	overlaid := cfg.WithOverrides(map[string]any{
-		"updaters.duckdns.domain": "home",
-	})
+	jobs, _, err := cfg.Jobs()
+	if err != nil {
+		t.Fatalf("Jobs returned error: %v", err)
+	}
+	if !slices.Equal(jobs[0].Provider, []string{"routeros", "ip_service"}) || !slices.Equal(jobs[1].Provider, []string{"netif"}) {
+		t.Fatalf("unexpected job providers: %#v, %#v", jobs[0].Provider, jobs[1].Provider)
+	}
+}
+
+func TestStringListAcceptsStringsAndLists(t *testing.T) {
+	t.Parallel()
+	path := writeConfigFile(t, `
+single: ip_service
+csv: "routeros, ip_service"
+list: [routeros, " ", ip_service]
+`)
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	tests := map[string][]string{
+		"single":  {"ip_service"},
+		"csv":     {"routeros", "ip_service"},
+		"list":    {"routeros", "ip_service"},
+		"missing": {},
+	}
+	for key, want := range tests {
+		got, err := cfg.StringList(key)
+		if err != nil {
+			t.Fatalf("StringList(%q) returned error: %v", key, err)
+		}
+		if !slices.Equal(got, want) {
+			t.Fatalf("StringList(%q) = %#v, want %#v", key, got, want)
+		}
+	}
+}
+
+func TestScopedExposesOnlyValueAtKey(t *testing.T) {
+	t.Parallel()
+	path := writeConfigFile(t, `
+updaters:
+  duckdns:
+    token: legacy-token
+`)
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	scoped := cfg.Scoped("updaters.duckdns", map[string]any{"token": "instance-token", "domain": "home"})
 
 	var duckDNS struct {
 		Token  string `mapstructure:"token"`
 		Domain string `mapstructure:"domain"`
 	}
-	if err := overlaid.UnmarshalKey("updaters.duckdns", &duckDNS); err != nil {
+	if err := scoped.UnmarshalKey("updaters.duckdns", &duckDNS); err != nil {
 		t.Fatalf("UnmarshalKey returned error: %v", err)
 	}
-	if duckDNS.Token != "test-token" || duckDNS.Domain != "home" {
-		t.Fatalf("unexpected overlaid config: %#v", duckDNS)
+	if duckDNS.Token != "instance-token" || duckDNS.Domain != "home" {
+		t.Fatalf("unexpected scoped config: %#v", duckDNS)
+	}
+	if got := scoped.GetString("updaters.duckdns.domain"); got != "home" {
+		t.Fatalf("expected nested domain lookup, got %q", got)
+	}
+	if scoped.IsSet("updaters.cloudflare") {
+		t.Fatal("scoped config should not expose other keys")
 	}
 }
 
