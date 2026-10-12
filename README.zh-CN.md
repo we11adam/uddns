@@ -8,8 +8,9 @@ UDDNS 是一个轻量的动态 DNS 更新器。它会从 provider 获取当前�
 ## 功能
 
 - 支持 IPv4 和 IPv6。
-- Provider：RouterOS、外部 IP 服务、本机网络接口。
+- Provider：RouterOS、外部 IP 服务、本机网络接口，支持按地址族顺序回退。
 - Updater：Cloudflare、Aliyun、DuckDNS、LightDNS、Scaleway。
+- 每种 provider 和 updater 都可以配置多个命名实例。
 - Notifier：Telegram、Discord。
 - 支持通过环境变量配置更新间隔。
 - 结构化日志，支持按自然日轮转文件日志和保留天数清理。

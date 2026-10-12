@@ -6,6 +6,45 @@ All notable changes to UDDNS are documented here, based on the Git commit histor
 
 No changes yet.
 
+## v1.11.0 - 2026-10-12
+
+### Added
+
+- Added named provider and updater instances: any key with a `type` field
+  configures another instance of an implementation, so one process can use
+  several accounts, projects, or network interfaces of the same kind.
+- `providers.use` and job `provider` fields accept a list of providers that are
+  asked in order, falling back separately for IPv4 and IPv6.
+- `updaters.use` accepts a list of updaters; without `jobs`, each runs as its own
+  job.
+- Added a guide for writing providers and updaters.
+
+### Changed
+
+- RouterOS now verifies TLS certificates by default. Set `insecure: true` to keep
+  connecting to a router that uses a self-signed certificate.
+- DNS zones are inferred with the Public Suffix List, so records such as
+  `home.example.co.uk` no longer need an explicit `zone`.
+- Self-updates verify the minisign signature of `checksums.txt` against release
+  keys embedded in the binary and reject unsigned releases as update targets.
+- IP change notifications are sent once the DNS records are updated or already
+  match, instead of before a DNS update that may fail.
+- UDDNS now warns when several providers or updaters are configured without a
+  `use` selection, when `providers.use` or `updaters.use` is set in jobs mode,
+  and when updater `domain` or `zone` values are replaced by jobs.
+- Simplified the README configuration examples and documented how `use`,
+  jobs, and updater record fields interact.
+- Building from source requires Go 1.27.2 or newer.
+
+### Fixed
+
+- The network interface provider looks up its interface on every check, so it
+  follows interfaces that are recreated, for example on PPPoE reconnects.
+- RouterOS REST failures report the HTTP status and a redacted response body.
+- DuckDNS accepts newline-terminated success responses.
+- Discord accepts every successful HTTP status.
+- Scaleway verification treats conflicting A or AAAA records as out of date.
+
 ## v1.10.0 - 2026-07-26
 
 ### Added

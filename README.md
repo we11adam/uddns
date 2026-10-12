@@ -9,8 +9,10 @@ notifications when the IP address or update status changes.
 ## Features
 
 - IPv4 and IPv6 update support.
-- Providers: RouterOS, external IP services, and local network interfaces.
+- Providers: RouterOS, external IP services, and local network interfaces,
+  with ordered per-family fallback.
 - Updaters: Cloudflare, Aliyun, DuckDNS, LightDNS and Scaleway.
+- Multiple named instances of each provider and updater.
 - Notifiers: Telegram and Discord.
 - Configurable update interval.
 - Structured logs with optional daily rotated file logging and retention.

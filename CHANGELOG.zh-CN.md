@@ -6,6 +6,41 @@
 
 暂无变更。
 
+## v1.11.0 - 2026-10-12
+
+### 新增
+
+- 新增命名 provider 和 updater 实例：带有 `type` 字段的任意 key 都会配置该实现的另一个
+  实例，一个进程可以同时使用同类服务的多个账号、项目或网络接口。
+- `providers.use` 和 job 的 `provider` 字段支持 provider 列表，按顺序询问，并分别对
+  IPv4 和 IPv6 回退。
+- `updaters.use` 支持 updater 列表；未配置 `jobs` 时，每个 updater 作为独立 job 运行。
+- 新增 provider 和 updater 开发指南。
+
+### 变更
+
+- RouterOS 现在默认校验 TLS 证书。路由器使用自签名证书时，设置 `insecure: true`
+  以保持连接。
+- 使用公共后缀列表推断 DNS zone，`home.example.co.uk` 这类记录不再需要显式配置
+  `zone`。
+- 自升级会先用内置的发布公钥校验 `checksums.txt` 的 minisign 签名，并拒绝以未签名
+  版本作为升级目标。
+- IP 变化通知改为在 DNS 记录更新成功或确认已匹配后发送，不再在可能失败的 DNS 更新之前
+  发送。
+- 配置了多个 provider 或 updater 但没有用 `use` 选择、在 jobs 模式下设置了
+  `providers.use` 或 `updaters.use`，以及 updater 的 `domain` 或 `zone` 被 job 替换时，
+  UDDNS 现在会输出 warning。
+- 精简 README 配置示例，并说明 `use`、jobs 与 updater 记录字段之间的关系。
+- 从源码构建需要 Go 1.27.2 或更新版本。
+
+### 修复
+
+- 网络接口 provider 每次检查都会重新查找接口，可以跟随重建的接口，例如 PPPoE 重连。
+- RouterOS REST 请求失败时会报告 HTTP 状态码和脱敏后的响应内容。
+- DuckDNS 接受以换行结尾的成功响应。
+- Discord 接受所有成功的 HTTP 状态码。
+- Scaleway 验证会把相互冲突的 A 或 AAAA 记录视为需要更新。
+
 ## v1.10.0 - 2026-07-26
 
 ### 新增
