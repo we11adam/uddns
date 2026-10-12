@@ -1,6 +1,6 @@
 module github.com/we11adam/uddns
 
-go 1.27.1
+go 1.27.2
 
 require (
 	aead.dev/minisign v0.3.0
