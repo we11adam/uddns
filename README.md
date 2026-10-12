@@ -171,25 +171,23 @@ the tightly controlled, root-owned file directly under
 
 ### Simple Mode
 
-Use simple mode when one UDDNS process updates one DNS record. This is the
+Use simple mode when every DNS record uses the same provider. This is the
 traditional configuration format and remains fully supported.
 
 ```yaml
 providers:
-  use: ip_service
-  routeros:
-    endpoint: https://192.168.88.1
-    username: admin
-    password: ""
-    insecure: false
   ip_service:
     - ifconfig.me
     - ip.fm
-  netif:
-    name: ppp0
+  # Other providers, see Providers below:
+  # routeros:
+  #   endpoint: https://192.168.88.1
+  #   username: admin
+  #   password: ""
+  # netif:
+  #   name: ppp0
 
 updaters:
-  use: cloudflare
   cloudflare:
     apitoken: your-cloudflare-api-token
     # Or use email + apikey:
@@ -198,27 +196,17 @@ updaters:
     domain: ddns.example.com
     # Optional. Override the zone inferred from the Public Suffix List.
     # zone: example.com
-    proxy: http://127.0.0.1:2080
-  aliyun:
-    accesskeyid: your-access-key-id
-    accesskeysecret: your-access-key-secret
-    domain: ddns.example.com
-    # Optional. Override the zone inferred from the Public Suffix List.
-    # zone: example.com
-    regionid: cn-hangzhou
-  duckdns:
-    token: your-duckdns-token
-    domain: your-subdomain
-  lightdns:
-    key: your-lightdns-key
-    domain: ddns.example.com
+    # proxy: http://127.0.0.1:2080
+  # Other updaters, see Updaters below:
+  # duckdns:
+  #   token: your-duckdns-token
+  #   domain: your-subdomain
 
 notifiers:
-  use: telegram
   telegram:
     chat_id: -1001234567890
     token: 1234567890:telegram-bot-token
-    proxy: http://127.0.0.1:2080
+    # proxy: http://127.0.0.1:2080
 
 # Optional. auto uses updater API verification when available.
 verify: auto
@@ -229,20 +217,89 @@ logging:
   retention_days: 7
 ```
 
-Configure at least one provider and one updater. Use `providers.use` and
-`updaters.use` to select a specific implementation when multiple entries are
-present. If `use` is omitted, UDDNS checks configured entries in deterministic
-registry order. A configured but invalid provider or updater stops startup with
-its configuration error instead of silently falling back to another entry.
+Configure at least one provider and one updater. With exactly one of each, no
+selection is needed. When several are configured, `providers.use` and
+`updaters.use` select them; both accept one name or a list:
+
+- `providers.use`: Providers to ask, in order. With several providers, UDDNS
+  falls back to the next provider when one fails or does not report an address,
+  separately for IPv4 and IPv6. For example, `[routeros, ip_service]` reads the
+  router first and fills in anything it cannot provide from IP services.
+- `updaters.use`: Updaters to run. Every listed updater updates the record in
+  its own `domain` as a separate job named after the updater.
+
+```yaml
+providers:
+  use: [routeros, ip_service]
+  routeros:
+    endpoint: https://192.168.88.1
+    username: admin
+    password: ""
+  ip_service:
+    - ifconfig.me
+
+updaters:
+  use: [cloudflare, duckdns]
+  cloudflare:
+    apitoken: your-cloudflare-api-token
+    domain: ddns.example.com
+  duckdns:
+    token: your-duckdns-token
+    domain: your-subdomain
+```
+
+If `use` is omitted while several entries are configured, UDDNS uses only the
+first in registry order and logs a warning that lists the ignored entries. A
+selected provider or updater with invalid configuration stops startup with its
+configuration error instead of silently falling back to another entry.
 Notifiers are optional; when configured, `notifiers.use` selects the notifier
 and invalid notifier configuration stops startup.
+
+### Named Instances
+
+Each key below `providers` and `updaters` names an instance. A key that is an
+implementation name, such as `cloudflare`, is an instance of that
+implementation. To configure the same implementation more than once, for
+example for two Cloudflare accounts, two Scaleway projects, or two network
+interfaces, choose another name and set `type`:
+
+```yaml
+providers:
+  wan1:
+    type: netif
+    name: ppp0
+  wan2:
+    type: netif
+    name: ppp1
+  public:
+    type: ip_service
+    services: [ifconfig.me, ip.fm]
+
+updaters:
+  use: [cf-personal, cf-work]
+  cf-personal:
+    type: cloudflare
+    apitoken: personal-token
+    domain: home.example.com
+  cf-work:
+    type: cloudflare
+    apitoken: work-token
+    domain: office.example.net
+```
+
+Named instances accept the same settings as their implementation; named
+`ip_service` instances list their services below `services`. Implementation
+names are reserved, so an instance named `cloudflare` cannot have another type.
+`use` and job `provider` and `updater` fields accept instance names, which are
+case-insensitive. An implementation name also selects the only instance of
+that type and is rejected as ambiguous when several instances share it.
 
 ### Advanced Jobs Mode
 
 Use jobs mode when one process should update multiple DNS records, use different
 DNS services, or update only selected address families. Providers describe how
 to obtain IP addresses, updaters describe how to access a DNS service, and each
-job connects one provider to one updater and one DNS record.
+job connects providers to one updater and one DNS record.
 
 ```yaml
 providers:
@@ -270,7 +327,8 @@ jobs:
     verify: updater_api
 
   - name: nas-duckdns
-    provider: netif
+    # Ask the interface first and fall back to IP services.
+    provider: [netif, ip_service]
     updater: duckdns
     record: your-subdomain
     families: [ipv4]
@@ -291,10 +349,11 @@ logging:
 Job fields:
 
 - `name`: Optional unique job name. Defaults to `job-<n>` when omitted.
-- `provider`: Provider implementation to use, for example `ip_service`,
-  `routeros`, or `netif`.
-- `updater`: Updater implementation to use, for example `cloudflare`,
-  `aliyun`, `duckdns`, `lightdns`, or `scaleway`.
+- `provider`: Provider instance to use, for example `ip_service`, `routeros`,
+  `netif`, or a named instance. A list of providers is asked in order, falling
+  back separately for IPv4 and IPv6 as with `providers.use`.
+- `updater`: Updater instance to use, for example `cloudflare`, `aliyun`,
+  `duckdns`, `lightdns`, `scaleway`, or a named instance.
 - `record`: DNS record to update. For DuckDNS this is the subdomain without
   `.duckdns.org`.
 - `zone`: Optional DNS zone override for Cloudflare, Aliyun, and Scaleway.
@@ -304,17 +363,21 @@ Job fields:
   `updater_api`; omitted means `auto`.
 
 When `jobs` is present, each job has its own last IPv4/IPv6 state and is run
-sequentially on the global update interval. Without `jobs`, UDDNS behaves as a
-single implicit `default` job using the simple-mode config. Notifications from
-named jobs are prefixed with the job name.
+sequentially on the global update interval. Without `jobs`, UDDNS runs one
+implicit `default` job using the simple-mode config, or one job per updater
+when `updaters.use` lists several. Notifications from named jobs are prefixed
+with the job name.
 
 Transient public-IP service and DNS update requests are retried. Repeated
 provider, strict-verification, or updater failures apply exponential backoff
 with jitter only to the affected job; other jobs continue to run.
 
-Jobs select provider and updater implementation names. Jobs that use the same
-implementation share that implementation's configuration, for example all
-`cloudflare` jobs use `updaters.cloudflare` credentials.
+Jobs that use the same instance share its configuration, for example all
+`cloudflare` jobs use `updaters.cloudflare` credentials. Use
+[named instances](#named-instances) for different accounts or settings. In
+jobs mode, `providers.use` and `updaters.use` are ignored, and each job's
+`record` and `zone` replace the updater's `domain` and `zone`; UDDNS logs a
+warning when those settings are present.
 
 Verify behavior:
 
@@ -473,6 +536,8 @@ Chinese release notes are available in [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
 
 Pull requests are welcome. For major changes, please open an issue first to
 discuss what you would like to change.
+
+To add a provider or updater, see [the extension guide](docs/extending.md).
 
 Maintainers should follow [the release-signing runbook](docs/release-signing.md)
 before creating a release.

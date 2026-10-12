@@ -149,25 +149,23 @@ credential 文件；普通的组可读配置仍会被拒绝。
 
 ### 简单模式
 
-如果一个 UDDNS 进程只更新一条 DNS 记录，使用简单模式即可。这是原有配置格式，
-会继续完整支持。
+如果所有 DNS 记录都使用同一个 provider，使用简单模式即可。这是原有配置格式，会继续
+完整支持。
 
 ```yaml
 providers:
-  use: ip_service
-  routeros:
-    endpoint: https://192.168.88.1
-    username: admin
-    password: ""
-    insecure: false
   ip_service:
     - ifconfig.me
     - ip.fm
-  netif:
-    name: ppp0
+  # 其他 provider，见下方 Providers：
+  # routeros:
+  #   endpoint: https://192.168.88.1
+  #   username: admin
+  #   password: ""
+  # netif:
+  #   name: ppp0
 
 updaters:
-  use: cloudflare
   cloudflare:
     apitoken: your-cloudflare-api-token
     # 也可以使用 email + apikey:
@@ -176,27 +174,17 @@ updaters:
     domain: ddns.example.com
     # 可选。覆盖通过公共后缀列表推断出的 DNS zone。
     # zone: example.com
-    proxy: http://127.0.0.1:2080
-  aliyun:
-    accesskeyid: your-access-key-id
-    accesskeysecret: your-access-key-secret
-    domain: ddns.example.com
-    # 可选。覆盖通过公共后缀列表推断出的 DNS zone。
-    # zone: example.com
-    regionid: cn-hangzhou
-  duckdns:
-    token: your-duckdns-token
-    domain: your-subdomain
-  lightdns:
-    key: your-lightdns-key
-    domain: ddns.example.com
+    # proxy: http://127.0.0.1:2080
+  # 其他 updater，见下方 Updaters：
+  # duckdns:
+  #   token: your-duckdns-token
+  #   domain: your-subdomain
 
 notifiers:
-  use: telegram
   telegram:
     chat_id: -1001234567890
     token: 1234567890:telegram-bot-token
-    proxy: http://127.0.0.1:2080
+    # proxy: http://127.0.0.1:2080
 
 # 可选。auto 会在 updater 支持时使用 updater API 验证。
 verify: auto
@@ -207,18 +195,81 @@ logging:
   retention_days: 7
 ```
 
-至少需要配置一个 provider 和一个 updater。如果同时配置多个 provider 或 updater，
-建议用 `providers.use` 和 `updaters.use` 明确选择。未设置 `use` 时，UDDNS 会按确定的
-registry 顺序检查已配置项。如果某个已配置的 provider 或 updater 配置错误，程序会直接
-报出该配置错误，而不是静默回退到其他配置。
+至少需要配置一个 provider 和一个 updater。各只配置一个时无需选择。配置了多个时，用
+`providers.use` 和 `updaters.use` 选择；两者都可以写一个名称或一个列表：
+
+- `providers.use`：按顺序询问的 provider。配置多个时，如果某个 provider 失败或没有
+  返回地址，UDDNS 会回退到下一个，IPv4 和 IPv6 分别回退。例如
+  `[routeros, ip_service]` 会先读取路由器，路由器拿不到的地址再从 IP 服务获取。
+- `updaters.use`：要运行的 updater。列出的每个 updater 都会作为一个以 updater 命名的
+  独立 job，更新各自 `domain` 中的记录。
+
+```yaml
+providers:
+  use: [routeros, ip_service]
+  routeros:
+    endpoint: https://192.168.88.1
+    username: admin
+    password: ""
+  ip_service:
+    - ifconfig.me
+
+updaters:
+  use: [cloudflare, duckdns]
+  cloudflare:
+    apitoken: your-cloudflare-api-token
+    domain: ddns.example.com
+  duckdns:
+    token: your-duckdns-token
+    domain: your-subdomain
+```
+
+如果配置了多个条目但没有设置 `use`，UDDNS 只会使用 registry 顺序中的第一个，并输出
+warning 列出被忽略的条目。被选中的 provider 或 updater 配置错误时，程序会直接报出该
+配置错误，而不是静默回退到其他配置。
 notifier 是可选的；配置 notifier 时可以用 `notifiers.use` 明确选择，配置错误会让程序
 在启动时失败。
+
+### 命名实例
+
+`providers` 和 `updaters` 下的每个 key 都是一个实例名。key 为实现名（例如
+`cloudflare`）时，就是该实现的实例。如果需要多次配置同一个实现，例如两个 Cloudflare
+账号、两个 Scaleway 项目或两个网络接口，可以使用其他名称并设置 `type`：
+
+```yaml
+providers:
+  wan1:
+    type: netif
+    name: ppp0
+  wan2:
+    type: netif
+    name: ppp1
+  public:
+    type: ip_service
+    services: [ifconfig.me, ip.fm]
+
+updaters:
+  use: [cf-personal, cf-work]
+  cf-personal:
+    type: cloudflare
+    apitoken: personal-token
+    domain: home.example.com
+  cf-work:
+    type: cloudflare
+    apitoken: work-token
+    domain: office.example.net
+```
+
+命名实例的配置项与其实现相同；命名的 `ip_service` 实例在 `services` 下列出服务。实现名
+是保留名称，名为 `cloudflare` 的实例不能使用其他类型。`use` 以及 job 的 `provider`、
+`updater` 字段都可以使用实例名，不区分大小写。实现名也可以选中该类型唯一的实例；同一
+类型有多个实例时，使用实现名会因有歧义而报错。
 
 ### 高级 Jobs 模式
 
 如果一个进程需要更新多条 DNS 记录、使用不同 DNS 服务，或者只更新指定地址族，可以使用
 jobs 模式。provider 只描述如何获取 IP，updater 只描述如何访问 DNS 服务，每个 job
-负责把一个 provider、一个 updater 和一条 DNS 记录连接起来。
+负责把 provider、一个 updater 和一条 DNS 记录连接起来。
 
 ```yaml
 providers:
@@ -246,7 +297,8 @@ jobs:
     verify: updater_api
 
   - name: nas-duckdns
-    provider: netif
+    # 先读取网络接口，失败时回退到 IP 服务。
+    provider: [netif, ip_service]
     updater: duckdns
     record: your-subdomain
     families: [ipv4]
@@ -267,23 +319,27 @@ logging:
 job 字段：
 
 - `name`：可选的唯一任务名。不设置时默认为 `job-<n>`。
-- `provider`：要使用的 provider，例如 `ip_service`、`routeros` 或 `netif`。
-- `updater`：要使用的 updater，例如 `cloudflare`、`aliyun`、`duckdns`、`lightdns`
-  或 `scaleway`。
+- `provider`：要使用的 provider 实例，例如 `ip_service`、`routeros`、`netif` 或命名
+  实例。写成列表时按顺序询问，与 `providers.use` 一样分别对 IPv4 和 IPv6 回退。
+- `updater`：要使用的 updater 实例，例如 `cloudflare`、`aliyun`、`duckdns`、
+  `lightdns`、`scaleway` 或命名实例。
 - `record`：需要更新的 DNS 记录。DuckDNS 使用不包含 `.duckdns.org` 的子域名。
 - `zone`：Cloudflare、Aliyun 和 Scaleway 可选的 DNS zone 覆盖。
 - `families`：可选地址族。支持 `ipv4` 和 `ipv6`；不设置时更新两者。
 - `verify`：可选验证模式。支持 `auto`、`off` 和 `updater_api`；不设置时为 `auto`。
 
 存在 `jobs` 时，每个 job 都有独立的 last IPv4/IPv6 状态，并按全局更新间隔顺序执行。
-没有 `jobs` 时，UDDNS 会按简单模式配置运行一个隐式的 `default` job。命名 job 发出的
-通知会自动带上 job 名作为前缀。
+没有 `jobs` 时，UDDNS 会按简单模式配置运行一个隐式的 `default` job；`updaters.use`
+列出多个 updater 时，则每个 updater 运行一个 job。命名 job 发出的通知会自动带上 job
+名作为前缀。
 
 瞬时公网 IP 服务和 DNS 更新请求会进行重试。provider、严格验证或 updater 连续失败时，
 只会对受影响的 job 应用带抖动的指数退避，其他 jobs 会继续运行。
 
-job 选择的是 provider/updater 的实现名。使用同一个实现的多个 job 会共享该实现的配置；
-例如所有 `cloudflare` job 都会使用 `updaters.cloudflare` 里的凭据。
+使用同一个实例的多个 job 会共享该实例的配置；例如所有 `cloudflare` job 都会使用
+`updaters.cloudflare` 里的凭据。需要不同账号或配置时请使用[命名实例](#命名实例)。
+jobs 模式下会忽略 `providers.use` 和 `updaters.use`，并用每个 job 的 `record` 和
+`zone` 替换 updater 的 `domain` 和 `zone`；这些配置存在时 UDDNS 会输出 warning。
 
 verify 行为：
 
@@ -434,6 +490,8 @@ UDDNS 创建的日志目录权限为 `0700`，日志文件权限为 `0600`，并
 ## 贡献
 
 欢迎提交 Pull Request。较大的改动建议先开 issue 说明计划。
+
+新增 provider 或 updater 请参考[扩展指南](docs/extending.md)。
 
 维护者发布版本前应遵循[发布签名操作手册](docs/release-signing.md)。
 
