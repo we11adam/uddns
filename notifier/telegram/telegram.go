@@ -11,6 +11,8 @@ import (
 	"github.com/go-resty/resty/v2"
 	"github.com/we11adam/uddns/internal/proxyurl"
 	"github.com/we11adam/uddns/internal/redact"
+	"github.com/we11adam/uddns/internal/restyretry"
+	"github.com/we11adam/uddns/internal/retry"
 	"github.com/we11adam/uddns/notifier"
 )
 
@@ -30,6 +32,9 @@ type apiResponse struct {
 	OK          bool   `json:"ok"`
 	ErrorCode   int    `json:"error_code"`
 	Description string `json:"description"`
+	Parameters  struct {
+		RetryAfter int `json:"retry_after"`
+	} `json:"parameters"`
 }
 
 func init() {
@@ -79,7 +84,20 @@ func newHTTPClient(token string, proxy *url.URL) *resty.Client {
 	if proxy != nil {
 		client.SetProxy(proxy.String())
 	}
-	return client
+	return restyretry.ConfigureTransientWithDelay(client, retryDelay)
+}
+
+// retryDelay returns the wait Telegram requests in the body of a rate-limited
+// response, falling back to the Retry-After header.
+func retryDelay(response *resty.Response) time.Duration {
+	if response == nil || response.RawResponse == nil {
+		return 0
+	}
+	apiResp := apiResponse{}
+	if json.Unmarshal(response.Body(), &apiResp) == nil && apiResp.Parameters.RetryAfter > 0 {
+		return time.Duration(apiResp.Parameters.RetryAfter) * time.Second
+	}
+	return restyretry.HeaderDelay(response)
 }
 
 func (t *Telegram) Notify(ctx context.Context, notification notifier.Notification) error {
@@ -94,7 +112,8 @@ func (t *Telegram) Notify(ctx context.Context, notification notifier.Notificatio
 	apiResp := apiResponse{}
 	decodeErr := json.Unmarshal(resp.Body(), &apiResp)
 	if !resp.IsSuccess() {
-		return t.apiError(resp.StatusCode(), apiResp)
+		err := t.apiError(resp.StatusCode(), apiResp)
+		return retry.After(retry.ClassifyStatus(resp.StatusCode(), err), retryDelay(resp))
 	}
 	if decodeErr != nil {
 		return redact.Error(fmt.Errorf("failed to decode Telegram API response: %w", decodeErr), t.Token)

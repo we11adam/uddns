@@ -6,11 +6,13 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/go-resty/resty/v2"
 
+	"github.com/we11adam/uddns/internal/retry"
 	"github.com/we11adam/uddns/internal/testutil"
 	"github.com/we11adam/uddns/notifier"
 )
@@ -190,6 +192,95 @@ func TestNotifyDiscordAPIResponse(t *testing.T) {
 			}
 			if err != nil {
 				testutil.AssertTokenRedacted(t, err.Error(), token)
+			}
+		})
+	}
+}
+
+func TestNotifyRetriesAndClassifiesFailures(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name           string
+		statusCodes    []int
+		responses      []string
+		retryAfter     string
+		wantAttempts   int32
+		wantErr        bool
+		wantPermanent  bool
+		wantRetryAfter time.Duration
+	}{
+		{
+			name:         "transient server error",
+			statusCodes:  []int{http.StatusServiceUnavailable, http.StatusNoContent},
+			responses:    []string{`{"message":"unavailable","code":0}`, ``},
+			wantAttempts: 2,
+		},
+		{
+			name:         "short rate limit",
+			statusCodes:  []int{http.StatusTooManyRequests, http.StatusNoContent},
+			responses:    []string{`{"message":"You are being rate limited.","retry_after":0.01,"global":false}`, ``},
+			wantAttempts: 2,
+		},
+		{
+			name:           "long rate limit",
+			statusCodes:    []int{http.StatusTooManyRequests},
+			responses:      []string{`{"message":"You are being rate limited.","retry_after":12.5,"global":false}`},
+			wantAttempts:   1,
+			wantErr:        true,
+			wantRetryAfter: 12500 * time.Millisecond,
+		},
+		{
+			name:           "rate limit header",
+			statusCodes:    []int{http.StatusTooManyRequests},
+			retryAfter:     "30",
+			wantAttempts:   1,
+			wantErr:        true,
+			wantRetryAfter: 30 * time.Second,
+		},
+		{
+			name:          "unknown webhook",
+			statusCodes:   []int{http.StatusNotFound},
+			responses:     []string{`{"message":"Unknown Webhook","code":10015}`},
+			wantAttempts:  1,
+			wantErr:       true,
+			wantPermanent: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			var attempts atomic.Int32
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				attempt := min(int(attempts.Add(1)), len(tt.statusCodes)) - 1
+				w.Header().Set("Content-Type", "application/json")
+				if tt.retryAfter != "" {
+					w.Header().Set("Retry-After", tt.retryAfter)
+				}
+				w.WriteHeader(tt.statusCodes[attempt])
+				if attempt < len(tt.responses) {
+					_, _ = w.Write([]byte(tt.responses[attempt]))
+				}
+			}))
+			defer server.Close()
+
+			discord, err := New(&Discord{URL: server.URL})
+			if err != nil {
+				t.Fatalf("create Discord notifier: %v", err)
+			}
+			discord.hc.SetRetryWaitTime(time.Millisecond)
+			err = discord.Notify(context.Background(), notifier.Notification{Message: "test"})
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("expected wantErr=%v, got err=%v", tt.wantErr, err)
+			}
+			if got := attempts.Load(); got != tt.wantAttempts {
+				t.Fatalf("attempts = %d, want %d", got, tt.wantAttempts)
+			}
+			if retry.IsPermanent(err) != tt.wantPermanent {
+				t.Fatalf("permanent = %t, want %t for %v", retry.IsPermanent(err), tt.wantPermanent, err)
+			}
+			if delay, _ := retry.RetryAfter(err); delay != tt.wantRetryAfter {
+				t.Fatalf("retry after = %s, want %s", delay, tt.wantRetryAfter)
 			}
 		})
 	}

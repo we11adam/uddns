@@ -13,6 +13,8 @@ import (
 
 	"github.com/we11adam/uddns/internal/proxyurl"
 	"github.com/we11adam/uddns/internal/redact"
+	"github.com/we11adam/uddns/internal/restyretry"
+	"github.com/we11adam/uddns/internal/retry"
 	"github.com/we11adam/uddns/notifier"
 )
 
@@ -20,6 +22,8 @@ const (
 	requestTimeout    = 10 * time.Second
 	responseBodyLimit = 256 << 10
 	userAgent         = "DiscordBot (https://github.com/we11adam/uddns, 1.0)"
+
+	maxRetryAfterSeconds = 24 * 60 * 60
 )
 
 type Discord struct {
@@ -43,8 +47,9 @@ type webhookMessage struct {
 }
 
 type apiResponse struct {
-	Code    int    `json:"code"`
-	Message string `json:"message"`
+	Code       int     `json:"code"`
+	Message    string  `json:"message"`
+	RetryAfter float64 `json:"retry_after"`
 }
 
 func init() {
@@ -106,7 +111,20 @@ func (d *Discord) newHTTPClient() (*resty.Client, error) {
 		client.SetProxy(d.Proxy)
 	}
 
-	return client, nil
+	return restyretry.ConfigureTransientWithDelay(client, retryDelay), nil
+}
+
+// retryDelay returns the wait Discord requests in the body of a rate-limited
+// response, falling back to the Retry-After header.
+func retryDelay(response *resty.Response) time.Duration {
+	if response == nil || response.RawResponse == nil {
+		return 0
+	}
+	apiResp := apiResponse{}
+	if json.Unmarshal(response.Body(), &apiResp) == nil && apiResp.RetryAfter > 0 {
+		return time.Duration(min(apiResp.RetryAfter, maxRetryAfterSeconds) * float64(time.Second))
+	}
+	return restyretry.HeaderDelay(response)
 }
 
 func (d *Discord) Notify(ctx context.Context, notification notifier.Notification) error {
@@ -136,13 +154,15 @@ func (d *Discord) Notify(ctx context.Context, notification notifier.Notification
 	if resp.IsSuccess() {
 		return nil
 	}
+	delay := retryDelay(resp)
 	if resp.StatusCode() == http.StatusTooManyRequests {
-		return d.redactError(fmt.Errorf("Discord API request failed, rate limited, retry after %s", resp.Header().Get("Retry-After")))
+		return retry.After(d.redactError(fmt.Errorf("Discord API request failed, rate limited, retry after %s", delay)), delay)
 	}
 
 	apiResp := apiResponse{}
 	_ = json.Unmarshal(resp.Body(), &apiResp)
-	return d.redactError(d.apiError(resp.StatusCode(), apiResp))
+	err = d.redactError(d.apiError(resp.StatusCode(), apiResp))
+	return retry.After(retry.ClassifyStatus(resp.StatusCode(), err), delay)
 }
 
 func (d *Discord) apiError(statusCode int, response apiResponse) error {

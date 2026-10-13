@@ -7,11 +7,13 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/go-resty/resty/v2"
 
+	"github.com/we11adam/uddns/internal/retry"
 	"github.com/we11adam/uddns/internal/testutil"
 	"github.com/we11adam/uddns/notifier"
 )
@@ -127,6 +129,75 @@ func TestNotifyChecksTelegramAPIResponse(t *testing.T) {
 			}
 			if err != nil {
 				testutil.AssertTokenRedacted(t, err.Error(), token)
+			}
+		})
+	}
+}
+
+func TestNotifyRetriesAndClassifiesFailures(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name           string
+		responses      []string
+		statusCodes    []int
+		wantAttempts   int32
+		wantErr        bool
+		wantPermanent  bool
+		wantRetryAfter time.Duration
+	}{
+		{
+			name:         "transient server error",
+			statusCodes:  []int{http.StatusBadGateway, http.StatusOK},
+			responses:    []string{`{"ok":false,"error_code":502,"description":"Bad Gateway"}`, `{"ok":true,"result":{}}`},
+			wantAttempts: 2,
+		},
+		{
+			name:           "long rate limit",
+			statusCodes:    []int{http.StatusTooManyRequests},
+			responses:      []string{`{"ok":false,"error_code":429,"description":"Too Many Requests: retry after 30","parameters":{"retry_after":30}}`},
+			wantAttempts:   1,
+			wantErr:        true,
+			wantRetryAfter: 30 * time.Second,
+		},
+		{
+			name:          "unauthorized",
+			statusCodes:   []int{http.StatusUnauthorized},
+			responses:     []string{`{"ok":false,"error_code":401,"description":"Unauthorized"}`},
+			wantAttempts:  1,
+			wantErr:       true,
+			wantPermanent: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			var attempts atomic.Int32
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				attempt := min(int(attempts.Add(1)), len(tt.responses)) - 1
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(tt.statusCodes[attempt])
+				_, _ = w.Write([]byte(tt.responses[attempt]))
+			}))
+			defer server.Close()
+
+			telegram := &Telegram{
+				Token:  "token",
+				ChatID: "123456",
+				hc:     newHTTPClient("token", nil).SetBaseURL(server.URL).SetRetryWaitTime(time.Millisecond),
+			}
+			err := telegram.Notify(context.Background(), notifier.Notification{Message: "test"})
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("expected wantErr=%v, got err=%v", tt.wantErr, err)
+			}
+			if got := attempts.Load(); got != tt.wantAttempts {
+				t.Fatalf("attempts = %d, want %d", got, tt.wantAttempts)
+			}
+			if retry.IsPermanent(err) != tt.wantPermanent {
+				t.Fatalf("permanent = %t, want %t for %v", retry.IsPermanent(err), tt.wantPermanent, err)
+			}
+			if delay, _ := retry.RetryAfter(err); delay != tt.wantRetryAfter {
+				t.Fatalf("retry after = %s, want %s", delay, tt.wantRetryAfter)
 			}
 		})
 	}
