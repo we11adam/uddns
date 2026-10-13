@@ -370,9 +370,27 @@ implicit `default` job using the simple-mode config, or one job per updater
 when `updaters.use` lists several. Notifications from named jobs are prefixed
 with the job name.
 
-Transient public-IP service and DNS update requests are retried. Repeated
-provider, strict-verification, or updater failures apply exponential backoff
-with jitter only to the affected job; other jobs continue to run.
+Public-IP service, DNS API, and notifier requests that fail with a network
+error, rate limiting, or a server error are retried up to 3 times within a few
+seconds. Errors that a retry cannot fix, such as rejected credentials or a
+missing zone, are not retried immediately. When a job's provider, strict verification, or
+DNS update keeps failing, only that job backs off exponentially with jitter;
+other jobs continue to run. The backoff is capped at 5 minutes for transient
+DNS API errors and at 30 minutes for provider errors and permanent DNS API
+errors, or at the update interval if it is longer. A `Retry-After` delay
+requested by a service is honored.
+
+Notifications are queued in memory and sent in the background, so an
+unreachable notifier never delays DNS updates. Failed deliveries are retried
+with backoff from 5 seconds to 5 minutes. A newer message of the same kind
+from the same job (IPv4 change, IPv6 change, or update result) replaces a
+queued one, so a long outage delivers the latest state instead of a backlog.
+Messages delivered more than a minute late include the time the event was
+detected, and messages older than 24 hours are dropped. On shutdown, UDDNS
+tries for up to 5 seconds to send what is still queued. An update failure is
+notified once per failure episode, and the recovery message reports how many
+attempts failed and for how long. A notification can occasionally arrive twice
+when a request times out after the notifier accepted it.
 
 Jobs that use the same instance share its configuration, for example all
 `cloudflare` jobs use `updaters.cloudflare` credentials. Use

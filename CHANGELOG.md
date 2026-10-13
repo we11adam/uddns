@@ -4,7 +4,25 @@ All notable changes to UDDNS are documented here, based on the Git commit histor
 
 ## Unreleased
 
-No changes yet.
+### Added
+
+- Notifications are queued and sent in the background, so an unreachable
+  notifier no longer delays DNS updates or loses messages. Failed deliveries
+  are retried with backoff, newer messages replace queued ones of the same
+  kind, and late messages include the time the event was detected.
+- Scaleway, Aliyun, Telegram, and Discord requests are retried on network
+  errors, rate limiting, and server errors.
+
+### Changed
+
+- Jobs retry transient DNS API errors after at most 5 minutes instead of 30.
+  Provider errors and permanent DNS API errors, such as rejected credentials,
+  still back off up to 30 minutes.
+- Requests and job retries honor `Retry-After` delays from rate-limited
+  services.
+- An update failure is notified once per failure episode instead of every time
+  the error message changes, and the recovery message reports how many
+  attempts failed and for how long.
 
 ## v1.11.0 - 2026-10-12
 
