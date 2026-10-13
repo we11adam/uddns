@@ -14,6 +14,7 @@ import (
 	"github.com/we11adam/uddns/internal/dnsname"
 	"github.com/we11adam/uddns/internal/httpbody"
 	"github.com/we11adam/uddns/internal/proxyurl"
+	"github.com/we11adam/uddns/internal/retry"
 	"github.com/we11adam/uddns/provider"
 	"github.com/we11adam/uddns/updater"
 )
@@ -158,10 +159,11 @@ func isRetryableStatus(statusCode int) bool {
 }
 
 func (c *Cloudflare) Update(ctx context.Context, ips *provider.IpResult) error {
-	return c.retryWithFreshZoneID(ctx, func() error {
+	// The SDK already retries transient responses, so only classify the result.
+	return classifyError(c.retryWithFreshZoneID(ctx, func() error {
 		if ips.IPv4 != "" {
 			if !provider.IsValidIPv4(ips.IPv4) {
-				return fmt.Errorf("invalid IPv4 address: %s", ips.IPv4)
+				return retry.Permanent(fmt.Errorf("invalid IPv4 address: %s", ips.IPv4))
 			}
 			if err := c.updateDNSRecord(ctx, recordTypeA, ips.IPv4); err != nil {
 				return fmt.Errorf("failed to update Cloudflare IPv4 record: %w", err)
@@ -170,7 +172,7 @@ func (c *Cloudflare) Update(ctx context.Context, ips *provider.IpResult) error {
 
 		if ips.IPv6 != "" {
 			if !provider.IsValidIPv6(ips.IPv6) {
-				return fmt.Errorf("invalid IPv6 address: %s", ips.IPv6)
+				return retry.Permanent(fmt.Errorf("invalid IPv6 address: %s", ips.IPv6))
 			}
 			if err := c.updateDNSRecord(ctx, recordTypeAAAA, ips.IPv6); err != nil {
 				return fmt.Errorf("failed to update Cloudflare IPv6 record: %w", err)
@@ -178,7 +180,7 @@ func (c *Cloudflare) Update(ctx context.Context, ips *provider.IpResult) error {
 		}
 
 		return nil
-	})
+	}))
 }
 
 func (c *Cloudflare) Current(ctx context.Context, families provider.FamilyRequest) (*provider.IpResult, error) {
@@ -206,7 +208,7 @@ func (c *Cloudflare) Current(ctx context.Context, families provider.FamilyReques
 		return nil
 	})
 	if err != nil {
-		return nil, err
+		return nil, classifyError(err)
 	}
 
 	return result, nil
@@ -230,6 +232,16 @@ func (c *Cloudflare) retryWithFreshZoneID(ctx context.Context, operation func() 
 	err = operation()
 	if isStaleZoneIDError(err) {
 		c.zoneID = ""
+	}
+	return err
+}
+
+// classifyError marks Cloudflare API errors that a retry cannot fix, such as
+// rejected credentials, as permanent.
+func classifyError(err error) error {
+	var apiErr *cloudflare.Error
+	if errors.As(err, &apiErr) {
+		return retry.ClassifyStatus(apiErr.StatusCode, err)
 	}
 	return err
 }
@@ -268,11 +280,11 @@ func (c *Cloudflare) zoneIDByName(ctx context.Context, zone string) (string, err
 
 	switch len(response.Result) {
 	case 0:
-		return "", errors.New("zone could not be found")
+		return "", retry.Permanent(errors.New("zone could not be found"))
 	case 1:
 		return response.Result[0].ID, nil
 	default:
-		return "", errors.New("ambiguous zone name; an account ID might help")
+		return "", retry.Permanent(errors.New("ambiguous zone name; an account ID might help"))
 	}
 }
 

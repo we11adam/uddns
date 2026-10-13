@@ -13,6 +13,7 @@ import (
 	"github.com/we11adam/uddns/internal/dnsname"
 	"github.com/we11adam/uddns/internal/redact"
 	"github.com/we11adam/uddns/internal/restyretry"
+	"github.com/we11adam/uddns/internal/retry"
 	"github.com/we11adam/uddns/provider"
 	"github.com/we11adam/uddns/updater"
 )
@@ -107,10 +108,11 @@ func (c *DuckDNS) updateIP(ctx context.Context, ip string) error {
 	body := string(resp.Body())
 
 	if resp.StatusCode() != http.StatusOK {
-		return fmt.Errorf("failed to update DuckDNS DNS record: HTTP status %d: %s", resp.StatusCode(), redact.String(body, c.config.Token))
+		return retry.ClassifyStatus(resp.StatusCode(), fmt.Errorf("failed to update DuckDNS DNS record: HTTP status %d: %s", resp.StatusCode(), redact.String(body, c.config.Token)))
 	}
 	if strings.TrimSpace(body) != "OK" {
-		return fmt.Errorf("failed to update DuckDNS DNS record: %s", redact.String(body, c.config.Token))
+		// DuckDNS answers KO for a wrong token or domain.
+		return retry.Permanent(fmt.Errorf("failed to update DuckDNS DNS record: %s", redact.String(body, c.config.Token)))
 	}
 
 	slog.Info("updated DNS record", "updater", "duckdns", "record", c.config.Domain, "ip", ip)

@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	cloudflareapi "github.com/cloudflare/cloudflare-go"
+	"github.com/we11adam/uddns/internal/retry"
 	"github.com/we11adam/uddns/provider"
 )
 
@@ -446,11 +447,13 @@ func TestZoneIDIsNotRefreshedForUnrelatedAPIErrors(t *testing.T) {
 		name       string
 		statusCode int
 		errorCode  int
+		permanent  bool
 	}{
-		{name: "unauthorized", statusCode: http.StatusUnauthorized, errorCode: 9109},
-		{name: "forbidden", statusCode: http.StatusForbidden, errorCode: 9109},
+		{name: "unauthorized", statusCode: http.StatusUnauthorized, errorCode: 9109, permanent: true},
+		{name: "forbidden", statusCode: http.StatusForbidden, errorCode: 9109, permanent: true},
 		{name: "rate limited", statusCode: http.StatusTooManyRequests, errorCode: 1015},
-		{name: "other bad request", statusCode: http.StatusBadRequest, errorCode: 10000},
+		{name: "other bad request", statusCode: http.StatusBadRequest, errorCode: 10000, permanent: true},
+		{name: "server error", statusCode: http.StatusInternalServerError, errorCode: 10000},
 	}
 
 	for _, tt := range tests {
@@ -473,8 +476,12 @@ func TestZoneIDIsNotRefreshedForUnrelatedAPIErrors(t *testing.T) {
 			defer server.Close()
 
 			cloudflare := newCloudflareTestUpdater(t, server, "cached-zone")
-			if _, err := cloudflare.Current(context.Background(), provider.FamilyRequest{IPv4: true}); err == nil {
+			_, err := cloudflare.Current(context.Background(), provider.FamilyRequest{IPv4: true})
+			if err == nil {
 				t.Fatal("expected API error")
+			}
+			if retry.IsPermanent(err) != tt.permanent {
+				t.Fatalf("permanent = %t, want %t for %v", retry.IsPermanent(err), tt.permanent, err)
 			}
 			if cloudflare.zoneID != "cached-zone" {
 				t.Fatalf("zone ID = %q, want cached-zone", cloudflare.zoneID)
@@ -483,6 +490,23 @@ func TestZoneIDIsNotRefreshedForUnrelatedAPIErrors(t *testing.T) {
 				t.Fatalf("request counts records=%d lookup=%d, want 1 and 0", recordLists, zoneLookups)
 			}
 		})
+	}
+}
+
+func TestMissingZoneIsPermanent(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/zones" {
+			t.Errorf("unexpected request: %s %s", request.Method, request.URL.Path)
+		}
+		writeCloudflareResult(w, []map[string]any{}, 0)
+	}))
+	defer server.Close()
+
+	cloudflare := newCloudflareTestUpdater(t, server, "")
+	err := cloudflare.Update(context.Background(), &provider.IpResult{IPv4: "192.0.2.10"})
+	if !retry.IsPermanent(err) {
+		t.Fatalf("expected permanent missing-zone error, got %v", err)
 	}
 }
 

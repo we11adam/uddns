@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/we11adam/uddns/internal/restyretry"
+	"github.com/we11adam/uddns/internal/retry"
 )
 
 type roundTripFunc func(*http.Request) (*http.Response, error)
@@ -95,12 +96,13 @@ func TestUpdateIPRequiresHTTP200AndOKBody(t *testing.T) {
 		status       int
 		body         string
 		wantErr      bool
+		permanent    bool
 		wantAttempts int32
 	}{
 		{name: "HTTP 200 and OK", status: http.StatusOK, body: "OK", wantAttempts: 1},
 		{name: "HTTP 200 and OK with newline", status: http.StatusOK, body: "OK\n", wantAttempts: 1},
 		{name: "HTTP 500 and OK", status: http.StatusInternalServerError, body: "OK", wantErr: true, wantAttempts: int32(restyretry.MaxRetries + 1)},
-		{name: "HTTP 200 and KO", status: http.StatusOK, body: "KO", wantErr: true, wantAttempts: 1},
+		{name: "HTTP 200 and KO", status: http.StatusOK, body: "KO", wantErr: true, permanent: true, wantAttempts: 1},
 	}
 
 	for _, tt := range tests {
@@ -126,6 +128,9 @@ func TestUpdateIPRequiresHTTP200AndOKBody(t *testing.T) {
 			if err != nil {
 				assertTokenRedacted(t, err.Error(), token)
 			}
+			if retry.IsPermanent(err) != tt.permanent {
+				t.Fatalf("permanent = %t, want %t", retry.IsPermanent(err), tt.permanent)
+			}
 			if got := attempts.Load(); got != tt.wantAttempts {
 				t.Fatalf("attempts = %d, want %d", got, tt.wantAttempts)
 			}
@@ -146,8 +151,8 @@ func TestUpdateIPDoesNotRetryPermanentClientError(t *testing.T) {
 	duckDNS.httpclient.SetBaseURL(server.URL).
 		SetRetryWaitTime(time.Millisecond).
 		SetRetryMaxWaitTime(2 * time.Millisecond)
-	if err := duckDNS.updateIP(context.Background(), "192.0.2.1"); err == nil {
-		t.Fatal("expected permanent client error")
+	if err := duckDNS.updateIP(context.Background(), "192.0.2.1"); !retry.IsPermanent(err) {
+		t.Fatalf("expected permanent client error, got %v", err)
 	}
 	if got := attempts.Load(); got != 1 {
 		t.Fatalf("attempts = %d, want 1", got)

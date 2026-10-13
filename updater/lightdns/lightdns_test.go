@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/we11adam/uddns/internal/restyretry"
+	"github.com/we11adam/uddns/internal/retry"
 )
 
 type roundTripFunc func(*http.Request) (*http.Response, error)
@@ -101,8 +102,8 @@ func TestUpdateIPDoesNotRetryPermanentClientError(t *testing.T) {
 	lightDNS.httpclient.SetBaseURL(server.URL).
 		SetRetryWaitTime(time.Millisecond).
 		SetRetryMaxWaitTime(2 * time.Millisecond)
-	if err := lightDNS.updateIP(context.Background(), "192.0.2.1"); err == nil {
-		t.Fatal("expected permanent client error")
+	if err := lightDNS.updateIP(context.Background(), "192.0.2.1"); !retry.IsPermanent(err) {
+		t.Fatalf("expected permanent client error, got %v", err)
 	}
 	if got := attempts.Load(); got != 1 {
 		t.Fatalf("attempts = %d, want 1", got)
