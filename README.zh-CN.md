@@ -11,7 +11,8 @@ UDDNS 是一个轻量的动态 DNS 更新器。它会从 provider 获取当前�
 - Provider：RouterOS、外部 IP 服务、本机网络接口，支持按地址族顺序回退。
 - Updater：Cloudflare、Aliyun、DuckDNS、LightDNS、Scaleway。
 - 每种 provider 和 updater 都可以配置多个命名实例。
-- Notifier：Telegram、Discord。
+- Notifier：Telegram、Discord，通知排队发送，故障期间自动重试。
+- IP 服务、DNS API 和 notifier 不可用时会带退避重试。
 - 支持通过环境变量配置更新间隔。
 - 结构化日志，支持按自然日轮转文件日志和保留天数清理。
 - 支持 curl 安装器，并可选择安装为 systemd 服务。

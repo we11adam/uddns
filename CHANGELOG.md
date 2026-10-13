@@ -4,6 +4,10 @@ All notable changes to UDDNS are documented here, based on the Git commit histor
 
 ## Unreleased
 
+No changes yet.
+
+## v1.12.0 - 2026-10-14
+
 ### Added
 
 - Notifications are queued and sent in the background, so an unreachable

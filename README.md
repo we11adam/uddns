@@ -13,7 +13,9 @@ notifications when the IP address or update status changes.
   with ordered per-family fallback.
 - Updaters: Cloudflare, Aliyun, DuckDNS, LightDNS and Scaleway.
 - Multiple named instances of each provider and updater.
-- Notifiers: Telegram and Discord.
+- Notifiers: Telegram and Discord, with queued delivery that retries during
+  outages.
+- Retries with backoff for unreachable IP services, DNS APIs, and notifiers.
 - Configurable update interval.
 - Structured logs with optional daily rotated file logging and retention.
 - Curl installer with optional systemd service installation.
