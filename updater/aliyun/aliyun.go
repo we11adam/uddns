@@ -2,16 +2,20 @@ package aliyun
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	alidns "github.com/alibabacloud-go/alidns-20150109/v4/client"
 	openapi "github.com/alibabacloud-go/darabonba-openapi/v2/client"
 	"github.com/alibabacloud-go/tea/dara"
+	"github.com/alibabacloud-go/tea/tea"
 	"github.com/we11adam/uddns/internal/dnsname"
 	"github.com/we11adam/uddns/internal/httpbody"
+	"github.com/we11adam/uddns/internal/retry"
 	"github.com/we11adam/uddns/provider"
 	"github.com/we11adam/uddns/updater"
 )
@@ -131,7 +135,7 @@ func (a *Aliyun) Update(ctx context.Context, ips *provider.IpResult) error {
 		if !provider.IsValidIPv4(ips.IPv4) {
 			return fmt.Errorf("invalid IPv4 address: %s", ips.IPv4)
 		}
-		if err := a.updateDNSRecord(ctx, recordTypeA, ips.IPv4); err != nil {
+		if err := withRetry(ctx, func() error { return a.updateDNSRecord(ctx, recordTypeA, ips.IPv4) }); err != nil {
 			return fmt.Errorf("failed to update IPv4 record: %w", err)
 		}
 	}
@@ -140,7 +144,7 @@ func (a *Aliyun) Update(ctx context.Context, ips *provider.IpResult) error {
 		if !provider.IsValidIPv6(ips.IPv6) {
 			return fmt.Errorf("invalid IPv6 address: %s", ips.IPv6)
 		}
-		if err := a.updateDNSRecord(ctx, recordTypeAAAA, ips.IPv6); err != nil {
+		if err := withRetry(ctx, func() error { return a.updateDNSRecord(ctx, recordTypeAAAA, ips.IPv6) }); err != nil {
 			return fmt.Errorf("failed to update IPv6 record: %w", err)
 		}
 	}
@@ -155,7 +159,11 @@ func (a *Aliyun) Current(ctx context.Context, families provider.FamilyRequest) (
 	result := &provider.IpResult{}
 
 	if families.IPv4 {
-		ipv4, err := a.currentDNSRecord(ctx, recordTypeA)
+		var ipv4 string
+		err := withRetry(ctx, func() (err error) {
+			ipv4, err = a.currentDNSRecord(ctx, recordTypeA)
+			return err
+		})
 		if err != nil {
 			return nil, fmt.Errorf("failed to get Aliyun IPv4 record: %w", err)
 		}
@@ -163,7 +171,11 @@ func (a *Aliyun) Current(ctx context.Context, families provider.FamilyRequest) (
 	}
 
 	if families.IPv6 {
-		ipv6, err := a.currentDNSRecord(ctx, recordTypeAAAA)
+		var ipv6 string
+		err := withRetry(ctx, func() (err error) {
+			ipv6, err = a.currentDNSRecord(ctx, recordTypeAAAA)
+			return err
+		})
 		if err != nil {
 			return nil, fmt.Errorf("failed to get Aliyun IPv6 record: %w", err)
 		}
@@ -171,6 +183,27 @@ func (a *Aliyun) Current(ctx context.Context, families provider.FamilyRequest) (
 	}
 
 	return result, nil
+}
+
+// withRetry repeats a record operation on transient API failures. Every SDK
+// call signs a fresh request, and operations list records before changing
+// them, so a retry after a lost response does not add a duplicate record.
+func withRetry(ctx context.Context, operation func() error) error {
+	return retry.Do(ctx, func() error {
+		return classifyError(operation())
+	})
+}
+
+func classifyError(err error) error {
+	var sdkErr *tea.SDKError
+	if !errors.As(err, &sdkErr) {
+		return err
+	}
+	// Aliyun reports throttling as HTTP 400 with a Throttling* code.
+	if strings.HasPrefix(tea.StringValue(sdkErr.Code), "Throttling") {
+		return err
+	}
+	return retry.ClassifyStatus(tea.IntValue(sdkErr.StatusCode), err)
 }
 
 func (a *Aliyun) updateDNSRecord(ctx context.Context, recordType, ip string) error {

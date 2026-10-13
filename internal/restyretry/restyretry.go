@@ -5,15 +5,16 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"time"
 
 	"github.com/go-resty/resty/v2"
+
+	"github.com/we11adam/uddns/internal/retry"
 )
 
 const (
-	MaxRetries  = 3
-	WaitTime    = 100 * time.Millisecond
-	MaxWaitTime = 2 * time.Second
+	MaxRetries  = retry.MaxRetries
+	WaitTime    = retry.WaitTime
+	MaxWaitTime = retry.MaxWaitTime
 )
 
 // ConfigureTransient adds a bounded retry policy for idempotent requests.

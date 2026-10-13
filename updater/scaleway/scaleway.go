@@ -2,6 +2,7 @@ package scaleway
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 	"github.com/scaleway/scaleway-sdk-go/scw"
 
 	"github.com/we11adam/uddns/internal/dnsname"
+	"github.com/we11adam/uddns/internal/retry"
 	"github.com/we11adam/uddns/provider"
 	"github.com/we11adam/uddns/updater"
 )
@@ -155,12 +157,16 @@ func (s *Scaleway) Update(ctx context.Context, ips *provider.IpResult) error {
 	}
 
 	returnAllRecords := false
-	_, err := api.UpdateDNSZoneRecords(&domain.UpdateDNSZoneRecordsRequest{
-		DNSZone:                 s.config.Zone,
-		Changes:                 changes,
-		ReturnAllRecords:        &returnAllRecords,
-		DisallowNewZoneCreation: true,
-	}, scw.WithContext(ctx))
+	// Set changes replace the records by identifier, so retries are idempotent.
+	err := withRetry(ctx, func() error {
+		_, err := api.UpdateDNSZoneRecords(&domain.UpdateDNSZoneRecordsRequest{
+			DNSZone:                 s.config.Zone,
+			Changes:                 changes,
+			ReturnAllRecords:        &returnAllRecords,
+			DisallowNewZoneCreation: true,
+		}, scw.WithContext(ctx))
+		return err
+	})
 	if err != nil {
 		return fmt.Errorf("failed to update Scaleway DNS records: %w", err)
 	}
@@ -187,11 +193,15 @@ func (s *Scaleway) Current(ctx context.Context, families provider.FamilyRequest)
 		}
 	}
 
-	res, err := api.ListDNSZoneRecords(&domain.ListDNSZoneRecordsRequest{
-		DNSZone: s.config.Zone,
-		Name:    s.recordName,
-		Type:    recordType,
-	}, scw.WithAllPages(), scw.WithContext(ctx))
+	var res *domain.ListDNSZoneRecordsResponse
+	err := withRetry(ctx, func() (err error) {
+		res, err = api.ListDNSZoneRecords(&domain.ListDNSZoneRecordsRequest{
+			DNSZone: s.config.Zone,
+			Name:    s.recordName,
+			Type:    recordType,
+		}, scw.WithAllPages(), scw.WithContext(ctx))
+		return err
+	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get Scaleway DNS records: %w", err)
 	}
@@ -209,6 +219,31 @@ func (s *Scaleway) Current(ctx context.Context, families provider.FamilyRequest)
 	}
 
 	return result, nil
+}
+
+func withRetry(ctx context.Context, operation func() error) error {
+	return retry.Do(ctx, func() error {
+		return classifyError(operation())
+	})
+}
+
+// classifyError marks Scaleway errors that a retry cannot fix as permanent.
+// The SDK converts most JSON error responses to typed errors without a status
+// code; of those, only transient and locked resources may succeed later.
+func classifyError(err error) error {
+	var responseErr *scw.ResponseError
+	if errors.As(err, &responseErr) {
+		return retry.ClassifyStatus(responseErr.StatusCode, err)
+	}
+	var sdkErr scw.SdkError
+	if errors.As(err, &sdkErr) {
+		switch sdkErr.(type) {
+		case *scw.TransientStateError, *scw.ResourceLockedError:
+			return err
+		}
+		return retry.Permanent(err)
+	}
+	return err
 }
 
 func consistentRecordData(records []*domain.Record, recordType domain.RecordType) string {

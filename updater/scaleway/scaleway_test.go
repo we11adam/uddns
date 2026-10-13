@@ -12,6 +12,7 @@ import (
 	"github.com/scaleway/scaleway-sdk-go/scw"
 	"github.com/spf13/viper"
 
+	"github.com/we11adam/uddns/internal/retry"
 	"github.com/we11adam/uddns/provider"
 )
 
@@ -184,6 +185,61 @@ func TestUpdateSetsEachAddressFamilyByIdentifier(t *testing.T) {
 	assertSetChange(t, captured.body.Changes[1], domain.RecordTypeAAAA, "home", "2001:db8::10", uint32(ttl))
 }
 
+func TestUpdateRetriesTransientErrors(t *testing.T) {
+	t.Parallel()
+	calls := 0
+	transport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		calls++
+		if calls == 1 {
+			response := jsonResponse(request, `{"message":"service unavailable"}`)
+			response.StatusCode = http.StatusServiceUnavailable
+			return response, nil
+		}
+		return jsonResponse(request, `{"records":[]}`), nil
+	})
+	scalewayUpdater := newTestScaleway(t, transport)
+
+	if err := scalewayUpdater.Update(context.Background(), &provider.IpResult{IPv4: "203.0.113.10"}); err != nil {
+		t.Fatalf("Update returned an error: %v", err)
+	}
+	if calls != 2 {
+		t.Fatalf("calls = %d, want 2", calls)
+	}
+}
+
+func TestUpdateDoesNotRetryPermanentErrors(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name   string
+		status int
+		body   string
+	}{
+		{name: "permissions denied", status: http.StatusForbidden, body: `{"type":"permissions_denied","details":[]}`},
+		{name: "unauthorized", status: http.StatusUnauthorized, body: `{"message":"authentication is denied"}`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			calls := 0
+			transport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
+				calls++
+				response := jsonResponse(request, tt.body)
+				response.StatusCode = tt.status
+				return response, nil
+			})
+			scalewayUpdater := newTestScaleway(t, transport)
+
+			err := scalewayUpdater.Update(context.Background(), &provider.IpResult{IPv4: "203.0.113.10"})
+			if err == nil || !retry.IsPermanent(err) {
+				t.Fatalf("expected permanent error, got %v", err)
+			}
+			if calls != 1 {
+				t.Fatalf("calls = %d, want 1", calls)
+			}
+		})
+	}
+}
+
 func TestCurrentUsesNormalizedZoneAndRecord(t *testing.T) {
 	t.Parallel()
 	requests := make(chan *http.Request, 1)
@@ -339,6 +395,16 @@ func newTestClient(t *testing.T, transport http.RoundTripper) *scw.Client {
 		t.Fatalf("create test Scaleway client: %v", err)
 	}
 	return client
+}
+
+func newTestScaleway(t *testing.T, transport http.RoundTripper) *Scaleway {
+	t.Helper()
+	scalewayUpdater, err := New(testConfig("home.example.com", ""))
+	if err != nil {
+		t.Fatalf("New returned an error: %v", err)
+	}
+	scalewayUpdater.client = newTestClient(t, transport)
+	return scalewayUpdater
 }
 
 func jsonResponse(request *http.Request, body string) *http.Response {

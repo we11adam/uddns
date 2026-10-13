@@ -13,7 +13,9 @@ import (
 	"time"
 
 	"github.com/alibabacloud-go/tea/dara"
+	"github.com/alibabacloud-go/tea/tea"
 
+	"github.com/we11adam/uddns/internal/retry"
 	"github.com/we11adam/uddns/provider"
 )
 
@@ -166,15 +168,7 @@ func TestDuplicateDNSRecordsAreReconciledAndMixedValuesTriggerRepair(t *testing.
 				}
 			}
 		}
-		action := form.Get("Action")
-		if action == "" {
-			for name, values := range request.Header {
-				if strings.EqualFold(name, "x-acs-action") && len(values) > 0 {
-					action = values[0]
-					break
-				}
-			}
-		}
+		action := aliyunAction(request, form)
 
 		body := ""
 		switch action {
@@ -222,6 +216,61 @@ func TestDuplicateDNSRecordsAreReconciledAndMixedValuesTriggerRepair(t *testing.
 	}
 	if current != "" {
 		t.Fatalf("mixed duplicate values returned %q; want empty value to trigger repair", current)
+	}
+}
+
+func TestUpdateRetriesLostAddWithoutDuplicatingRecord(t *testing.T) {
+	t.Parallel()
+	aliyun := newTestAliyun(t)
+	var actions []string
+	added := false
+	aliyun.client.HttpClient = httpClientFunc(func(request *http.Request, _ *http.Transport) (*http.Response, error) {
+		parameters, err := aliyunRequestParameters(request)
+		if err != nil {
+			return nil, err
+		}
+		action := aliyunAction(request, parameters)
+		actions = append(actions, action)
+		switch action {
+		case "DescribeSubDomainRecords":
+			if added {
+				return aliyunJSONResponse(request, describeSubDomainRecordsResponse(1, "1", 1)), nil
+			}
+			return aliyunJSONResponse(request, describeSubDomainRecordsResponse(0, "1", 0)), nil
+		case "AddDomainRecord":
+			added = true
+			return nil, errors.New("connection reset after the record was added")
+		default:
+			return nil, fmt.Errorf("unexpected Aliyun action: %s", action)
+		}
+	})
+
+	if err := aliyun.Update(context.Background(), &provider.IpResult{IPv4: "192.0.2.10"}); err != nil {
+		t.Fatalf("Update returned an error: %v", err)
+	}
+	want := []string{"DescribeSubDomainRecords", "AddDomainRecord", "DescribeSubDomainRecords"}
+	if fmt.Sprint(actions) != fmt.Sprint(want) {
+		t.Fatalf("actions = %v, want %v", actions, want)
+	}
+}
+
+func TestUpdateDoesNotRetryClientErrors(t *testing.T) {
+	t.Parallel()
+	aliyun := newTestAliyun(t)
+	calls := 0
+	aliyun.client.HttpClient = httpClientFunc(func(request *http.Request, _ *http.Transport) (*http.Response, error) {
+		calls++
+		response := aliyunJSONResponse(request, `{"Code":"InvalidAccessKeyId.NotFound","Message":"Specified access key is not found."}`)
+		response.StatusCode = http.StatusNotFound
+		return response, nil
+	})
+
+	err := aliyun.Update(context.Background(), &provider.IpResult{IPv4: "192.0.2.10"})
+	if err == nil || !retry.IsPermanent(err) {
+		t.Fatalf("expected permanent error, got %v", err)
+	}
+	if calls != 1 {
+		t.Fatalf("calls = %d, want 1", calls)
 	}
 }
 
@@ -443,6 +492,20 @@ func aliyunRequestParameters(request *http.Request) (url.Values, error) {
 	return parameters, nil
 }
 
+// aliyunAction returns the API action from the request parameters or from the
+// x-acs-action header, which the SDK sets without canonicalizing its name.
+func aliyunAction(request *http.Request, parameters url.Values) string {
+	if action := parameters.Get("Action"); action != "" {
+		return action
+	}
+	for name, values := range request.Header {
+		if strings.EqualFold(name, "x-acs-action") && len(values) > 0 {
+			return values[0]
+		}
+	}
+	return ""
+}
+
 func describeSubDomainRecordsResponse(total int64, pageNumber string, count int) string {
 	records := make([]string, count)
 	for i := range count {
@@ -462,5 +525,25 @@ func aliyunJSONResponse(request *http.Request, body string) *http.Response {
 		Header:     http.Header{"Content-Type": []string{"application/json"}},
 		Body:       io.NopCloser(strings.NewReader(body)),
 		Request:    request,
+	}
+}
+
+func TestClassifyErrorKeepsThrottlingTransient(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		code       string
+		statusCode int
+		permanent  bool
+	}{
+		{"Throttling.User", http.StatusBadRequest, false},
+		{"ServiceUnavailable", http.StatusServiceUnavailable, false},
+		{"InvalidAccessKeyId.NotFound", http.StatusNotFound, true},
+		{"Forbidden.RAM", http.StatusForbidden, true},
+	}
+	for _, tt := range tests {
+		err := tea.NewSDKError(map[string]interface{}{"code": tt.code, "statusCode": tt.statusCode, "message": "failed"})
+		if got := retry.IsPermanent(classifyError(fmt.Errorf("wrapped: %w", err))); got != tt.permanent {
+			t.Errorf("%s (%d) permanent = %t, want %t", tt.code, tt.statusCode, got, tt.permanent)
+		}
 	}
 }
