@@ -8,14 +8,20 @@ import (
 	"strings"
 	"time"
 
+	"github.com/we11adam/uddns/internal/retry"
 	"github.com/we11adam/uddns/notifier"
 	"github.com/we11adam/uddns/provider"
 	"github.com/we11adam/uddns/updater"
 )
 
 const (
-	maxJobBackoff      = 30 * time.Minute
-	autoVerifyInterval = 10 * time.Minute
+	// maxJobBackoff caps retries of failures that are unlikely to clear soon:
+	// provider errors and permanent update or verify errors.
+	maxJobBackoff = 30 * time.Minute
+	// maxTransientJobBackoff caps retries of transient update or verify errors
+	// so a recovered DNS service is used again within a few minutes.
+	maxTransientJobBackoff = 5 * time.Minute
+	autoVerifyInterval     = 10 * time.Minute
 )
 
 type clock interface {
@@ -183,13 +189,14 @@ func (a *App) runOnce(ctx context.Context) {
 func (a *App) runJob(ctx context.Context, job *Job) {
 	startedAt := time.Now()
 	status := jobStatusOK
+	var failure error
 	updated := false
 	defer func() {
 		if isBackoffFailure(status) {
 			// Shutdown cancellation is not an operational job failure and should
 			// not affect the next run of the same App.
 			if ctx.Err() == nil {
-				job.recordFailure(a.clock.Now(), a.interval, jobBackoffCap(a.interval), a.jitter())
+				job.recordFailure(a.clock.Now(), a.interval, jobBackoffCap(a.interval, status, failure), a.jitter(), failure)
 			}
 		} else if status == jobStatusOK || status == jobStatusUnchanged {
 			job.resetBackoff()
@@ -252,6 +259,7 @@ func (a *App) runJob(ctx context.Context, job *Job) {
 		if err != nil {
 			if job.Verify == VerifyUpdaterAPI {
 				status = jobStatusVerifyError
+				failure = err
 				slog.Error("failed to verify current DNS records", job.logAttrs("verify", job.Verify, "error", err)...)
 				return
 			}
@@ -321,11 +329,13 @@ func (a *App) runJob(ctx context.Context, job *Job) {
 
 	if err := job.Updater.Update(ctx, ipResult); err != nil {
 		status = jobStatusUpdaterError
+		failure = err
 		slog.Error(
 			"failed to update DNS records",
 			job.logAttrs(
 				"ipv4", ipResult.IPv4,
 				"ipv6", ipResult.IPv6,
+				"permanent", retry.IsPermanent(err),
 				"error", err,
 			)...,
 		)
@@ -392,9 +402,15 @@ func (job *Job) initializeAppliedFromCurrent(desired, current *provider.IpResult
 	}
 }
 
-func (job *Job) recordFailure(now time.Time, base, max time.Duration, jitter float64) {
+// recordFailure schedules the next attempt with capped exponential backoff,
+// waiting at least as long as err requests through retry.After.
+func (job *Job) recordFailure(now time.Time, base, limit time.Duration, jitter float64, err error) {
 	job.failureCount++
-	job.retryAfter = now.Add(cappedExponentialBackoff(base, max, job.failureCount, jitter))
+	delay := cappedExponentialBackoff(base, limit, job.failureCount, jitter)
+	if requested, ok := retry.RetryAfter(err); ok {
+		delay = max(delay, requested)
+	}
+	job.retryAfter = now.Add(delay)
 }
 
 func (job *Job) resetBackoff() {
@@ -402,11 +418,12 @@ func (job *Job) resetBackoff() {
 	job.retryAfter = time.Time{}
 }
 
-func jobBackoffCap(interval time.Duration) time.Duration {
-	if interval > maxJobBackoff {
-		return interval
+func jobBackoffCap(interval time.Duration, status jobStatus, err error) time.Duration {
+	limit := maxJobBackoff
+	if status != jobStatusProviderError && !retry.IsPermanent(err) {
+		limit = maxTransientJobBackoff
 	}
-	return maxJobBackoff
+	return max(interval, limit)
 }
 
 // cappedExponentialBackoff returns an equal-jitter delay in the range

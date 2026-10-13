@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/we11adam/uddns/internal/retry"
 	"github.com/we11adam/uddns/notifier"
 	"github.com/we11adam/uddns/provider"
 	"github.com/we11adam/uddns/updater"
@@ -888,6 +889,42 @@ func TestCappedExponentialBackoffAppliesEqualJitter(t *testing.T) {
 		if got := cappedExponentialBackoff(base, time.Minute, 1, tt.jitter); got != tt.want {
 			t.Fatalf("jitter %.1f: expected %s, got %s", tt.jitter, tt.want, got)
 		}
+	}
+}
+
+func TestJobBackoffCap(t *testing.T) {
+	t.Parallel()
+	transient := errors.New("connection reset")
+	permanent := retry.Permanent(errors.New("unauthorized"))
+	tests := []struct {
+		name     string
+		interval time.Duration
+		status   jobStatus
+		err      error
+		want     time.Duration
+	}{
+		{name: "transient update", interval: time.Minute, status: jobStatusUpdaterError, err: transient, want: maxTransientJobBackoff},
+		{name: "transient verify", interval: time.Minute, status: jobStatusVerifyError, err: transient, want: maxTransientJobBackoff},
+		{name: "permanent update", interval: time.Minute, status: jobStatusUpdaterError, err: permanent, want: maxJobBackoff},
+		{name: "provider", interval: time.Minute, status: jobStatusProviderError, want: maxJobBackoff},
+		{name: "long interval", interval: time.Hour, status: jobStatusUpdaterError, err: transient, want: time.Hour},
+	}
+	for _, tt := range tests {
+		if got := jobBackoffCap(tt.interval, tt.status, tt.err); got != tt.want {
+			t.Errorf("%s: jobBackoffCap = %s, want %s", tt.name, got, tt.want)
+		}
+	}
+}
+
+func TestRecordFailureHonorsRetryAfter(t *testing.T) {
+	t.Parallel()
+	now := time.Unix(1_700_000_000, 0)
+	job := &Job{}
+
+	job.recordFailure(now, time.Second, maxTransientJobBackoff, 1, retry.After(errors.New("rate limited"), 10*time.Minute))
+
+	if want := now.Add(10 * time.Minute); !job.retryAfter.Equal(want) {
+		t.Fatalf("retryAfter = %s, want %s", job.retryAfter, want)
 	}
 }
 
