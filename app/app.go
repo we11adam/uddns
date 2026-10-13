@@ -35,33 +35,39 @@ func (systemClock) Now() time.Time {
 }
 
 type App struct {
-	jobs         []Job
-	notifierName string
-	notifier     notifier.Notifier
-	interval     time.Duration
-	clock        clock
-	jitter       func() float64
+	jobs          []Job
+	notifierName  string
+	notifier      notifier.Notifier
+	interval      time.Duration
+	clock         clock
+	jitter        func() float64
+	notifications notificationQueue
 }
 
 type Job struct {
-	Name                      string
-	ProviderName              string
-	Provider                  provider.Provider
-	UpdaterName               string
-	Updater                   updater.Updater
-	Record                    string
-	Zone                      string
-	Families                  Families
-	Verify                    VerifyMode
-	lastAppliedIPv4           string
-	lastAppliedIPv6           string
-	lastNotifiedIPv4          string
-	lastNotifiedIPv6          string
-	lastNotifiedUpdateFailure string
-	lastVerifiedAt            time.Time
-	recordDriftPending        bool
-	failureCount              int
-	retryAfter                time.Time
+	Name            string
+	ProviderName    string
+	Provider        provider.Provider
+	UpdaterName     string
+	Updater         updater.Updater
+	Record          string
+	Zone            string
+	Families        Families
+	Verify          VerifyMode
+	lastAppliedIPv4 string
+	lastAppliedIPv6 string
+	// lastNotifiedIPv4 and lastNotifiedIPv6 record the addresses whose change
+	// notification was queued, not necessarily delivered.
+	lastNotifiedIPv4   string
+	lastNotifiedIPv6   string
+	lastVerifiedAt     time.Time
+	recordDriftPending bool
+	failureCount       int
+	retryAfter         time.Time
+	// updateFailures counts consecutive failed DNS updates since
+	// updateFailingSince. Only the first failure of an episode is notified.
+	updateFailures     int
+	updateFailingSince time.Time
 }
 
 type jobStatus string
@@ -132,6 +138,9 @@ func NewApp(jobs []Job, notifierName string, n notifier.Notifier, interval time.
 		interval:     interval,
 		clock:        systemClock{},
 		jitter:       rand.Float64,
+		notifications: notificationQueue{
+			wake: make(chan struct{}, 1),
+		},
 	}
 }
 
@@ -314,7 +323,10 @@ func (a *App) runJob(ctx context.Context, job *Job) {
 	)
 
 	if !updateNeeded {
-		a.notifyIPChanges(ctx, job, ipResult)
+		// The records are correct again, for example because the address
+		// changed back, so a failure episode ends without a recovery message.
+		job.updateFailures = 0
+		a.notifyIPChanges(job, ipResult)
 		status = jobStatusUnchanged
 		return
 	}
@@ -339,9 +351,13 @@ func (a *App) runJob(ctx context.Context, job *Job) {
 				"error", err,
 			)...,
 		)
-		failureNotification := notifier.Notification{Message: jobNotificationMessage(job, fmt.Sprintf("DNS update failed for %s: %s", notificationIPSummary(ipResult), err)), Reason: notifier.ReasonUpdateFailure}
-		if failureNotification.Message != job.lastNotifiedUpdateFailure && a.notify(ctx, job, failureNotification) {
-			job.lastNotifiedUpdateFailure = failureNotification.Message
+		if ctx.Err() != nil {
+			return
+		}
+		job.updateFailures++
+		if job.updateFailures == 1 {
+			job.updateFailingSince = a.clock.Now()
+			a.enqueueNotification(job, updateNotificationKey, notifier.Notification{Message: jobNotificationMessage(job, fmt.Sprintf("DNS update failed for %s: %s", notificationIPSummary(ipResult), err)), Reason: notifier.ReasonUpdateFailure})
 		}
 		return
 	}
@@ -354,7 +370,11 @@ func (a *App) runJob(ctx context.Context, job *Job) {
 		job.lastAppliedIPv6 = ipResult.IPv6
 	}
 	job.recordDriftPending = false
-	job.lastNotifiedUpdateFailure = ""
+	message := fmt.Sprintf("DNS records updated for %s", notificationIPSummary(ipResult))
+	if job.updateFailures > 0 {
+		message += fmt.Sprintf(" after %s over %s", pluralize(job.updateFailures, "failed attempt"), formatElapsed(a.clock.Now().Sub(job.updateFailingSince)))
+		job.updateFailures = 0
+	}
 
 	slog.Info(
 		"updated DNS records",
@@ -363,21 +383,44 @@ func (a *App) runJob(ctx context.Context, job *Job) {
 			"ipv6", ipResult.IPv6,
 		)...,
 	)
-	a.notifyIPChanges(ctx, job, ipResult)
-	a.notify(ctx, job, notifier.Notification{Message: jobNotificationMessage(job, fmt.Sprintf("DNS records updated for %s", notificationIPSummary(ipResult))), Reason: notifier.ReasonUpdateSuccess})
+	a.notifyIPChanges(job, ipResult)
+	a.enqueueNotification(job, updateNotificationKey, notifier.Notification{Message: jobNotificationMessage(job, message), Reason: notifier.ReasonUpdateSuccess})
 }
 
-func (a *App) notifyIPChanges(ctx context.Context, job *Job, ipResult *provider.IpResult) {
+func (a *App) notifyIPChanges(job *Job, ipResult *provider.IpResult) {
 	if ipResult.IPv4 != "" && ipResult.IPv4 != job.lastNotifiedIPv4 {
-		if a.notify(ctx, job, notifier.Notification{Message: jobNotificationMessage(job, fmt.Sprintf("IPv4 address changed to %s", ipResult.IPv4)), Reason: notifier.ReasonIPChange}) {
-			job.lastNotifiedIPv4 = ipResult.IPv4
-		}
+		a.enqueueNotification(job, ipv4NotificationKey, notifier.Notification{Message: jobNotificationMessage(job, fmt.Sprintf("IPv4 address changed to %s", ipResult.IPv4)), Reason: notifier.ReasonIPChange})
+		job.lastNotifiedIPv4 = ipResult.IPv4
 	}
 
 	if ipResult.IPv6 != "" && ipResult.IPv6 != job.lastNotifiedIPv6 {
-		if a.notify(ctx, job, notifier.Notification{Message: jobNotificationMessage(job, fmt.Sprintf("IPv6 address changed to %s", ipResult.IPv6)), Reason: notifier.ReasonIPChange}) {
-			job.lastNotifiedIPv6 = ipResult.IPv6
-		}
+		a.enqueueNotification(job, ipv6NotificationKey, notifier.Notification{Message: jobNotificationMessage(job, fmt.Sprintf("IPv6 address changed to %s", ipResult.IPv6)), Reason: notifier.ReasonIPChange})
+		job.lastNotifiedIPv6 = ipResult.IPv6
+	}
+}
+
+func pluralize(count int, noun string) string {
+	if count == 1 {
+		return fmt.Sprintf("1 %s", noun)
+	}
+	return fmt.Sprintf("%d %ss", count, noun)
+}
+
+// formatElapsed renders a failure episode length compactly, such as 45s, 12m
+// or 2h5m.
+func formatElapsed(elapsed time.Duration) string {
+	if elapsed < time.Minute {
+		return max(elapsed, 0).Round(time.Second).String()
+	}
+	elapsed = elapsed.Round(time.Minute)
+	hours, minutes := int(elapsed.Hours()), int(elapsed.Minutes())%60
+	switch {
+	case hours == 0:
+		return fmt.Sprintf("%dm", minutes)
+	case minutes == 0:
+		return fmt.Sprintf("%dh", hours)
+	default:
+		return fmt.Sprintf("%dh%dm", hours, minutes)
 	}
 }
 
@@ -579,21 +622,6 @@ func (job *Job) logAttrs(args ...any) []any {
 	return append(attrs, args...)
 }
 
-func (a *App) notify(ctx context.Context, job *Job, notification notifier.Notification) bool {
-	if err := a.notifier.Notify(ctx, notification); err != nil {
-		slog.Error(
-			"failed to send notification",
-			job.logAttrs(
-				"notifier", a.notifierName,
-				"reason", notification.Reason,
-				"error", err,
-			)...,
-		)
-		return false
-	}
-	return true
-}
-
 func notificationIPSummary(ipResult *provider.IpResult) string {
 	if ipResult == nil {
 		return "no IP addresses"
@@ -616,5 +644,17 @@ func (a *App) Run(ctx context.Context) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+
+	// The notification queue outlives the scheduler so that messages queued by
+	// the final run are still flushed after it returns.
+	queueCtx, stopQueue := context.WithCancel(context.WithoutCancel(ctx))
+	queueDone := make(chan struct{})
+	go func() {
+		defer close(queueDone)
+		a.runNotifications(queueCtx)
+	}()
+
 	a.schedule(ctx)
+	stopQueue()
+	<-queueDone
 }
